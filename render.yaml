@@ -27,9 +27,9 @@ services:
       - key: CLIENT_URL
         value: https://your-frontend.vercel.app
       - key: EMAIL_USER
-        value: your-email@gmail.com
+        value: israeldewa1@gmail.com
       - key: EMAIL_PASS
-        value: your-app-password
+        value: wMi5$03PHyMWUNE
 
 databases:
   - name: rawwealthy-mongodb
