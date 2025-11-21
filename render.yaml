@@ -1,21 +1,38 @@
+# render.yaml
 services:
   - type: web
     name: raw-wealthy-backend
     env: node
     plan: free
+    region: oregon
     buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: MONGODB_URI
-        fromDatabase:
-          name: rawwealthy-mongodb
-          property: connectionString
+      - key: PORT
+        value: 10000
       - key: JWT_SECRET
         generateValue: true
-      - key: REDIS_URL
-        fromService:
-          name: rawwealthy-redis
-          type: redis
-          property: connectionString
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: MONGODB_URI
+        value: mongodb+srv://Rawmoney:rawmoney@rawwealthy.mwxlqha.mongodb.net/rawwealthy?retryWrites=true&w=majority
+      - key: CLOUDINARY_CLOUD_NAME
+        value: dyotuz5h7
+      - key: CLOUDINARY_API_KEY
+        value: 775719636564583
+      - key: CLOUDINARY_API_SECRET
+        value: -8o6zGglkQhyX-Bs9e5Ug_MSUm4
+      - key: CLIENT_URL
+        value: https://your-frontend.vercel.app
+      - key: EMAIL_USER
+        value: your-email@gmail.com
+      - key: EMAIL_PASS
+        value: your-app-password
+
+databases:
+  - name: rawwealthy-mongodb
+    plan: free
+    databaseName: rawwealthy
+    ipAllowList: []
