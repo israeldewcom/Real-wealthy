@@ -1,4 +1,4 @@
-// server.js - ULTIMATE INTEGRATED RAW WEALTHY BACKEND v10.0 CLOUDINARY EDITION
+// server.js - ULTIMATE INTEGRATED RAW WEALTHY BACKEND v10.0 CLOUDINARY EDITION - PRODUCTION READY
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -27,9 +27,9 @@ const app = express();
 
 // ==================== CLOUDINARY CONFIGURATION ====================
 cloudinary.config({
-  cloud_name: 'dyotuz5h7',
-  api_key: '775719636564583',
-  api_secret: '-8o6zGglkQhyX-Bs9e5Ug_MSUm4'
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dyotuz5h7',
+  api_key: process.env.CLOUDINARY_API_KEY || '775719636564583',
+  api_secret: process.env.CLOUDINARY_API_SECRET || '-8o6zGglkQhyX-Bs9e5Ug_MSUm4'
 });
 
 // ==================== ENHANCED SECURITY MIDDLEWARE ====================
@@ -144,7 +144,7 @@ const broadcastToUser = (userId, data) => {
 };
 
 // ==================== ENHANCED EMAIL CONFIGURATION ====================
-const emailTransporter = nodemailer.createTransporter({
+const emailTransporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
@@ -336,7 +336,6 @@ const investmentSchema = new mongoose.Schema({
   auto_renew: { type: Boolean, default: false },
   payment_proof: { type: String },
   transaction_hash: String,
-  last_earning_date: Date,
   admin_notes: String,
   approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   approved_at: Date
