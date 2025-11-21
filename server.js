@@ -1,4 +1,4 @@
-// server.js - ULTIMATE INTEGRATED RAW WEALTHY BACKEND v10.0
+// server.js - ULTIMATE INTEGRATED RAW WEALTHY BACKEND v10.0 CLOUDINARY EDITION
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -20,9 +20,17 @@ const speakeasy = require('speakeasy');
 const axios = require('axios');
 const WebSocket = require('ws');
 const redis = require('redis');
+const cloudinary = require('cloudinary').v2;
 require('dotenv').config();
 
 const app = express();
+
+// ==================== CLOUDINARY CONFIGURATION ====================
+cloudinary.config({
+  cloud_name: 'dyotuz5h7',
+  api_key: '775719636564583',
+  api_secret: '-8o6zGglkQhyX-Bs9e5Ug_MSUm4'
+});
 
 // ==================== ENHANCED SECURITY MIDDLEWARE ====================
 app.use(helmet({
@@ -147,11 +155,13 @@ const emailTransporter = nodemailer.createTransporter({
 // ==================== ENHANCED DATABASE CONNECTION ====================
 const connectDB = async () => {
   try {
-    if (!process.env.MONGODB_URI) {
+    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://Rawmoney:rawmoney@rawwealthy.mwxlqha.mongodb.net/rawwealthy?retryWrites=true&w=majority';
+    
+    if (!MONGODB_URI) {
       throw new Error('MONGODB_URI environment variable is required');
     }
     
-    await mongoose.connect(process.env.MONGODB_URI, {
+    await mongoose.connect(MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
@@ -744,24 +754,52 @@ const formatResponse = (success, message, data = null, pagination = null) => {
   return response;
 };
 
-// Enhanced File Upload Handler
+// Enhanced Cloudinary File Upload Handler
+const handleCloudinaryUpload = async (file, folder = 'rawwealthy') => {
+  if (!file) return null;
+  
+  try {
+    const result = await cloudinary.uploader.upload(file.path, {
+      folder: folder,
+      resource_type: 'auto',
+      quality: 'auto',
+      fetch_format: 'auto'
+    });
+    
+    // Delete local file after upload
+    fs.unlinkSync(file.path);
+    
+    return result.secure_url;
+  } catch (error) {
+    console.error('Cloudinary upload error:', error);
+    // Fallback to local file path if Cloudinary fails
+    return `/uploads/${path.basename(file.path)}`;
+  }
+};
+
+// Enhanced File Upload Handler with Cloudinary
 const handleFileUpload = async (file, folder = 'general') => {
   if (!file) return null;
   
-  const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-  const filename = `${folder}-${uniqueSuffix}${path.extname(file.originalname)}`;
-  const filePath = path.join('uploads', folder, filename);
-  
-  // Ensure directory exists
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  // Use Cloudinary for production, local storage for development
+  if (process.env.NODE_ENV === 'production') {
+    return await handleCloudinaryUpload(file, `rawwealthy/${folder}`);
+  } else {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const filename = `${folder}-${uniqueSuffix}${path.extname(file.originalname)}`;
+    const filePath = path.join('uploads', folder, filename);
+    
+    // Ensure directory exists
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    // Move file
+    await fs.promises.rename(file.path, filePath);
+    
+    return `/uploads/${folder}/${filename}`;
   }
-  
-  // Move file
-  await fs.promises.rename(file.path, filePath);
-  
-  return `/uploads/${folder}/${filename}`;
 };
 
 // ==================== ENHANCED DATABASE INITIALIZATION ====================
@@ -862,6 +900,7 @@ app.get('/health', async (req, res) => {
       version: '10.0.0',
       database: dbStatus,
       redis: redisStatus,
+      cloudinary: 'configured',
       statistics: {
         total_users: totalUsers,
         total_investments: totalInvestments,
@@ -1409,7 +1448,7 @@ app.get('/api/investments', auth, async (req, res) => {
   }
 });
 
-// Create Investment - ENHANCED FILE UPLOAD SUPPORT
+// Create Investment - ENHANCED FILE UPLOAD SUPPORT WITH CLOUDINARY
 app.post('/api/investments', auth, upload.single('payment_proof'), [
   body('plan_id').isMongoId().withMessage('Invalid plan ID'),
   body('amount').isFloat({ min: 1000 }).withMessage('Minimum investment is ₦1000'),
@@ -1530,7 +1569,7 @@ app.get('/api/deposits', auth, async (req, res) => {
   }
 });
 
-// Create Deposit - ENHANCED FILE UPLOAD SUPPORT
+// Create Deposit - ENHANCED FILE UPLOAD SUPPORT WITH CLOUDINARY
 app.post('/api/deposits', auth, upload.single('payment_proof'), [
   body('amount').isFloat({ min: 500 }).withMessage('Minimum deposit is ₦500'),
   body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal', 'card']).withMessage('Invalid payment method'),
@@ -1701,7 +1740,7 @@ app.post('/api/withdrawals', auth, [
 
 // ==================== KYC ROUTES - FULLY INTEGRATED ====================
 
-// Submit KYC - ENHANCED FILE UPLOAD SUPPORT
+// Submit KYC - ENHANCED FILE UPLOAD SUPPORT WITH CLOUDINARY
 app.post('/api/kyc', auth, upload.fields([
   { name: 'id_front', maxCount: 1 },
   { name: 'id_back', maxCount: 1 },
@@ -1723,7 +1762,7 @@ app.post('/api/kyc', auth, upload.fields([
       return res.status(400).json(formatResponse(false, 'All document images are required'));
     }
 
-    // Upload files
+    // Upload files to Cloudinary
     const id_front = await handleFileUpload(files.id_front[0], 'kyc');
     const id_back = await handleFileUpload(files.id_back[0], 'kyc');
     const selfie_with_id = await handleFileUpload(files.selfie_with_id[0], 'kyc');
@@ -2637,12 +2676,13 @@ process.on('SIGTERM', async () => {
 // Initialize the application
 connectDB().then(() => {
   console.log(`
-🎯 Raw Wealthy Backend v10.0 - ULTIMATE INTEGRATED EDITION
+🎯 Raw Wealthy Backend v10.0 - ULTIMATE INTEGRATED CLOUDINARY EDITION
 🌐 Server running on port ${process.env.PORT || 5000}
 🚀 Environment: ${process.env.NODE_ENV || 'development'}
 📊 Health Check: http://localhost:${process.env.PORT || 5000}/health
 🔗 API Base: http://localhost:${process.env.PORT || 5000}/api
-💾 Database: ${process.env.MONGODB_URI ? 'Cloud' : 'Local'}
+💾 Database: MongoDB Cloud - Raw Wealthy Cluster
+☁️  Cloudinary: Configured for file storage
 🛡️ Security: Enhanced with Redis, WebSockets, and advanced caching
 📧 Email: ${process.env.EMAIL_USER ? 'Configured' : 'Not configured'}
 ⚡ Real-time: WebSocket support enabled
