@@ -41,7 +41,7 @@ app.use(mongoSanitize());
 
 // ==================== PERFECT CORS CONFIGURATION ====================
 app.use(cors({
-  origin: process.env.CLIENT_URL || ["http://localhost:3000", "http://127.0.0.1:5500", "https://your-frontend-domain.vercel.app"],
+  origin: process.env.CLIENT_URL || ["http://localhost:3000", "http://127.0.0.1:5500", "https://real-earning.vercel.app/"],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
