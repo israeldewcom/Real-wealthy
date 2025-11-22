@@ -40,12 +40,22 @@ app.use(helmet({
 app.use(mongoSanitize());
 
 // ==================== PERFECT CORS CONFIGURATION ====================
+// ==================== PERFECT CORS CONFIGURATION ====================
 app.use(cors({
-  origin: process.env.CLIENT_URL || ["http://localhost:3000", "http://127.0.0.1:5500", "https://real-earning.vercel.app/"],
+  origin: [
+    "https://real-earning.vercel.app",
+    "https://real-earning.vercel.app/",
+    "http://localhost:3000",
+    "http://127.0.0.1:5500", 
+    "http://localhost:5500"
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
+
+// Handle preflight requests
+app.options('*', cors());
 
 // Handle preflight requests
 app.options('*', cors());
