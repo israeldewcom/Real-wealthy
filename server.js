@@ -1,4 +1,4 @@
-// server.js - ULTIMATE PRODUCTION READY RAW WEALTHY BACKEND v11.0 - ZERO ERRORS EDITION
+// server.js - ULTIMATE PRODUCTION READY RAW WEALTHY BACKEND v12.0
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -40,22 +40,18 @@ app.use(helmet({
 app.use(mongoSanitize());
 
 // ==================== PERFECT CORS CONFIGURATION ====================
-// ==================== PERFECT CORS CONFIGURATION ====================
 app.use(cors({
   origin: [
     "https://real-earning.vercel.app",
     "https://real-earning.vercel.app/",
     "http://localhost:3000",
-    "http://127.0.0.1:5500", 
+    "http://127.0.0.1:5500",
     "http://localhost:5500"
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
-
-// Handle preflight requests
-app.options('*', cors());
 
 // Handle preflight requests
 app.options('*', cors());
@@ -990,10 +986,10 @@ app.get('/health', async (req, res) => {
     res.status(200).json({ 
       success: true,
       status: 'OK', 
-      message: '🚀 Raw Wealthy Backend v11.0 is running perfectly!',
+      message: '🚀 Raw Wealthy Backend v12.0 is running perfectly!',
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development',
-      version: '11.0.0',
+      version: '12.0.0',
       database: dbStatus,
       redis: redisStatus,
       cloudinary: 'configured',
@@ -1017,8 +1013,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🚀 Raw Wealthy Backend API v11.0 - Production Ready',
-    version: '11.0.0',
+    message: '🚀 Raw Wealthy Backend API v12.0 - Production Ready',
+    version: '12.0.0',
     timestamp: new Date().toISOString(),
     endpoints: {
       health: '/health',
@@ -2795,7 +2791,7 @@ const initializeApp = async () => {
     await connectDB();
     
     console.log(`
-🎯 Raw Wealthy Backend v11.0 - ULTIMATE PRODUCTION READY EDITION
+🎯 Raw Wealthy Backend v12.0 - ULTIMATE PRODUCTION READY EDITION
 🌐 Server running on port ${process.env.PORT || 5000}
 🚀 Environment: ${process.env.NODE_ENV || 'development'}
 📊 Health Check: http://localhost:${process.env.PORT || 5000}/health
