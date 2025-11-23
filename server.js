@@ -204,7 +204,7 @@ const emailTransporter = createEmailTransporter();
 // ==================== ENHANCED DATABASE CONNECTION ====================
 const connectDB = async () => {
   try {
-    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://Rawmoney:rawmoney@rawwealthy.mwxlqha.mongodb.net/rawwealthy?retryWrites=true&w=majority';
+    const MONGODB_URI = process.env.MONGODB_URI || 'MONGODB_URI=mongodb+srv://Rawmoney:rawmoney@rawwealthy.mwxlqha.mongodb.net/rawwealthy?retryWrites=true&w=majority&socketTimeoutMS=30000&connectTimeoutMS=30000&serverSelectionTimeoutMS=30000';
     
     if (!MONGODB_URI) {
       throw new Error('MONGODB_URI environment variable is required');
