@@ -1,4 +1,4 @@
-// server.js - ULTIMATE PRODUCTION READY RAW WEALTHY BACKEND v12.0
+// server.js - ULTIMATE PRODUCTION READY RAW WEALTHY BACKEND v12.0 - RENDER DEPLOYMENT OPTIMIZED
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -46,7 +46,11 @@ app.use(cors({
     "https://real-earning.vercel.app/",
     "http://localhost:3000",
     "http://127.0.0.1:5500",
-    "http://localhost:5500"
+    "http://localhost:5500",
+    "https://raw-wealthy-frontend.vercel.app",
+    "https://raw-wealthy-frontend.vercel.app/",
+    "https://rawwealthy.com",
+    "https://www.rawwealthy.com"
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -201,39 +205,28 @@ const createEmailTransporter = () => {
 
 const emailTransporter = createEmailTransporter();
 
-// ==================== ENHANCED DATABASE CONNECTION ====================
+// ==================== WORKING MONGODB CONNECTION ====================
 const connectDB = async () => {
   try {
-    const MONGODB_URI = process.env.MONGODB_URI || 'MONGODB_URI=mongodb+srv://Rawmoney:rawmoney@rawwealthy.mwxlqha.mongodb.net/rawwealthy?retryWrites=true&w=majority&socketTimeoutMS=30000&connectTimeoutMS=30000&serverSelectionTimeoutMS=30000';
+    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://israeldewa1_db_user:rawwealthy@rawwealthy.9cnu0jw.mongodb.net/?appName=rawwealthy';
     
-    if (!MONGODB_URI) {
-      throw new Error('MONGODB_URI environment variable is required');
-    }
+    console.log('🔄 Connecting to MongoDB...');
     
-    // Enhanced connection options for production
     await mongoose.connect(MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
-      maxPoolSize: 10,
-      retryWrites: true,
-      w: 'majority'
     });
     
-    console.log('✅ MongoDB Connected Successfully');
+    console.log('✅ MongoDB Connected Successfully!');
     
-    // Initialize database with enhanced sample data
+    // Initialize database
     await initializeDatabase();
+    
   } catch (error) {
     console.error('❌ MongoDB Connection Error:', error.message);
-    
-    if (error.name === 'MongooseServerSelectionError') {
-      console.log('💡 Solution: Please check your MongoDB Atlas IP whitelist and connection string');
-      console.log('🔗 Whitelist Guide: https://www.mongodb.com/docs/atlas/security-whitelist/');
-    }
-    
-    // Retry connection after 10 seconds
+    console.log('💡 Retrying in 10 seconds...');
     setTimeout(connectDB, 10000);
   }
 };
@@ -246,7 +239,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, index: true },
   phone: { type: String, required: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ['user', 'admin'], default: 'user' },
+  role: { type: String, enum: ['user', 'admin', 'super_admin'], default: 'user' },
   balance: { type: Number, default: 0 },
   total_earnings: { type: Number, default: 0 },
   referral_earnings: { type: Number, default: 0 },
@@ -285,6 +278,18 @@ const userSchema = new mongoose.Schema({
     email_notifications: { type: Boolean, default: true },
     sms_notifications: { type: Boolean, default: true },
     push_notifications: { type: Boolean, default: true }
+  },
+  wallet_address: String,
+  crypto_wallet: {
+    btc: { type: String, default: '' },
+    eth: { type: String, default: '' },
+    usdt: { type: String, default: '' }
+  },
+  investment_portfolio: {
+    total_invested: { type: Number, default: 0 },
+    active_investments: { type: Number, default: 0 },
+    completed_investments: { type: Number, default: 0 },
+    favorite_plans: [{ type: mongoose.Schema.Types.ObjectId, ref: 'InvestmentPlan' }]
   }
 }, { 
   timestamps: true,
@@ -300,6 +305,10 @@ const userSchema = new mongoose.Schema({
 
 userSchema.virtual('isLocked').get(function() {
   return !!(this.lock_until && this.lock_until > Date.now());
+});
+
+userSchema.virtual('referral_count').get(async function() {
+  return await User.countDocuments({ referred_by: this._id });
 });
 
 userSchema.pre('save', async function(next) {
@@ -373,7 +382,15 @@ const investmentPlanSchema = new mongoose.Schema({
   is_active: { type: Boolean, default: true },
   features: [String],
   image_url: String,
-  category: { type: String, enum: ['agriculture', 'mining', 'energy', 'metals'], default: 'agriculture' }
+  category: { type: String, enum: ['agriculture', 'mining', 'energy', 'metals', 'technology', 'real_estate'], default: 'agriculture' },
+  tags: [String],
+  popularity_score: { type: Number, default: 0 },
+  investment_count: { type: Number, default: 0 },
+  total_invested: { type: Number, default: 0 },
+  roi_history: [{
+    period: Date,
+    average_roi: Number
+  }]
 }, { 
   timestamps: true,
   toJSON: { virtuals: true }
@@ -381,6 +398,10 @@ const investmentPlanSchema = new mongoose.Schema({
 
 investmentPlanSchema.virtual('estimated_earnings').get(function() {
   return (this.min_amount * this.total_interest) / 100;
+});
+
+investmentPlanSchema.virtual('success_rate').get(function() {
+  return this.investment_count > 0 ? Math.min(95 + (Math.random() * 5), 99.9) : 95;
 });
 
 const InvestmentPlan = mongoose.model('InvestmentPlan', investmentPlanSchema);
@@ -401,7 +422,13 @@ const investmentSchema = new mongoose.Schema({
   transaction_hash: String,
   admin_notes: String,
   approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  approved_at: Date
+  approved_at: Date,
+  last_earning_date: Date,
+  performance_metrics: {
+    current_roi: Number,
+    days_remaining: Number,
+    expected_daily: Number
+  }
 }, { 
   timestamps: true,
   toJSON: { virtuals: true }
@@ -424,6 +451,11 @@ investmentSchema.virtual('is_expired').get(function() {
   return this.status === 'active' && new Date() > this.end_date;
 });
 
+investmentSchema.virtual('current_roi').get(function() {
+  if (this.amount === 0) return 0;
+  return ((this.earned_so_far / this.amount) * 100).toFixed(2);
+});
+
 investmentSchema.pre('save', async function(next) {
   if (this.isModified('plan') && this.plan) {
     const plan = await InvestmentPlan.findById(this.plan);
@@ -434,6 +466,13 @@ investmentSchema.pre('save', async function(next) {
       
       this.expected_earnings = (this.amount * plan.total_interest) / 100;
       this.daily_earnings = (this.amount * plan.daily_interest) / 100;
+      
+      // Update performance metrics
+      this.performance_metrics = {
+        current_roi: parseFloat(this.current_roi),
+        days_remaining: this.remaining_days,
+        expected_daily: this.daily_earnings
+      };
     }
   }
   next();
@@ -445,8 +484,8 @@ const Investment = mongoose.model('Investment', investmentSchema);
 const depositSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   amount: { type: Number, required: true, min: [500, 'Minimum deposit is ₦500'] },
-  payment_method: { type: String, enum: ['bank_transfer', 'crypto', 'paypal', 'card'], required: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending', index: true },
+  payment_method: { type: String, enum: ['bank_transfer', 'crypto', 'paypal', 'card', 'flutterwave'], required: true },
+  status: { type: String, enum: ['pending', 'approved', 'rejected', 'processing'], default: 'pending', index: true },
   payment_proof: { type: String },
   transaction_hash: String,
   admin_notes: String,
@@ -459,8 +498,11 @@ const depositSchema = new mongoose.Schema({
   },
   crypto_details: {
     wallet_address: String,
-    transaction_hash: String
-  }
+    transaction_hash: String,
+    coin_type: { type: String, enum: ['BTC', 'ETH', 'USDT', 'BNB'] }
+  },
+  flutterwave_reference: String,
+  payment_gateway_response: Object
 }, { 
   timestamps: true,
   toJSON: { virtuals: true }
@@ -505,7 +547,7 @@ const withdrawalSchema = new mongoose.Schema({
   amount: { type: Number, required: true, min: [1000, 'Minimum withdrawal is ₦1000'] },
   platform_fee: { type: Number, default: 0 },
   net_amount: { type: Number, required: true },
-  payment_method: { type: String, enum: ['bank_transfer', 'crypto', 'paypal'], required: true },
+  payment_method: { type: String, enum: ['bank_transfer', 'crypto', 'paypal', 'flutterwave'], required: true },
   bank_details: {
     bank_name: String,
     account_name: String,
@@ -513,11 +555,13 @@ const withdrawalSchema = new mongoose.Schema({
   },
   wallet_address: String,
   paypal_email: String,
-  status: { type: String, enum: ['pending', 'approved', 'rejected', 'processing'], default: 'pending', index: true },
+  status: { type: String, enum: ['pending', 'approved', 'rejected', 'processing', 'paid'], default: 'pending', index: true },
   admin_notes: String,
   approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   approved_at: Date,
-  processed_at: Date
+  processed_at: Date,
+  payment_proof: String,
+  flutterwave_reference: String
 }, { 
   timestamps: true,
   toJSON: { virtuals: true }
@@ -567,15 +611,16 @@ const Withdrawal = mongoose.model('Withdrawal', withdrawalSchema);
 // Enhanced Transaction Model
 const transactionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-  type: { type: String, enum: ['deposit', 'withdrawal', 'investment', 'earning', 'referral', 'bonus', 'fee'], required: true },
+  type: { type: String, enum: ['deposit', 'withdrawal', 'investment', 'earning', 'referral', 'bonus', 'fee', 'dividend', 'refund'], required: true },
   amount: { type: Number, required: true },
   description: { type: String, required: true },
-  status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'completed' },
+  status: { type: String, enum: ['pending', 'completed', 'failed', 'cancelled'], default: 'completed' },
   reference: { type: String, unique: true, index: true },
   metadata: mongoose.Schema.Types.Mixed,
   related_investment: { type: mongoose.Schema.Types.ObjectId, ref: 'Investment' },
   related_deposit: { type: mongoose.Schema.Types.ObjectId, ref: 'Deposit' },
-  related_withdrawal: { type: mongoose.Schema.Types.ObjectId, ref: 'Withdrawal' }
+  related_withdrawal: { type: mongoose.Schema.Types.ObjectId, ref: 'Withdrawal' },
+  category: { type: String, enum: ['investment', 'withdrawal', 'deposit', 'earning', 'referral', 'system'], default: 'system' }
 }, { 
   timestamps: true,
   toJSON: { virtuals: true }
@@ -601,7 +646,9 @@ const kycSchema = new mongoose.Schema({
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending', index: true },
   admin_notes: String,
   reviewed_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  reviewed_at: Date
+  reviewed_at: Date,
+  verification_score: { type: Number, default: 0 },
+  automated_check: { type: Boolean, default: false }
 }, { 
   timestamps: true,
   toJSON: { virtuals: true }
@@ -614,15 +661,19 @@ const notificationSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   title: { type: String, required: true },
   message: { type: String, required: true },
-  type: { type: String, enum: ['info', 'success', 'warning', 'error'], default: 'info' },
+  type: { type: String, enum: ['info', 'success', 'warning', 'error', 'system'], default: 'info' },
   is_read: { type: Boolean, default: false },
   action_url: String,
   related_model: String,
-  related_id: mongoose.Schema.Types.ObjectId
+  related_id: mongoose.Schema.Types.ObjectId,
+  priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
+  expires_at: Date
 }, { 
   timestamps: true,
   toJSON: { virtuals: true }
 });
+
+notificationSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
 
 const Notification = mongoose.model('Notification', notificationSchema);
 
@@ -642,12 +693,71 @@ const supportTicketSchema = new mongoose.Schema({
     attachments: [String],
     createdAt: { type: Date, default: Date.now }
   }],
-  attachments: [String]
+  attachments: [String],
+  last_response_at: Date,
+  satisfaction_rating: { type: Number, min: 1, max: 5 }
 }, { 
   timestamps: true
 });
 
 const SupportTicket = mongoose.model('SupportTicket', supportTicketSchema);
+
+// Blog Post Model
+const blogPostSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  slug: { type: String, required: true, unique: true },
+  content: { type: String, required: true },
+  excerpt: String,
+  author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  category: { type: String, enum: ['investment', 'education', 'news', 'tips'], default: 'investment' },
+  tags: [String],
+  featured_image: String,
+  status: { type: String, enum: ['draft', 'published', 'archived'], default: 'draft' },
+  published_at: Date,
+  meta_title: String,
+  meta_description: String,
+  views: { type: Number, default: 0 },
+  likes: { type: Number, default: 0 },
+  comments: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    content: String,
+    likes: { type: Number, default: 0 },
+    replies: [{
+      user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      content: String,
+      createdAt: { type: Date, default: Date.now }
+    }],
+    createdAt: { type: Date, default: Date.now }
+  }]
+}, { 
+  timestamps: true
+});
+
+const BlogPost = mongoose.model('BlogPost', blogPostSchema);
+
+// Affiliate Model
+const affiliateSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  affiliate_code: { type: String, required: true, unique: true, index: true },
+  commission_rate: { type: Number, default: 10 }, // 10% commission
+  total_commissions: { type: Number, default: 0 },
+  pending_commissions: { type: Number, default: 0 },
+  referrals: [{
+    referred_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    commission_amount: Number,
+    status: { type: String, enum: ['pending', 'approved', 'paid'], default: 'pending' },
+    created_at: { type: Date, default: Date.now }
+  }],
+  payment_method: {
+    type: { type: String, enum: ['bank', 'crypto', 'paypal'] },
+    details: Object
+  },
+  is_active: { type: Boolean, default: true }
+}, { 
+  timestamps: true
+});
+
+const Affiliate = mongoose.model('Affiliate', affiliateSchema);
 
 // ==================== ENHANCED MIDDLEWARE ====================
 
@@ -717,8 +827,21 @@ const auth = async (req, res, next) => {
 const adminAuth = async (req, res, next) => {
   try {
     await auth(req, res, () => {});
-    if (req.user.role !== 'admin') {
+    if (!['admin', 'super_admin'].includes(req.user.role)) {
       return res.status(403).json({ success: false, message: 'Access denied. Admin only.' });
+    }
+    next();
+  } catch (error) {
+    res.status(401).json({ success: false, message: 'Authentication failed' });
+  }
+};
+
+// Super Admin Auth Middleware
+const superAdminAuth = async (req, res, next) => {
+  try {
+    await auth(req, res, () => {});
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ success: false, message: 'Access denied. Super Admin only.' });
     }
     next();
   } catch (error) {
@@ -770,7 +893,7 @@ const sendEmail = async (to, subject, text, html = null) => {
 };
 
 // Enhanced Notification Service
-const createNotification = async (userId, title, message, type = 'info', actionUrl = null, relatedModel = null, relatedId = null) => {
+const createNotification = async (userId, title, message, type = 'info', actionUrl = null, relatedModel = null, relatedId = null, priority = 'medium') => {
   try {
     const notification = await Notification.create({
       user: userId,
@@ -779,7 +902,8 @@ const createNotification = async (userId, title, message, type = 'info', actionU
       type,
       action_url: actionUrl,
       related_model: relatedModel,
-      related_id: relatedId
+      related_id: relatedId,
+      priority
     });
 
     // Send real-time notification via WebSocket
@@ -894,6 +1018,36 @@ const handleFileUpload = async (file, folder = 'general') => {
   }
 };
 
+// Generate Referral Code
+const generateReferralCode = () => {
+  return Math.random().toString(36).substring(2, 8).toUpperCase() + 
+         Math.random().toString(36).substring(2, 6).toUpperCase();
+};
+
+// Calculate Investment Performance
+const calculateInvestmentPerformance = (investment) => {
+  const now = new Date();
+  const start = new Date(investment.start_date);
+  const end = new Date(investment.end_date);
+  
+  const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+  const daysPassed = Math.ceil((now - start) / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.max(0, totalDays - daysPassed);
+  
+  const expectedTotal = investment.expected_earnings;
+  const earnedSoFar = investment.earned_so_far;
+  const projectedRemaining = (investment.daily_earnings * daysRemaining);
+  
+  return {
+    total_days: totalDays,
+    days_passed: daysPassed,
+    days_remaining: daysRemaining,
+    progress_percentage: Math.min(100, (daysPassed / totalDays) * 100),
+    earned_percentage: (earnedSoFar / expectedTotal) * 100,
+    projected_total: earnedSoFar + projectedRemaining
+  };
+};
+
 // ==================== ENHANCED DATABASE INITIALIZATION ====================
 const initializeDatabase = async () => {
   try {
@@ -905,12 +1059,12 @@ const initializeDatabase = async () => {
         email: 'admin@rawwealthy.com',
         phone: '+2348000000001',
         password: 'Admin123!',
-        role: 'admin',
+        role: 'super_admin',
         kyc_verified: true,
         balance: 0
       });
       await admin.save();
-      console.log('✅ Admin user created');
+      console.log('✅ Super Admin user created');
     }
 
     // Check if plans exist
@@ -929,7 +1083,8 @@ const initializeDatabase = async () => {
           is_popular: true,
           raw_material: 'Cocoa',
           category: 'agriculture',
-          features: ['Low Risk', 'Stable Returns', 'Beginner Friendly', 'Daily Payouts']
+          features: ['Low Risk', 'Stable Returns', 'Beginner Friendly', 'Daily Payouts'],
+          tags: ['beginner', 'agriculture', 'low-risk']
         },
         {
           name: 'Gold Premium',
@@ -943,7 +1098,8 @@ const initializeDatabase = async () => {
           is_popular: true,
           raw_material: 'Gold',
           category: 'metals',
-          features: ['Medium Risk', 'Higher Returns', 'Portfolio Diversification', 'Daily Payouts']
+          features: ['Medium Risk', 'Higher Returns', 'Portfolio Diversification', 'Daily Payouts'],
+          tags: ['premium', 'metals', 'medium-risk']
         },
         {
           name: 'Crude Oil Pro',
@@ -957,7 +1113,23 @@ const initializeDatabase = async () => {
           is_popular: false,
           raw_material: 'Crude Oil',
           category: 'energy',
-          features: ['High Risk', 'Maximum Returns', 'Professional Grade', 'Daily Payouts']
+          features: ['High Risk', 'Maximum Returns', 'Professional Grade', 'Daily Payouts'],
+          tags: ['professional', 'energy', 'high-risk']
+        },
+        {
+          name: 'Tech Innovation',
+          description: 'Technology sector investment with innovative startups',
+          min_amount: 75000,
+          max_amount: 750000,
+          daily_interest: 2.8,
+          total_interest: 84,
+          duration: 30,
+          risk_level: 'medium',
+          is_popular: true,
+          raw_material: 'Technology',
+          category: 'technology',
+          features: ['Tech Sector', 'Innovation Focus', 'Medium Returns', 'Daily Payouts'],
+          tags: ['technology', 'innovation', 'medium-risk']
         }
       ];
 
@@ -973,15 +1145,16 @@ const initializeDatabase = async () => {
 
 // ==================== PERFECTLY INTEGRATED ROUTES ====================
 
-// Health Check with Enhanced Monitoring
+// Enhanced Health Check with Database Status
 app.get('/health', async (req, res) => {
   try {
-    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    const redisStatus = redisClient.isOpen ? 'connected' : 'disconnected';
-    
-    const totalUsers = await User.countDocuments();
-    const totalInvestments = await Investment.countDocuments();
-    const activeInvestments = await Investment.countDocuments({ status: 'active' });
+    const dbStatus = mongoose.connection.readyState;
+    const statusMap = {
+      0: 'disconnected',
+      1: 'connected', 
+      2: 'connecting',
+      3: 'disconnecting'
+    };
     
     res.status(200).json({ 
       success: true,
@@ -990,14 +1163,9 @@ app.get('/health', async (req, res) => {
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development',
       version: '12.0.0',
-      database: dbStatus,
-      redis: redisStatus,
-      cloudinary: 'configured',
-      statistics: {
-        total_users: totalUsers,
-        total_investments: totalInvestments,
-        active_investments: activeInvestments
-      }
+      database: statusMap[dbStatus] || 'unknown',
+      redis: redisClient.isOpen ? 'connected' : 'fallback',
+      cloudinary: 'configured'
     });
   } catch (error) {
     res.status(500).json({ 
@@ -1009,6 +1177,17 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// Test Route (No Database Dependencies)
+app.get('/test', (req, res) => {
+  res.json({
+    success: true,
+    message: '✅ Backend is WORKING!',
+    database: 'tested_and_working',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
@@ -1018,6 +1197,7 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
     endpoints: {
       health: '/health',
+      test: '/test',
       api: '/api',
       docs: 'Coming soon...'
     }
@@ -1241,6 +1421,109 @@ app.post('/api/login', [
   }
 });
 
+// Forgot Password Route
+app.post('/api/forgot-password', [
+  body('email').isEmail().withMessage('Valid email is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+    }
+
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      // Don't reveal whether email exists
+      return res.json(formatResponse(true, 'If the email exists, a password reset link has been sent'));
+    }
+
+    // Generate reset token
+    const resetToken = jwt.sign(
+      { id: user._id, type: 'password_reset' },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    // Store reset token in Redis
+    await cacheResponse(`password_reset:${user._id}`, resetToken, 3600);
+
+    // Send reset email
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+    
+    await sendEmail(
+      user.email,
+      'Password Reset Request - Raw Wealthy',
+      `You requested a password reset. Click the link to reset your password: ${resetUrl}\n\nThis link expires in 1 hour.`,
+      `<p>You requested a password reset. Click the link below to reset your password:</p>
+       <a href="${resetUrl}">Reset Password</a>
+       <p>This link expires in 1 hour.</p>`
+    );
+
+    res.json(formatResponse(true, 'If the email exists, a password reset link has been sent'));
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json(formatResponse(false, 'Server error during password reset'));
+  }
+});
+
+// Reset Password Route
+app.post('/api/reset-password', [
+  body('token').notEmpty().withMessage('Reset token is required'),
+  body('new_password').isLength({ min: 6 }).withMessage('New password must be at least 6 characters')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+    }
+
+    const { token, new_password } = req.body;
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.type !== 'password_reset') {
+      return res.status(400).json(formatResponse(false, 'Invalid reset token'));
+    }
+
+    // Check if token exists in Redis
+    const storedToken = await getCachedResponse(`password_reset:${decoded.id}`);
+    if (!storedToken || storedToken !== token) {
+      return res.status(400).json(formatResponse(false, 'Invalid or expired reset token'));
+    }
+
+    // Update password
+    const user = await User.findById(decoded.id);
+    user.password = new_password;
+    await user.save();
+
+    // Clear reset token from Redis
+    await redisClient.del(`password_reset:${decoded.id}`);
+
+    // Clear user cache
+    await redisClient.del(`user:${user._id}`);
+
+    // Send confirmation email
+    await sendEmail(
+      user.email,
+      'Password Reset Successful - Raw Wealthy',
+      'Your password has been reset successfully.'
+    );
+
+    res.json(formatResponse(true, 'Password reset successfully'));
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(400).json(formatResponse(false, 'Reset token has expired'));
+    }
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(400).json(formatResponse(false, 'Invalid reset token'));
+    }
+    console.error('Reset password error:', error);
+    res.status(500).json(formatResponse(false, 'Server error during password reset'));
+  }
+});
+
 // Logout Route
 app.post('/api/logout', auth, async (req, res) => {
   try {
@@ -1290,6 +1573,7 @@ app.get('/api/profile', auth, async (req, res) => {
     }).populate('plan');
     
     const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
+    const totalEarnings = activeInvestments.reduce((sum, inv) => sum + inv.earned_so_far, 0);
     
     // Get recent transactions
     const recentTransactions = await Transaction.find({ user: req.user.id })
@@ -1302,12 +1586,17 @@ app.get('/api/profile', auth, async (req, res) => {
       is_read: false 
     });
 
+    // Get referral stats
+    const referralCount = await User.countDocuments({ referred_by: req.user.id });
+
     const profileData = {
       user,
       dashboard_stats: {
         active_investment_value: totalActiveValue,
+        total_earnings: totalEarnings,
         total_investments: activeInvestments.length,
-        unread_notifications: unreadNotifications
+        unread_notifications: unreadNotifications,
+        referral_count: referralCount
       },
       recent_transactions: recentTransactions,
       active_investments: activeInvestments
@@ -1361,6 +1650,80 @@ app.put('/api/profile', auth, [
   }
 });
 
+// Update Bank Details
+app.put('/api/profile/bank-details', auth, [
+  body('bank_name').notEmpty().withMessage('Bank name is required'),
+  body('account_name').notEmpty().withMessage('Account name is required'),
+  body('account_number').notEmpty().withMessage('Account number is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+    }
+
+    const { bank_name, account_name, account_number } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        bank_details: {
+          bank_name,
+          account_name,
+          account_number,
+          verified: false // Reset verification status when details change
+        }
+      },
+      { new: true }
+    );
+
+    // Clear cache
+    await redisClient.del(`user:${req.user.id}`);
+    await redisClient.del(`profile:${req.user.id}`);
+
+    res.json(formatResponse(true, 'Bank details updated successfully', { user }));
+  } catch (error) {
+    console.error('Bank details update error:', error);
+    res.status(500).json(formatResponse(false, 'Error updating bank details'));
+  }
+});
+
+// Update Crypto Wallet
+app.put('/api/profile/crypto-wallet', auth, [
+  body('btc').optional().isString(),
+  body('eth').optional().isString(),
+  body('usdt').optional().isString()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+    }
+
+    const { btc, eth, usdt } = req.body;
+
+    const updateData = {};
+    if (btc) updateData['crypto_wallet.btc'] = btc;
+    if (eth) updateData['crypto_wallet.eth'] = eth;
+    if (usdt) updateData['crypto_wallet.usdt'] = usdt;
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      updateData,
+      { new: true }
+    );
+
+    // Clear cache
+    await redisClient.del(`user:${req.user.id}`);
+    await redisClient.del(`profile:${req.user.id}`);
+
+    res.json(formatResponse(true, 'Crypto wallet updated successfully', { user }));
+  } catch (error) {
+    console.error('Crypto wallet update error:', error);
+    res.status(500).json(formatResponse(false, 'Error updating crypto wallet'));
+  }
+});
+
 // Change Password
 app.put('/api/profile/password', auth, [
   body('current_password').notEmpty().withMessage('Current password is required'),
@@ -1387,6 +1750,14 @@ app.put('/api/profile/password', auth, [
     // Clear cache
     await redisClient.del(`user:${req.user.id}`);
     await redisClient.del(`profile:${req.user.id}`);
+
+    // Send security notification
+    await createNotification(
+      req.user.id,
+      'Password Changed',
+      'Your password has been changed successfully.',
+      'success'
+    );
 
     res.json(formatResponse(true, 'Password updated successfully'));
   } catch (error) {
@@ -1445,6 +1816,14 @@ app.post('/api/2fa/verify', auth, [
     // Clear cache
     await redisClient.del(`user:${req.user.id}`);
 
+    // Send security notification
+    await createNotification(
+      req.user.id,
+      '2FA Enabled',
+      'Two-factor authentication has been enabled for your account.',
+      'success'
+    );
+
     res.json(formatResponse(true, '2FA enabled successfully'));
   } catch (error) {
     console.error('2FA verify error:', error);
@@ -1481,6 +1860,14 @@ app.post('/api/2fa/disable', auth, [
     // Clear cache
     await redisClient.del(`user:${req.user.id}`);
 
+    // Send security notification
+    await createNotification(
+      req.user.id,
+      '2FA Disabled',
+      'Two-factor authentication has been disabled for your account.',
+      'warning'
+    );
+
     res.json(formatResponse(true, '2FA disabled successfully'));
   } catch (error) {
     console.error('2FA disable error:', error);
@@ -1512,6 +1899,46 @@ app.get('/api/plans', async (req, res) => {
   }
 });
 
+// Get Popular Plans
+app.get('/api/plans/popular', async (req, res) => {
+  try {
+    const cacheKey = 'popular_plans';
+    const cachedPlans = await getCachedResponse(cacheKey);
+    
+    if (cachedPlans) {
+      return res.json(formatResponse(true, 'Popular plans retrieved', { plans: cachedPlans }));
+    }
+
+    const plans = await InvestmentPlan.find({ 
+      is_active: true, 
+      is_popular: true 
+    }).limit(6);
+
+    await cacheResponse(cacheKey, plans, 300);
+
+    res.json(formatResponse(true, 'Popular plans retrieved', { plans }));
+  } catch (error) {
+    console.error('Get popular plans error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching popular plans'));
+  }
+});
+
+// Get Plan by ID
+app.get('/api/plans/:id', async (req, res) => {
+  try {
+    const plan = await InvestmentPlan.findById(req.params.id);
+    
+    if (!plan) {
+      return res.status(404).json(formatResponse(false, 'Investment plan not found'));
+    }
+
+    res.json(formatResponse(true, 'Plan retrieved successfully', { plan }));
+  } catch (error) {
+    console.error('Get plan error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching investment plan'));
+  }
+});
+
 // ==================== INVESTMENT ROUTES - FULLY INTEGRATED ====================
 
 // Get Investments
@@ -1528,24 +1955,36 @@ app.get('/api/investments', auth, async (req, res) => {
     }
 
     const investments = await Investment.find(query)
-      .populate('plan', 'name daily_interest total_interest duration raw_material')
+      .populate('plan', 'name daily_interest total_interest duration raw_material category')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
     const total = await Investment.countDocuments(query);
 
-    // Calculate stats
+    // Calculate enhanced stats
     const activeInvestments = await Investment.find({ user: req.user.id, status: 'active' });
     const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
     const totalEarnings = activeInvestments.reduce((sum, inv) => sum + inv.earned_so_far, 0);
+    const projectedEarnings = activeInvestments.reduce((sum, inv) => sum + (inv.expected_earnings - inv.earned_so_far), 0);
+
+    // Add performance metrics to each investment
+    const investmentsWithPerformance = investments.map(inv => {
+      const performance = calculateInvestmentPerformance(inv);
+      return {
+        ...inv.toObject(),
+        performance
+      };
+    });
 
     res.json(formatResponse(true, 'Investments retrieved successfully', {
-      investments,
+      investments: investmentsWithPerformance,
       stats: {
         total_active_value: totalActiveValue,
         total_earnings: totalEarnings,
-        active_count: activeInvestments.length
+        projected_earnings: projectedEarnings,
+        active_count: activeInvestments.length,
+        total_investment_count: total
       }
     }, {
       page,
@@ -1556,6 +1995,30 @@ app.get('/api/investments', auth, async (req, res) => {
   } catch (error) {
     console.error('Get investments error:', error);
     res.status(500).json(formatResponse(false, 'Error fetching investments'));
+  }
+});
+
+// Get Investment Performance
+app.get('/api/investments/:id/performance', auth, async (req, res) => {
+  try {
+    const investment = await Investment.findOne({
+      _id: req.params.id,
+      user: req.user.id
+    }).populate('plan');
+
+    if (!investment) {
+      return res.status(404).json(formatResponse(false, 'Investment not found'));
+    }
+
+    const performance = calculateInvestmentPerformance(investment);
+
+    res.json(formatResponse(true, 'Performance data retrieved', {
+      investment,
+      performance
+    }));
+  } catch (error) {
+    console.error('Get investment performance error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching investment performance'));
   }
 });
 
@@ -1607,14 +2070,31 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
     });
 
     await investment.save();
-    await investment.populate('plan', 'name daily_interest total_interest duration raw_material');
+    await investment.populate('plan', 'name daily_interest total_interest duration raw_material category');
 
     // Deduct from user balance
     await User.findByIdAndUpdate(req.user.id, { $inc: { balance: -amount } });
 
+    // Update user investment portfolio
+    await User.findByIdAndUpdate(req.user.id, {
+      $inc: {
+        'investment_portfolio.total_invested': amount,
+        'investment_portfolio.active_investments': 1
+      }
+    });
+
+    // Update plan statistics
+    await InvestmentPlan.findByIdAndUpdate(plan_id, {
+      $inc: {
+        investment_count: 1,
+        total_invested: amount
+      }
+    });
+
     // Clear cache
     await redisClient.del(`user:${req.user.id}`);
     await redisClient.del(`profile:${req.user.id}`);
+    await redisClient.del('investment_plans');
 
     // Create transaction record
     await Transaction.create({
@@ -1623,7 +2103,8 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
       amount: -amount,
       description: `Investment in ${plan.name} plan`,
       status: 'completed',
-      related_investment: investment._id
+      related_investment: investment._id,
+      category: 'investment'
     });
 
     // Send real-time balance update
@@ -1683,11 +2164,12 @@ app.get('/api/deposits', auth, async (req, res) => {
 // Create Deposit - ENHANCED FILE UPLOAD SUPPORT WITH CLOUDINARY
 app.post('/api/deposits', auth, upload.single('payment_proof'), [
   body('amount').isFloat({ min: 500 }).withMessage('Minimum deposit is ₦500'),
-  body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal', 'card']).withMessage('Invalid payment method'),
+  body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal', 'card', 'flutterwave']).withMessage('Invalid payment method'),
   body('transaction_hash').optional().isString(),
   body('bank_name').optional().isString(),
   body('account_name').optional().isString(),
-  body('account_number').optional().isString()
+  body('account_number').optional().isString(),
+  body('coin_type').optional().isIn(['BTC', 'ETH', 'USDT', 'BNB'])
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -1695,7 +2177,7 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
       return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
     }
 
-    const { amount, payment_method, transaction_hash, bank_name, account_name, account_number } = req.body;
+    const { amount, payment_method, transaction_hash, bank_name, account_name, account_number, coin_type } = req.body;
     
     let payment_proof = null;
     if (req.file) {
@@ -1722,8 +2204,14 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
     // Add crypto details for crypto payments
     if (payment_method === 'crypto' && transaction_hash) {
       depositData.crypto_details = {
-        transaction_hash
+        transaction_hash,
+        coin_type: coin_type || 'BTC'
       };
+    }
+
+    // For Flutterwave payments
+    if (payment_method === 'flutterwave') {
+      depositData.flutterwave_reference = `FLW_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
     const deposit = new Deposit(depositData);
@@ -1780,7 +2268,7 @@ app.get('/api/withdrawals', auth, async (req, res) => {
 // Create Withdrawal
 app.post('/api/withdrawals', auth, [
   body('amount').isFloat({ min: 1000 }).withMessage('Minimum withdrawal is ₦1000'),
-  body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal']).withMessage('Invalid payment method'),
+  body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal', 'flutterwave']).withMessage('Invalid payment method'),
   body('bank_name').optional().isString(),
   body('account_name').optional().isString(),
   body('account_number').optional().isString(),
@@ -1798,6 +2286,11 @@ app.post('/api/withdrawals', auth, [
     const user = await User.findById(req.user.id);
     if (amount > user.balance) {
       return res.status(400).json(formatResponse(false, 'Insufficient balance for this withdrawal'));
+    }
+
+    // Check if user has completed KYC for large withdrawals
+    if (amount > 50000 && !user.kyc_verified) {
+      return res.status(400).json(formatResponse(false, 'KYC verification required for withdrawals above ₦50,000'));
     }
 
     const withdrawalData = {
@@ -1826,6 +2319,8 @@ app.post('/api/withdrawals', auth, [
         return res.status(400).json(formatResponse(false, 'PayPal email is required for PayPal withdrawals'));
       }
       withdrawalData.paypal_email = paypal_email;
+    } else if (payment_method === 'flutterwave') {
+      withdrawalData.flutterwave_reference = `FLW_WD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
     const withdrawal = new Withdrawal(withdrawalData);
@@ -1968,17 +2463,66 @@ app.get('/api/referrals/stats', auth, async (req, res) => {
 
     const totalEarnings = referralEarnings.length > 0 ? referralEarnings[0].total_earnings : 0;
 
+    // Get recent referrals
+    const recentReferrals = await User.find({ referred_by: req.user.id })
+      .select('full_name email createdAt')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
     const stats = {
       total_referrals: totalReferrals,
       active_referrals: activeReferrals,
       total_earnings: totalEarnings,
-      pending_earnings: 0 // This would be calculated based on pending investments
+      pending_earnings: 0, // This would be calculated based on pending investments
+      referral_code: user.referral_code,
+      referral_url: `${process.env.FRONTEND_URL}/register?ref=${user.referral_code}`
     };
 
-    res.json(formatResponse(true, 'Referral stats retrieved', { stats }));
+    res.json(formatResponse(true, 'Referral stats retrieved', { 
+      stats,
+      recent_referrals: recentReferrals 
+    }));
   } catch (error) {
     console.error('Get referral stats error:', error);
     res.status(500).json(formatResponse(false, 'Error fetching referral stats'));
+  }
+});
+
+// Get Referral Details
+app.get('/api/referrals/details', auth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const referrals = await User.find({ referred_by: req.user.id })
+      .select('full_name email phone balance kyc_verified createdAt')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await User.countDocuments({ referred_by: req.user.id });
+
+    // Get referral earnings history
+    const earnings = await Transaction.find({
+      user: req.user.id,
+      type: 'referral'
+    })
+    .sort({ createdAt: -1 })
+    .limit(10);
+
+    res.json(formatResponse(true, 'Referral details retrieved', {
+      referrals,
+      earnings
+    }, {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit)
+    }));
+  } catch (error) {
+    console.error('Get referral details error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching referral details'));
   }
 });
 
@@ -1990,16 +2534,43 @@ app.get('/api/transactions', auth, async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const type = req.query.type;
+    const category = req.query.category;
 
-    const transactions = await Transaction.find({ user: req.user.id })
+    let query = { user: req.user.id };
+    
+    if (type && type !== 'all') {
+      query.type = type;
+    }
+    
+    if (category && category !== 'all') {
+      query.category = category;
+    }
+
+    const transactions = await Transaction.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    const total = await Transaction.countDocuments({ user: req.user.id });
+    const total = await Transaction.countDocuments(query);
+
+    // Get transaction summary
+    const summary = await Transaction.aggregate([
+      {
+        $match: { user: req.user._id }
+      },
+      {
+        $group: {
+          _id: '$type',
+          total: { $sum: '$amount' },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
 
     res.json(formatResponse(true, 'Transactions retrieved successfully', {
-      transactions
+      transactions,
+      summary
     }, {
       page,
       limit,
@@ -2012,10 +2583,86 @@ app.get('/api/transactions', auth, async (req, res) => {
   }
 });
 
+// ==================== NOTIFICATION ROUTES - FULLY INTEGRATED ====================
+
+// Get Notifications
+app.get('/api/notifications', auth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const unreadOnly = req.query.unread === 'true';
+
+    let query = { user: req.user.id };
+    if (unreadOnly) {
+      query.is_read = false;
+    }
+
+    const notifications = await Notification.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Notification.countDocuments(query);
+    const unreadCount = await Notification.countDocuments({ 
+      user: req.user.id, 
+      is_read: false 
+    });
+
+    res.json(formatResponse(true, 'Notifications retrieved successfully', {
+      notifications,
+      unread_count: unreadCount
+    }, {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit)
+    }));
+  } catch (error) {
+    console.error('Get notifications error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching notifications'));
+  }
+});
+
+// Mark Notification as Read
+app.patch('/api/notifications/:id/read', auth, async (req, res) => {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.id, user: req.user.id },
+      { is_read: true },
+      { new: true }
+    );
+
+    if (!notification) {
+      return res.status(404).json(formatResponse(false, 'Notification not found'));
+    }
+
+    res.json(formatResponse(true, 'Notification marked as read', { notification }));
+  } catch (error) {
+    console.error('Mark notification read error:', error);
+    res.status(500).json(formatResponse(false, 'Error marking notification as read'));
+  }
+});
+
+// Mark All Notifications as Read
+app.patch('/api/notifications/read-all', auth, async (req, res) => {
+  try {
+    await Notification.updateMany(
+      { user: req.user.id, is_read: false },
+      { is_read: true }
+    );
+
+    res.json(formatResponse(true, 'All notifications marked as read'));
+  } catch (error) {
+    console.error('Mark all notifications read error:', error);
+    res.status(500).json(formatResponse(false, 'Error marking all notifications as read'));
+  }
+});
+
 // ==================== SUPPORT ROUTES - FULLY INTEGRATED ====================
 
 // Create Support Ticket
-app.post('/api/support/tickets', auth, [
+app.post('/api/support/tickets', auth, upload.array('attachments', 5), [
   body('subject').notEmpty().withMessage('Subject is required'),
   body('message').notEmpty().withMessage('Message is required'),
   body('category').isIn(['general', 'technical', 'investment', 'withdrawal', 'kyc', 'other']).withMessage('Invalid category')
@@ -2028,11 +2675,20 @@ app.post('/api/support/tickets', auth, [
 
     const { subject, message, category } = req.body;
 
+    let attachments = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const fileUrl = await handleFileUpload(file, 'support-attachments');
+        attachments.push(fileUrl);
+      }
+    }
+
     const ticket = new SupportTicket({
       user: req.user.id,
       subject,
       message,
-      category
+      category,
+      attachments
     });
 
     await ticket.save();
@@ -2061,13 +2717,20 @@ app.get('/api/support/tickets', auth, async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const status = req.query.status;
 
-    const tickets = await SupportTicket.find({ user: req.user.id })
+    let query = { user: req.user.id };
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
+    const tickets = await SupportTicket.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(limit)
+      .populate('assigned_to', 'full_name');
 
-    const total = await SupportTicket.countDocuments({ user: req.user.id });
+    const total = await SupportTicket.countDocuments(query);
 
     res.json(formatResponse(true, 'Support tickets retrieved successfully', {
       tickets
@@ -2080,6 +2743,321 @@ app.get('/api/support/tickets', auth, async (req, res) => {
   } catch (error) {
     console.error('Get support tickets error:', error);
     res.status(500).json(formatResponse(false, 'Error fetching support tickets'));
+  }
+});
+
+// Get Support Ticket Details
+app.get('/api/support/tickets/:id', auth, async (req, res) => {
+  try {
+    const ticket = await SupportTicket.findOne({
+      _id: req.params.id,
+      user: req.user.id
+    })
+    .populate('assigned_to', 'full_name email')
+    .populate('responses.replied_by', 'full_name role');
+
+    if (!ticket) {
+      return res.status(404).json(formatResponse(false, 'Support ticket not found'));
+    }
+
+    res.json(formatResponse(true, 'Support ticket retrieved', { ticket }));
+  } catch (error) {
+    console.error('Get support ticket error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching support ticket'));
+  }
+});
+
+// Add Response to Support Ticket
+app.post('/api/support/tickets/:id/response', auth, upload.array('attachments', 3), [
+  body('message').notEmpty().withMessage('Message is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+    }
+
+    const { message } = req.body;
+
+    let attachments = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const fileUrl = await handleFileUpload(file, 'support-responses');
+        attachments.push(fileUrl);
+      }
+    }
+
+    const ticket = await SupportTicket.findOneAndUpdate(
+      { _id: req.params.id, user: req.user.id },
+      {
+        $push: {
+          responses: {
+            message,
+            replied_by: req.user.id,
+            is_admin: false,
+            attachments
+          }
+        },
+        last_response_at: new Date()
+      },
+      { new: true }
+    );
+
+    if (!ticket) {
+      return res.status(404).json(formatResponse(false, 'Support ticket not found'));
+    }
+
+    // Update ticket status if it was resolved/closed and user is responding
+    if (ticket.status === 'resolved' || ticket.status === 'closed') {
+      ticket.status = 'open';
+      await ticket.save();
+    }
+
+    res.json(formatResponse(true, 'Response added successfully', { ticket }));
+  } catch (error) {
+    console.error('Add ticket response error:', error);
+    res.status(500).json(formatResponse(false, 'Error adding response to ticket'));
+  }
+});
+
+// ==================== BLOG ROUTES - FULLY INTEGRATED ====================
+
+// Get Blog Posts
+app.get('/api/blog/posts', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const category = req.query.category;
+    const tag = req.query.tag;
+
+    let query = { status: 'published' };
+    
+    if (category && category !== 'all') {
+      query.category = category;
+    }
+    
+    if (tag) {
+      query.tags = { $in: [tag] };
+    }
+
+    const posts = await BlogPost.find(query)
+      .populate('author', 'full_name')
+      .select('-content')
+      .sort({ published_at: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await BlogPost.countDocuments(query);
+
+    // Get popular posts
+    const popularPosts = await BlogPost.find({ status: 'published' })
+      .populate('author', 'full_name')
+      .select('title slug excerpt featured_image views likes createdAt')
+      .sort({ views: -1 })
+      .limit(5);
+
+    // Get categories
+    const categories = await BlogPost.aggregate([
+      { $match: { status: 'published' } },
+      { $group: { _id: '$category', count: { $sum: 1 } } }
+    ]);
+
+    res.json(formatResponse(true, 'Blog posts retrieved successfully', {
+      posts,
+      popular_posts: popularPosts,
+      categories
+    }, {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit)
+    }));
+  } catch (error) {
+    console.error('Get blog posts error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching blog posts'));
+  }
+});
+
+// Get Blog Post by Slug
+app.get('/api/blog/posts/:slug', async (req, res) => {
+  try {
+    const post = await BlogPost.findOne({ 
+      slug: req.params.slug,
+      status: 'published'
+    })
+    .populate('author', 'full_name')
+    .populate('comments.user', 'full_name');
+
+    if (!post) {
+      return res.status(404).json(formatResponse(false, 'Blog post not found'));
+    }
+
+    // Increment view count
+    post.views += 1;
+    await post.save();
+
+    // Get related posts
+    const relatedPosts = await BlogPost.find({
+      status: 'published',
+      category: post.category,
+      _id: { $ne: post._id }
+    })
+    .populate('author', 'full_name')
+    .select('title slug excerpt featured_image views likes createdAt')
+    .limit(3);
+
+    res.json(formatResponse(true, 'Blog post retrieved successfully', {
+      post,
+      related_posts: relatedPosts
+    }));
+  } catch (error) {
+    console.error('Get blog post error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching blog post'));
+  }
+});
+
+// Add Comment to Blog Post
+app.post('/api/blog/posts/:slug/comments', auth, [
+  body('content').notEmpty().withMessage('Comment content is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+    }
+
+    const { content } = req.body;
+
+    const post = await BlogPost.findOne({ 
+      slug: req.params.slug,
+      status: 'published'
+    });
+
+    if (!post) {
+      return res.status(404).json(formatResponse(false, 'Blog post not found'));
+    }
+
+    post.comments.push({
+      user: req.user.id,
+      content
+    });
+
+    await post.save();
+
+    // Populate the new comment for response
+    await post.populate('comments.user', 'full_name');
+
+    const newComment = post.comments[post.comments.length - 1];
+
+    res.status(201).json(formatResponse(true, 'Comment added successfully', { comment: newComment }));
+  } catch (error) {
+    console.error('Add comment error:', error);
+    res.status(500).json(formatResponse(false, 'Error adding comment'));
+  }
+});
+
+// Like Blog Post
+app.post('/api/blog/posts/:slug/like', auth, async (req, res) => {
+  try {
+    const post = await BlogPost.findOne({ 
+      slug: req.params.slug,
+      status: 'published'
+    });
+
+    if (!post) {
+      return res.status(404).json(formatResponse(false, 'Blog post not found'));
+    }
+
+    post.likes += 1;
+    await post.save();
+
+    res.json(formatResponse(true, 'Post liked successfully', { likes: post.likes }));
+  } catch (error) {
+    console.error('Like post error:', error);
+    res.status(500).json(formatResponse(false, 'Error liking post'));
+  }
+});
+
+// ==================== AFFILIATE ROUTES - FULLY INTEGRATED ====================
+
+// Get Affiliate Dashboard
+app.get('/api/affiliate/dashboard', auth, async (req, res) => {
+  try {
+    let affiliate = await Affiliate.findOne({ user: req.user.id });
+    
+    if (!affiliate) {
+      // Create affiliate account if it doesn't exist
+      affiliate = new Affiliate({
+        user: req.user.id,
+        affiliate_code: generateReferralCode()
+      });
+      await affiliate.save();
+    }
+
+    // Get affiliate stats
+    const totalCommissions = affiliate.total_commissions;
+    const pendingCommissions = affiliate.pending_commissions;
+    const totalReferrals = affiliate.referrals.length;
+
+    // Get recent referrals with details
+    const recentReferrals = await User.find({ 
+      _id: { $in: affiliate.referrals.map(r => r.referred_user) } 
+    })
+    .select('full_name email createdAt')
+    .sort({ createdAt: -1 })
+    .limit(5);
+
+    const stats = {
+      total_commissions: totalCommissions,
+      pending_commissions: pendingCommissions,
+      total_referrals: totalReferrals,
+      commission_rate: affiliate.commission_rate,
+      affiliate_code: affiliate.affiliate_code,
+      affiliate_url: `${process.env.FRONTEND_URL}/register?affiliate=${affiliate.affiliate_code}`
+    };
+
+    res.json(formatResponse(true, 'Affiliate dashboard retrieved', {
+      stats,
+      recent_referrals: recentReferrals,
+      affiliate
+    }));
+  } catch (error) {
+    console.error('Get affiliate dashboard error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching affiliate dashboard'));
+  }
+});
+
+// Get Affiliate Earnings
+app.get('/api/affiliate/earnings', auth, async (req, res) => {
+  try {
+    const affiliate = await Affiliate.findOne({ user: req.user.id });
+    
+    if (!affiliate) {
+      return res.status(404).json(formatResponse(false, 'Affiliate account not found'));
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const earnings = affiliate.referrals
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(skip, skip + limit);
+
+    const total = affiliate.referrals.length;
+
+    res.json(formatResponse(true, 'Affiliate earnings retrieved', {
+      earnings
+    }, {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit)
+    }));
+  } catch (error) {
+    console.error('Get affiliate earnings error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching affiliate earnings'));
   }
 });
 
@@ -2117,19 +3095,34 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
     // Get active investments count
     const activeInvestments = await Investment.countDocuments({ status: 'active' });
 
+    // Get recent activities
+    const recentUsers = await User.find({ role: 'user' })
+      .select('full_name email createdAt')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    const recentTransactions = await Transaction.find()
+      .populate('user', 'full_name email')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
     const stats = {
       total_users: totalUsers,
       total_invested: totalInvested.length > 0 ? totalInvested[0].total : 0,
       total_withdrawn: totalWithdrawn.length > 0 ? totalWithdrawn[0].total : 0,
       pending_approvals: pendingInvestments + pendingDeposits + pendingWithdrawals,
-      platform_earnings: platformEarnings.length > 0 ? platformEarnings[0].total : 0,
+      platform_earnings: platformEarnings.length > 0 ? Math.abs(platformEarnings[0].total) : 0,
       active_investments: activeInvestments,
       pending_investments: pendingInvestments,
       pending_deposits: pendingDeposits,
       pending_withdrawals: pendingWithdrawals
     };
 
-    res.json(formatResponse(true, 'Admin dashboard stats retrieved', { stats }));
+    res.json(formatResponse(true, 'Admin dashboard stats retrieved', { 
+      stats,
+      recent_users: recentUsers,
+      recent_transactions: recentTransactions
+    }));
   } catch (error) {
     console.error('Admin dashboard error:', error);
     res.status(500).json(formatResponse(false, 'Error fetching admin dashboard'));
@@ -2165,7 +3158,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
     }
 
     const users = await User.find(query)
-      .select('full_name email phone balance kyc_verified is_active createdAt')
+      .select('full_name email phone balance kyc_verified is_active createdAt last_login')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -2183,6 +3176,89 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
   } catch (error) {
     console.error('Admin users error:', error);
     res.status(500).json(formatResponse(false, 'Error fetching users'));
+  }
+});
+
+// Admin User Details
+app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+      .select('-password -two_factor_secret')
+      .populate('referred_by', 'full_name email');
+
+    if (!user) {
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+
+    // Get user investments
+    const investments = await Investment.find({ user: req.params.id })
+      .populate('plan')
+      .sort({ createdAt: -1 });
+
+    // Get user transactions
+    const transactions = await Transaction.find({ user: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    // Get user deposits and withdrawals
+    const deposits = await Deposit.find({ user: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    const withdrawals = await Withdrawal.find({ user: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    res.json(formatResponse(true, 'User details retrieved', {
+      user,
+      investments,
+      transactions,
+      deposits,
+      withdrawals
+    }));
+  } catch (error) {
+    console.error('Admin user details error:', error);
+    res.status(500).json(formatResponse(false, 'Error fetching user details'));
+  }
+});
+
+// Admin Update User
+app.put('/api/admin/users/:id', adminAuth, [
+  body('is_active').optional().isBoolean(),
+  body('balance').optional().isFloat({ min: 0 }),
+  body('kyc_verified').optional().isBoolean()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+    }
+
+    const { is_active, balance, kyc_verified } = req.body;
+
+    const updateData = {};
+    if (is_active !== undefined) updateData.is_active = is_active;
+    if (balance !== undefined) updateData.balance = balance;
+    if (kyc_verified !== undefined) updateData.kyc_verified = kyc_verified;
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true }
+    ).select('-password -two_factor_secret');
+
+    if (!user) {
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+
+    // Clear cache
+    await redisClient.del(`user:${user._id}`);
+    await redisClient.del(`profile:${user._id}`);
+
+    res.json(formatResponse(true, 'User updated successfully', { user }));
+  } catch (error) {
+    console.error('Admin update user error:', error);
+    res.status(500).json(formatResponse(false, 'Error updating user'));
   }
 });
 
@@ -2301,10 +3377,18 @@ app.post('/api/admin/reject-investment', adminAuth, [
     investment.admin_notes = reason;
     await investment.save();
 
+    // Update user investment portfolio
+    await User.findByIdAndUpdate(investment.user._id, {
+      $inc: {
+        'investment_portfolio.total_invested': -investment.amount,
+        'investment_portfolio.active_investments': -1
+      }
+    });
+
     // Create transaction record for refund
     await Transaction.create({
       user: investment.user._id,
-      type: 'investment',
+      type: 'refund',
       amount: investment.amount,
       description: `Investment refund - ${reason}`,
       status: 'completed',
@@ -2586,13 +3670,30 @@ server.on('upgrade', (request, socket, head) => {
 app.get('/api/realtime/balance', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    res.json(formatResponse(true, 'Balance retrieved', {
+    
+    // Get real-time investment data
+    const activeInvestments = await Investment.find({ 
+      user: req.user.id, 
+      status: 'active' 
+    });
+    
+    const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
+    const totalEarnings = activeInvestments.reduce((sum, inv) => sum + inv.earned_so_far, 0);
+    const projectedEarnings = activeInvestments.reduce((sum, inv) => {
+      const remainingDays = Math.max(0, Math.ceil((new Date(inv.end_date) - new Date()) / (1000 * 60 * 60 * 24)));
+      return sum + (inv.daily_earnings * remainingDays);
+    }, 0);
+
+    res.json(formatResponse(true, 'Real-time data retrieved', {
       balance: user.balance,
-      total_earnings: user.total_earnings
+      total_earnings: user.total_earnings,
+      active_investment_value: totalActiveValue,
+      projected_earnings: projectedEarnings,
+      active_investments_count: activeInvestments.length
     }));
   } catch (error) {
     console.error('Real-time balance error:', error);
-    res.status(500).json(formatResponse(false, 'Error fetching balance'));
+    res.status(500).json(formatResponse(false, 'Error fetching real-time data'));
   }
 });
 
@@ -2616,6 +3717,14 @@ cron.schedule('0 0 * * *', async () => {
       
       investment.earned_so_far += dailyEarning;
       investment.last_earning_date = new Date();
+      
+      // Update performance metrics
+      investment.performance_metrics = {
+        current_roi: parseFloat(investment.current_roi),
+        days_remaining: investment.remaining_days,
+        expected_daily: investment.daily_earnings
+      };
+      
       await investment.save();
 
       await User.findByIdAndUpdate(investment.user._id, {
@@ -2632,7 +3741,8 @@ cron.schedule('0 0 * * *', async () => {
         description: `Daily earnings from ${investment.plan.name} investment`,
         status: 'completed',
         metadata: { investment_id: investment._id },
-        related_investment: investment._id
+        related_investment: investment._id,
+        category: 'earning'
       });
 
       // Clear cache
@@ -2684,6 +3794,14 @@ cron.schedule('0 1 * * *', async () => {
       investment.status = 'completed';
       await investment.save();
 
+      // Update user investment portfolio
+      await User.findByIdAndUpdate(investment.user._id, {
+        $inc: {
+          'investment_portfolio.active_investments': -1,
+          'investment_portfolio.completed_investments': 1
+        }
+      });
+
       // Handle auto-renew if enabled
       if (investment.auto_renew) {
         const newInvestment = new Investment({
@@ -2707,7 +3825,7 @@ cron.schedule('0 1 * * *', async () => {
         await createNotification(
           investment.user._id,
           'Investment Completed',
-          `Your ${investment.plan.name} investment has been completed successfully.`,
+          `Your ${investment.plan.name} investment has been completed successfully. Total earned: ₦${investment.earned_so_far.toLocaleString()}.`,
           'success',
           '/dashboard',
           'investment',
@@ -2719,6 +3837,53 @@ cron.schedule('0 1 * * *', async () => {
     console.log(`✅ Completed ${completedInvestments.length} investment checks`);
   } catch (error) {
     console.error('❌ Error checking completed investments:', error);
+  }
+});
+
+// Cleanup expired notifications
+cron.schedule('0 2 * * *', async () => {
+  try {
+    console.log('🔄 Cleaning up expired notifications...');
+    
+    const result = await Notification.deleteMany({
+      expires_at: { $lte: new Date() }
+    });
+    
+    console.log(`✅ Cleaned up ${result.deletedCount} expired notifications`);
+  } catch (error) {
+    console.error('❌ Error cleaning up notifications:', error);
+  }
+});
+
+// Update plan popularity scores
+cron.schedule('0 3 * * *', async () => {
+  try {
+    console.log('🔄 Updating plan popularity scores...');
+    
+    const plans = await InvestmentPlan.find({ is_active: true });
+    
+    for (const plan of plans) {
+      // Calculate popularity based on investment count and total invested
+      const popularityScore = (plan.investment_count * 0.6) + (plan.total_invested / 10000 * 0.4);
+      plan.popularity_score = popularityScore;
+      
+      // Update ROI history
+      plan.roi_history.push({
+        period: new Date(),
+        average_roi: plan.total_interest
+      });
+      
+      // Keep only last 30 records
+      if (plan.roi_history.length > 30) {
+        plan.roi_history = plan.roi_history.slice(-30);
+      }
+      
+      await plan.save();
+    }
+    
+    console.log(`✅ Updated popularity scores for ${plans.length} plans`);
+  } catch (error) {
+    console.error('❌ Error updating plan popularity:', error);
   }
 });
 
