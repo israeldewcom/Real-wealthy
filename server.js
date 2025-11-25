@@ -42,7 +42,7 @@ app.use(mongoSanitize());
 // ==================== PERFECT CORS CONFIGURATION ====================
 app.use(cors({
   origin: [
-    "https://real-earning.vercel.app",
+    "https://real-wealthy-1.onrender.com",
     "https://real-earning.vercel.app/",
     "http://localhost:3000",
     "http://127.0.0.1:5500",
