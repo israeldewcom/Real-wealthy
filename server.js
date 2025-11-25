@@ -39,18 +39,44 @@ app.use(helmet({
 }));
 app.use(mongoSanitize());
 
-// ==================== PERFECT CORS CONFIGURATION ====================
+// ==================== ENHANCED CORS CONFIGURATION ====================
 app.use(cors({
   origin: [
     "https://real-earning.vercel.app",
-    "https://real-wealthy-1.onrender.com",
+    "https://real-wealthy-1.onrender.com", 
     "http://localhost:3000",
-    "http://127.0.0.1:5500"
+    "http://127.0.0.1:5500",
+    "http://localhost:5500"
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
+
+// Handle preflight requests
+app.options('*', cors());
+
+// ==================== REQUEST LOGGING ====================
+app.use((req, res, next) => {
+  console.log(`📡 ${new Date().toISOString()} - ${req.method} ${req.originalUrl} - Origin: ${req.headers.origin}`);
+  next();
+});
+
+// ==================== TEST ROUTE ====================
+app.get('/api/test-connection', (req, res) => {
+  res.json({
+    success: true,
+    message: '✅ Backend API is working perfectly!',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString(),
+    allowedOrigins: [
+      "https://real-earning.vercel.app",
+      "https://real-wealthy-1.onrender.com"
+    ]
+  });
+});
 // Handle preflight requests
 app.options('*', cors());
 
