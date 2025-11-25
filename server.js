@@ -42,21 +42,15 @@ app.use(mongoSanitize());
 // ==================== PERFECT CORS CONFIGURATION ====================
 app.use(cors({
   origin: [
+    "https://real-earning.vercel.app",
     "https://real-wealthy-1.onrender.com",
-    "https://real-earning.vercel.app/",
     "http://localhost:3000",
-    "http://127.0.0.1:5500",
-    "http://localhost:5500",
-    "https://raw-wealthy-frontend.vercel.app",
-    "https://raw-wealthy-frontend.vercel.app/",
-    "https://rawwealthy.com",
-    "https://www.rawwealthy.com"
+    "http://127.0.0.1:5500"
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
-
 // Handle preflight requests
 app.options('*', cors());
 
