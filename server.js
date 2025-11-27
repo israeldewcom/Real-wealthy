@@ -27,9 +27,9 @@ const app = express();
 
 // ==================== ENHANCED CLOUDINARY CONFIGURATION ====================
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dyotuz5h7',
-  api_key: process.env.CLOUDINARY_API_KEY || '775719636564583',
-  api_secret: process.env.CLOUDINARY_API_SECRET || '-8o6zGglkQhyX-Bs9e5Ug_MSUm4'
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
 // ==================== ULTIMATE SECURITY MIDDLEWARE ====================
@@ -39,44 +39,24 @@ app.use(helmet({
 }));
 app.use(mongoSanitize());
 
-// ==================== ENHANCED CORS CONFIGURATION ====================
+// ==================== PERFECT CORS CONFIGURATION ====================
 app.use(cors({
   origin: [
     "https://real-earning.vercel.app",
-    "https://real-wealthy-1.onrender.com", 
+    "https://real-earning.vercel.app/",
     "http://localhost:3000",
     "http://127.0.0.1:5500",
-    "http://localhost:5500"
+    "http://localhost:5500",
+    "https://raw-wealthy-frontend.vercel.app",
+    "https://raw-wealthy-frontend.vercel.app/",
+    "https://rawwealthy.com",
+    "https://www.rawwealthy.com"
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  preflightContinue: false,
-  optionsSuccessStatus: 204
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
 
-// Handle preflight requests
-app.options('*', cors());
-
-// ==================== REQUEST LOGGING ====================
-app.use((req, res, next) => {
-  console.log(`📡 ${new Date().toISOString()} - ${req.method} ${req.originalUrl} - Origin: ${req.headers.origin}`);
-  next();
-});
-
-// ==================== TEST ROUTE ====================
-app.get('/api/test-connection', (req, res) => {
-  res.json({
-    success: true,
-    message: '✅ Backend API is working perfectly!',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    timestamp: new Date().toISOString(),
-    allowedOrigins: [
-      "https://real-earning.vercel.app",
-      "https://real-wealthy-1.onrender.com"
-    ]
-  });
-});
 // Handle preflight requests
 app.options('*', cors());
 
@@ -228,7 +208,7 @@ const emailTransporter = createEmailTransporter();
 // ==================== WORKING MONGODB CONNECTION ====================
 const connectDB = async () => {
   try {
-    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://israeldewa1_db_user:rawwealthy@rawwealthy.9cnu0jw.mongodb.net/?appName=rawwealthy';
+    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://israeldewa1_db_user:rawwealthy@rawwealthy.9cnu0jw.mongodb.net/rawwealthy?retryWrites=true&w=majority';
     
     console.log('🔄 Connecting to MongoDB...');
     
