@@ -1,4 +1,6 @@
 // server.js - ULTIMATE PRODUCTION BACKEND v30.0 - 100% FRONTEND PERFECT MATCH
+// ENHANCED FOR RENDER DEPLOYMENT - SECURE & SCALABLE
+
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -9,6 +11,8 @@ const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
+const xss = require('xss-clean');
+const hpp = require('hpp');
 const { body, validationResult, param } = require('express-validator');
 const cron = require('node-cron');
 const path = require('path');
@@ -21,7 +25,26 @@ const WebSocket = require('ws');
 const crypto = require('crypto');
 const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
+
+// Enhanced environment configuration with validation
 require('dotenv').config();
+
+// ==================== ENVIRONMENT VALIDATION ====================
+const requiredEnvVars = [
+  'JWT_SECRET',
+  'MONGODB_URI',
+  'ADMIN_PASSWORD',
+  'NODE_ENV'
+];
+
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+if (missingEnvVars.length > 0) {
+  console.error('❌ Missing required environment variables:', missingEnvVars);
+  console.error('💡 Please set these in your Render environment variables');
+  process.exit(1);
+}
+
+console.log('✅ Environment variables validated');
 
 // ==================== ENHANCED PRODUCTION CONFIGURATION ====================
 const app = express();
@@ -36,18 +59,25 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
       imgSrc: ["'self'", "data:", "https:", "http:"],
-      connectSrc: ["'self'", "https://raw-wealthy-yibn.onrender.com"]
+      connectSrc: ["'self'", "ws:", "wss:", "https://raw-wealthy-backend.onrender.com"]
     }
   }
 }));
 
+// Additional security middleware
+app.use(xss());
+app.use(hpp());
 app.use(mongoSanitize());
 app.use(compression());
 
-// Enhanced Morgan logging
-app.use(morgan('combined', {
-  skip: (req, res) => req.url === '/health' || req.url === '/'
-}));
+// Enhanced Morgan logging for production
+if (process.env.NODE_ENV === 'production') {
+  app.use(morgan('combined', {
+    skip: (req, res) => req.url === '/health' || req.url === '/'
+  }));
+} else {
+  app.use(morgan('dev'));
+}
 
 // ==================== ENHANCED CORS CONFIGURATION ====================
 const corsOptions = {
@@ -66,10 +96,14 @@ const corsOptions = {
       "https://raw-wealthy-frontend.vercel.app",
       "http://localhost:8080",
       "http://127.0.0.1:8080",
-      "https://raw-wealthy-frontend.vercel.app"
+      "https://raw-wealthy-frontend.vercel.app",
+      "https://raw-wealthy-backend.onrender.com"  // Added for Render deployment
     ];
     
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       console.log('🚫 Blocked by CORS:', origin);
@@ -78,44 +112,88 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'x-api-key']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'x-api-key', 'x-user-id']
 };
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // ==================== ENHANCED BODY PARSING ====================
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ 
+  limit: '50mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: '50mb',
+  parameterLimit: 100000
+}));
 
 // ==================== ENHANCED RATE LIMITING ====================
 const createAccountLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 10,
-  message: { success: false, message: 'Too many accounts created from this IP, please try again after an hour' },
-  skipSuccessfulRequests: true
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // Limit each IP to 5 create account requests per windowMs
+  message: { 
+    success: false, 
+    message: 'Too many accounts created from this IP, please try again after an hour' 
+  },
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false
 });
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: { success: false, message: 'Too many authentication attempts' }
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 login requests per windowMs
+  message: { 
+    success: false, 
+    message: 'Too many authentication attempts from this IP, please try again after 15 minutes' 
+  },
+  skipSuccessfulRequests: true
 });
 
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: { success: false, message: 'Too many requests' }
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // Limit each IP to 500 requests per windowMs
+  message: { 
+    success: false, 
+    message: 'Too many requests from this IP, please try again later' 
+  },
+  skipFailedRequests: false
 });
 
+const financialLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // More strict limits for financial operations
+  message: { 
+    success: false, 
+    message: 'Too many financial operations from this IP, please try again later' 
+  }
+});
+
+// Apply rate limiting
 app.use('/api/auth/register', createAccountLimiter);
-app.use('/api/auth/', authLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/investments', financialLimiter);
+app.use('/api/deposits', financialLimiter);
+app.use('/api/withdrawals', financialLimiter);
 app.use('/api/', apiLimiter);
 
 // ==================== ENHANCED FILE UPLOAD ====================
 const storage = multer.memoryStorage();
+
 const fileFilter = (req, file, cb) => {
-  const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+  const allowedMimes = [
+    'image/jpeg', 
+    'image/jpg', 
+    'image/png', 
+    'image/gif', 
+    'image/webp', 
+    'application/pdf'
+  ];
+  
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
@@ -126,36 +204,54 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
-  limits: { fileSize: 15 * 1024 * 1024, files: 10 }
+  limits: { 
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+    files: 5
+  }
 });
 
-// Enhanced file upload handler
+// Enhanced file upload handler with better error handling
 const handleFileUpload = async (file, folder = 'general') => {
   if (!file) return null;
   
   try {
     const uploadsDir = path.join(__dirname, 'uploads', folder);
+    
+    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
-    const filename = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}-${file.originalname}`;
+    // Generate secure filename
+    const fileExtension = path.extname(file.originalname);
+    const filename = `${Date.now()}-${crypto.randomBytes(16).toString('hex')}${fileExtension}`;
     const filepath = path.join(uploadsDir, filename);
     
-    fs.writeFileSync(filepath, file.buffer);
+    // Write file
+    await fs.promises.writeFile(filepath, file.buffer);
     
     return `/uploads/${folder}/${filename}`;
   } catch (error) {
     console.error('File upload error:', error);
-    throw new Error('File upload failed');
+    throw new Error('File upload failed: ' + error.message);
   }
 };
 
-// Serve static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve static files securely
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  maxAge: '1d',
+  setHeaders: (res, path) => {
+    // Security headers for static files
+    res.set('X-Content-Type-Options', 'nosniff');
+  }
+}));
 
 // ==================== ENHANCED WEBSOCKET SETUP ====================
-const wss = new WebSocket.Server({ noServer: true });
+const wss = new WebSocket.Server({ 
+  noServer: true,
+  clientTracking: true
+});
+
 const connectedClients = new Map();
 
 wss.on('connection', (ws, request) => {
@@ -178,7 +274,10 @@ wss.on('connection', (ws, request) => {
       
       switch (message.type) {
         case 'ping':
-          ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+          ws.send(JSON.stringify({ 
+            type: 'pong', 
+            timestamp: Date.now() 
+          }));
           break;
         case 'subscribe':
           if (message.channel) {
@@ -186,16 +285,29 @@ wss.on('connection', (ws, request) => {
             ws.subscriptions.add(message.channel);
           }
           break;
+        default:
+          console.log('Unknown WebSocket message type:', message.type);
       }
     } catch (error) {
       console.error('WebSocket message error:', error);
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'Invalid message format'
+      }));
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
     if (userId) {
       connectedClients.delete(userId);
-      console.log(`❌ User ${userId} disconnected`);
+      console.log(`❌ User ${userId} disconnected. Code: ${code}, Reason: ${reason}`);
+    }
+  });
+
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+    if (userId) {
+      connectedClients.delete(userId);
     }
   });
 });
@@ -204,11 +316,32 @@ wss.on('connection', (ws, request) => {
 const broadcastToUser = (userId, data) => {
   const client = connectedClients.get(userId);
   if (client && client.readyState === WebSocket.OPEN) {
-    client.send(JSON.stringify({
-      ...data,
-      timestamp: new Date().toISOString()
-    }));
+    try {
+      client.send(JSON.stringify({
+        ...data,
+        timestamp: new Date().toISOString()
+      }));
+    } catch (error) {
+      console.error('Error sending WebSocket message:', error);
+      connectedClients.delete(userId);
+    }
   }
+};
+
+const broadcastToAll = (data) => {
+  connectedClients.forEach((client, userId) => {
+    if (client.readyState === WebSocket.OPEN) {
+      try {
+        client.send(JSON.stringify({
+          ...data,
+          timestamp: new Date().toISOString()
+        }));
+      } catch (error) {
+        console.error('Error broadcasting to user:', userId, error);
+        connectedClients.delete(userId);
+      }
+    }
+  });
 };
 
 // ==================== ENHANCED DATABASE MODELS ====================
@@ -216,38 +349,124 @@ const broadcastToUser = (userId, data) => {
 // User Model - 100% Frontend Compatible
 const userSchema = new mongoose.Schema({
   // Personal Information
-  full_name: { type: String, required: true, trim: true },
-  email: { type: String, required: true, unique: true, lowercase: true },
-  phone: { type: String, required: true },
-  password: { type: String, required: true, select: false },
+  full_name: { 
+    type: String, 
+    required: [true, 'Full name is required'], 
+    trim: true,
+    maxlength: [100, 'Full name cannot exceed 100 characters']
+  },
+  email: { 
+    type: String, 
+    required: [true, 'Email is required'], 
+    unique: true, 
+    lowercase: true,
+    validate: {
+      validator: function(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      },
+      message: 'Please provide a valid email'
+    }
+  },
+  phone: { 
+    type: String, 
+    required: [true, 'Phone number is required'],
+    trim: true
+  },
+  password: { 
+    type: String, 
+    required: [true, 'Password is required'],
+    minlength: [6, 'Password must be at least 6 characters'],
+    select: false 
+  },
   
   // Account Information
-  role: { type: String, enum: ['user', 'admin', 'super_admin'], default: 'user' },
-  balance: { type: Number, default: 0, min: 0 },
-  total_earnings: { type: Number, default: 0, min: 0 },
-  referral_earnings: { type: Number, default: 0, min: 0 },
+  role: { 
+    type: String, 
+    enum: ['user', 'admin', 'super_admin'], 
+    default: 'user' 
+  },
+  balance: { 
+    type: Number, 
+    default: 0, 
+    min: [0, 'Balance cannot be negative'] 
+  },
+  total_earnings: { 
+    type: Number, 
+    default: 0, 
+    min: 0 
+  },
+  referral_earnings: { 
+    type: Number, 
+    default: 0, 
+    min: 0 
+  },
   
   // Frontend Fields - ENHANCED
-  risk_tolerance: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
-  investment_strategy: { type: String, enum: ['conservative', 'balanced', 'aggressive'], default: 'balanced' },
-  country: { type: String, default: 'ng' },
-  currency: { type: String, default: 'NGN' },
-  language: { type: String, default: 'en' },
-  timezone: { type: String, default: 'Africa/Lagos' },
+  risk_tolerance: { 
+    type: String, 
+    enum: ['low', 'medium', 'high'], 
+    default: 'medium' 
+  },
+  investment_strategy: { 
+    type: String, 
+    enum: ['conservative', 'balanced', 'aggressive'], 
+    default: 'balanced' 
+  },
+  country: { 
+    type: String, 
+    default: 'ng' 
+  },
+  currency: { 
+    type: String, 
+    default: 'NGN' 
+  },
+  language: { 
+    type: String, 
+    default: 'en' 
+  },
+  timezone: { 
+    type: String, 
+    default: 'Africa/Lagos' 
+  },
   
   // Referral System
-  referral_code: { type: String, unique: true },
-  referred_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  referral_count: { type: Number, default: 0 },
+  referral_code: { 
+    type: String, 
+    unique: true,
+    sparse: true
+  },
+  referred_by: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User' 
+  },
+  referral_count: { 
+    type: Number, 
+    default: 0 
+  },
   
   // Verification
-  kyc_verified: { type: Boolean, default: false },
-  two_factor_enabled: { type: Boolean, default: false },
-  two_factor_secret: { type: String, select: false },
+  kyc_verified: { 
+    type: Boolean, 
+    default: false 
+  },
+  two_factor_enabled: { 
+    type: Boolean, 
+    default: false 
+  },
+  two_factor_secret: { 
+    type: String, 
+    select: false 
+  },
   
   // Status
-  is_active: { type: Boolean, default: true },
-  is_verified: { type: Boolean, default: false },
+  is_active: { 
+    type: Boolean, 
+    default: true 
+  },
+  is_verified: { 
+    type: Boolean, 
+    default: false 
+  },
   
   // Bank Details
   bank_details: {
@@ -259,11 +478,13 @@ const userSchema = new mongoose.Schema({
   
   // Timestamps
   last_login: Date,
+  last_active: Date,
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, { 
   timestamps: true,
   toJSON: { 
+    virtuals: true,
     transform: function(doc, ret) {
       delete ret.password;
       delete ret.two_factor_secret;
@@ -272,8 +493,11 @@ const userSchema = new mongoose.Schema({
   }
 });
 
+// Indexes for performance
 userSchema.index({ email: 1 });
 userSchema.index({ referral_code: 1 });
+userSchema.index({ createdAt: -1 });
+userSchema.index({ is_active: 1 });
 
 userSchema.pre('save', async function(next) {
   if (this.isModified('password')) {
@@ -281,15 +505,20 @@ userSchema.pre('save', async function(next) {
   }
   
   if (!this.referral_code) {
-    this.referral_code = crypto.randomBytes(6).toString('hex').toUpperCase();
+    let isUnique = false;
+    while (!isUnique) {
+      this.referral_code = crypto.randomBytes(6).toString('hex').toUpperCase();
+      const existingUser = await mongoose.models.User.findOne({ referral_code: this.referral_code });
+      isUnique = !existingUser;
+    }
   }
   
   this.updatedAt = new Date();
   next();
 });
 
-userSchema.methods.comparePassword = async function(password) {
-  return await bcrypt.compare(password, this.password);
+userSchema.methods.comparePassword = async function(candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
 };
 
 userSchema.methods.generate2FASecret = function() {
@@ -302,6 +531,10 @@ userSchema.methods.generate2FASecret = function() {
 };
 
 userSchema.methods.verify2FAToken = function(token) {
+  if (!this.two_factor_secret) {
+    return false;
+  }
+  
   return speakeasy.totp.verify({
     secret: this.two_factor_secret,
     encoding: 'base32',
@@ -310,20 +543,63 @@ userSchema.methods.verify2FAToken = function(token) {
   });
 };
 
+userSchema.virtual('tier').get(function() {
+  return this.kyc_verified ? 'Verified Investor' : 'Standard Investor';
+});
+
 const User = mongoose.model('User', userSchema);
 
 // Investment Plan Model - Frontend Compatible
 const investmentPlanSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  description: { type: String, required: true },
-  min_amount: { type: Number, required: true, min: 1000 },
-  max_amount: { type: Number, min: 1000 },
-  daily_interest: { type: Number, required: true, min: 0.1, max: 100 },
-  total_interest: { type: Number, required: true, min: 1, max: 1000 },
-  duration: { type: Number, required: true, min: 1 },
-  risk_level: { type: String, enum: ['low', 'medium', 'high'], required: true },
-  raw_material: { type: String, required: true },
-  category: { type: String, enum: ['agriculture', 'mining', 'energy', 'metals', 'crypto', 'real_estate'], default: 'agriculture' },
+  name: { 
+    type: String, 
+    required: [true, 'Plan name is required'],
+    trim: true
+  },
+  description: { 
+    type: String, 
+    required: [true, 'Plan description is required'] 
+  },
+  min_amount: { 
+    type: Number, 
+    required: [true, 'Minimum amount is required'], 
+    min: [1000, 'Minimum investment is ₦1000'] 
+  },
+  max_amount: { 
+    type: Number, 
+    min: [1000, 'Maximum investment must be at least ₦1000'] 
+  },
+  daily_interest: { 
+    type: Number, 
+    required: [true, 'Daily interest is required'], 
+    min: [0.1, 'Daily interest must be at least 0.1%'], 
+    max: [100, 'Daily interest cannot exceed 100%'] 
+  },
+  total_interest: { 
+    type: Number, 
+    required: [true, 'Total interest is required'], 
+    min: [1, 'Total interest must be at least 1%'], 
+    max: [1000, 'Total interest cannot exceed 1000%'] 
+  },
+  duration: { 
+    type: Number, 
+    required: [true, 'Duration is required'], 
+    min: [1, 'Duration must be at least 1 day'] 
+  },
+  risk_level: { 
+    type: String, 
+    enum: ['low', 'medium', 'high'], 
+    required: [true, 'Risk level is required'] 
+  },
+  raw_material: { 
+    type: String, 
+    required: [true, 'Raw material is required'] 
+  },
+  category: { 
+    type: String, 
+    enum: ['agriculture', 'mining', 'energy', 'metals', 'crypto', 'real_estate'], 
+    default: 'agriculture' 
+  },
   
   // Frontend Display
   is_active: { type: Boolean, default: true },
@@ -340,16 +616,37 @@ const investmentPlanSchema = new mongoose.Schema({
   
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
+
+investmentPlanSchema.index({ is_active: 1, is_popular: -1 });
+investmentPlanSchema.index({ category: 1 });
 
 const InvestmentPlan = mongoose.model('InvestmentPlan', investmentPlanSchema);
 
 // Investment Model - Frontend Compatible
 const investmentSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  plan: { type: mongoose.Schema.Types.ObjectId, ref: 'InvestmentPlan', required: true },
-  amount: { type: Number, required: true, min: 1000 },
-  status: { type: String, enum: ['pending', 'active', 'completed', 'cancelled', 'failed'], default: 'pending' },
+  user: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: [true, 'User is required'] 
+  },
+  plan: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'InvestmentPlan', 
+    required: [true, 'Investment plan is required'] 
+  },
+  amount: { 
+    type: Number, 
+    required: [true, 'Investment amount is required'], 
+    min: [1000, 'Minimum investment is ₦1000'] 
+  },
+  status: { 
+    type: String, 
+    enum: ['pending', 'active', 'completed', 'cancelled', 'failed'], 
+    default: 'pending' 
+  },
   start_date: { type: Date, default: Date.now },
   end_date: { type: Date, required: true },
   approved_at: Date,
@@ -362,7 +659,9 @@ const investmentSchema = new mongoose.Schema({
   
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
 
 investmentSchema.virtual('remaining_days').get(function() {
   if (this.status !== 'active') return 0;
@@ -398,14 +697,33 @@ investmentSchema.pre('save', async function(next) {
   next();
 });
 
+investmentSchema.index({ user: 1, status: 1 });
+investmentSchema.index({ status: 1, createdAt: -1 });
+
 const Investment = mongoose.model('Investment', investmentSchema);
 
 // Deposit Model - Frontend Compatible
 const depositSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  amount: { type: Number, required: true, min: 500 },
-  payment_method: { type: String, enum: ['bank_transfer', 'crypto', 'paypal', 'card'], required: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected', 'cancelled'], default: 'pending' },
+  user: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: [true, 'User is required'] 
+  },
+  amount: { 
+    type: Number, 
+    required: [true, 'Deposit amount is required'], 
+    min: [500, 'Minimum deposit is ₦500'] 
+  },
+  payment_method: { 
+    type: String, 
+    enum: ['bank_transfer', 'crypto', 'paypal', 'card'], 
+    required: [true, 'Payment method is required'] 
+  },
+  status: { 
+    type: String, 
+    enum: ['pending', 'approved', 'rejected', 'cancelled'], 
+    default: 'pending' 
+  },
   payment_proof: String,
   transaction_hash: String,
   reference: { type: String, unique: true },
@@ -415,7 +733,9 @@ const depositSchema = new mongoose.Schema({
   
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
 
 depositSchema.pre('save', function(next) {
   if (!this.reference) {
@@ -424,13 +744,28 @@ depositSchema.pre('save', function(next) {
   next();
 });
 
+depositSchema.index({ user: 1, status: 1 });
+depositSchema.index({ reference: 1 });
+
 const Deposit = mongoose.model('Deposit', depositSchema);
 
 // Withdrawal Model - Frontend Compatible
 const withdrawalSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  amount: { type: Number, required: true, min: 1000 },
-  payment_method: { type: String, enum: ['bank_transfer', 'crypto', 'paypal'], required: true },
+  user: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: [true, 'User is required'] 
+  },
+  amount: { 
+    type: Number, 
+    required: [true, 'Withdrawal amount is required'], 
+    min: [1000, 'Minimum withdrawal is ₦1000'] 
+  },
+  payment_method: { 
+    type: String, 
+    enum: ['bank_transfer', 'crypto', 'paypal'], 
+    required: [true, 'Payment method is required'] 
+  },
   platform_fee: { type: Number, default: 0 },
   net_amount: { type: Number, required: true },
   bank_details: {
@@ -440,7 +775,11 @@ const withdrawalSchema = new mongoose.Schema({
   },
   wallet_address: String,
   paypal_email: String,
-  status: { type: String, enum: ['pending', 'approved', 'rejected', 'paid'], default: 'pending' },
+  status: { 
+    type: String, 
+    enum: ['pending', 'approved', 'rejected', 'paid'], 
+    default: 'pending' 
+  },
   reference: { type: String, unique: true },
   admin_notes: String,
   approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -448,11 +787,13 @@ const withdrawalSchema = new mongoose.Schema({
   
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
 
 withdrawalSchema.pre('save', function(next) {
   if (this.isModified('amount')) {
-    this.platform_fee = this.amount * 0.05;
+    this.platform_fee = this.amount * 0.05; // 5% platform fee
     this.net_amount = this.amount - this.platform_fee;
   }
   
@@ -462,23 +803,46 @@ withdrawalSchema.pre('save', function(next) {
   next();
 });
 
+withdrawalSchema.index({ user: 1, status: 1 });
+withdrawalSchema.index({ reference: 1 });
+
 const Withdrawal = mongoose.model('Withdrawal', withdrawalSchema);
 
 // Transaction Model - Frontend Compatible
 const transactionSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  type: { type: String, enum: ['deposit', 'withdrawal', 'investment', 'earning', 'referral', 'bonus', 'fee'], required: true },
-  amount: { type: Number, required: true },
-  description: { type: String, required: true },
+  user: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: [true, 'User is required'] 
+  },
+  type: { 
+    type: String, 
+    enum: ['deposit', 'withdrawal', 'investment', 'earning', 'referral', 'bonus', 'fee', 'refund'], 
+    required: [true, 'Transaction type is required'] 
+  },
+  amount: { 
+    type: Number, 
+    required: [true, 'Transaction amount is required'] 
+  },
+  description: { 
+    type: String, 
+    required: [true, 'Transaction description is required'] 
+  },
   reference: { type: String, unique: true },
-  status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'completed' },
+  status: { 
+    type: String, 
+    enum: ['pending', 'completed', 'failed'], 
+    default: 'completed' 
+  },
   related_investment: { type: mongoose.Schema.Types.ObjectId, ref: 'Investment' },
   related_deposit: { type: mongoose.Schema.Types.ObjectId, ref: 'Deposit' },
   related_withdrawal: { type: mongoose.Schema.Types.ObjectId, ref: 'Withdrawal' },
   
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
 
 transactionSchema.pre('save', function(next) {
   if (!this.reference) {
@@ -487,50 +851,123 @@ transactionSchema.pre('save', function(next) {
   next();
 });
 
+transactionSchema.index({ user: 1, createdAt: -1 });
+transactionSchema.index({ type: 1, status: 1 });
+
 const Transaction = mongoose.model('Transaction', transactionSchema);
 
 // KYC Model - Frontend Compatible
 const kycSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  id_type: { type: String, enum: ['national_id', 'passport', 'driver_license', 'voters_card'], required: true },
-  id_number: { type: String, required: true },
-  id_front: { type: String, required: true },
-  id_back: { type: String, required: true },
-  selfie_with_id: { type: String, required: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  user: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: [true, 'User is required'] 
+  },
+  id_type: { 
+    type: String, 
+    enum: ['national_id', 'passport', 'driver_license', 'voters_card'], 
+    required: [true, 'ID type is required'] 
+  },
+  id_number: { 
+    type: String, 
+    required: [true, 'ID number is required'] 
+  },
+  id_front: { 
+    type: String, 
+    required: [true, 'ID front image is required'] 
+  },
+  id_back: { 
+    type: String, 
+    required: [true, 'ID back image is required'] 
+  },
+  selfie_with_id: { 
+    type: String, 
+    required: [true, 'Selfie with ID is required'] 
+  },
+  status: { 
+    type: String, 
+    enum: ['pending', 'approved', 'rejected'], 
+    default: 'pending' 
+  },
   admin_notes: String,
   reviewed_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   reviewed_at: Date,
   
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
+
+kycSchema.index({ user: 1 });
+kycSchema.index({ status: 1 });
 
 const KYC = mongoose.model('KYC', kycSchema);
 
 // Notification Model - Frontend Compatible
 const notificationSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  title: { type: String, required: true },
-  message: { type: String, required: true },
-  type: { type: String, enum: ['info', 'success', 'warning', 'error', 'promotional'], default: 'info' },
+  user: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: [true, 'User is required'] 
+  },
+  title: { 
+    type: String, 
+    required: [true, 'Notification title is required'] 
+  },
+  message: { 
+    type: String, 
+    required: [true, 'Notification message is required'] 
+  },
+  type: { 
+    type: String, 
+    enum: ['info', 'success', 'warning', 'error', 'promotional'], 
+    default: 'info' 
+  },
   is_read: { type: Boolean, default: false },
   action_url: String,
   
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
+
+notificationSchema.index({ user: 1, is_read: 1 });
+notificationSchema.index({ createdAt: -1 });
 
 const Notification = mongoose.model('Notification', notificationSchema);
 
 // Support Ticket Model - Frontend Compatible
 const supportTicketSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  subject: { type: String, required: true },
-  message: { type: String, required: true },
-  category: { type: String, enum: ['general', 'technical', 'billing', 'investment', 'withdrawal', 'kyc', 'other'], default: 'general' },
-  status: { type: String, enum: ['open', 'in_progress', 'resolved', 'closed'], default: 'open' },
-  priority: { type: String, enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' },
+  user: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: [true, 'User is required'] 
+  },
+  subject: { 
+    type: String, 
+    required: [true, 'Subject is required'] 
+  },
+  message: { 
+    type: String, 
+    required: [true, 'Message is required'] 
+  },
+  category: { 
+    type: String, 
+    enum: ['general', 'technical', 'billing', 'investment', 'withdrawal', 'kyc', 'other'], 
+    default: 'general' 
+  },
+  status: { 
+    type: String, 
+    enum: ['open', 'in_progress', 'resolved', 'closed'], 
+    default: 'open' 
+  },
+  priority: { 
+    type: String, 
+    enum: ['low', 'medium', 'high', 'urgent'], 
+    default: 'medium' 
+  },
   admin_notes: String,
   assigned_to: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   resolved_at: Date,
@@ -539,12 +976,18 @@ const supportTicketSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     message: String,
     is_admin: { type: Boolean, default: false },
+    attachments: [String],
     createdAt: { type: Date, default: Date.now }
   }],
   
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
-}, { timestamps: true });
+}, { 
+  timestamps: true 
+});
+
+supportTicketSchema.index({ user: 1, status: 1 });
+supportTicketSchema.index({ status: 1, priority: -1 });
 
 const SupportTicket = mongoose.model('SupportTicket', supportTicketSchema);
 
@@ -556,24 +999,53 @@ const auth = async (req, res, next) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
     if (!token) {
-      return res.status(401).json({ success: false, message: 'No token, authorization denied' });
+      return res.status(401).json({ 
+        success: false, 
+        message: 'No token, authorization denied' 
+      });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-prod-v30');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
     
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Token is not valid' });
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Token is not valid' 
+      });
     }
 
     if (!user.is_active) {
-      return res.status(401).json({ success: false, message: 'Account is deactivated' });
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Account is deactivated' 
+      });
     }
+
+    // Update last active timestamp
+    user.last_active = new Date();
+    await user.save();
 
     req.user = user;
     next();
   } catch (error) {
-    res.status(401).json({ success: false, message: 'Token is not valid' });
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid token' 
+      });
+    } else if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Token expired' 
+      });
+    }
+    
+    console.error('Auth middleware error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error during authentication' 
+    });
   }
 };
 
@@ -581,21 +1053,55 @@ const auth = async (req, res, next) => {
 const adminAuth = async (req, res, next) => {
   try {
     await auth(req, res, () => {});
+    
     if (!['admin', 'super_admin'].includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: 'Access denied. Admin only.' });
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied. Admin only.' 
+      });
     }
     next();
   } catch (error) {
-    res.status(401).json({ success: false, message: 'Authentication failed' });
+    res.status(401).json({ 
+      success: false, 
+      message: 'Authentication failed' 
+    });
+  }
+};
+
+// Optional Auth Middleware (for public routes that might have user context)
+const optionalAuth = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id);
+      
+      if (user && user.is_active) {
+        req.user = user;
+      }
+    }
+    next();
+  } catch (error) {
+    // Continue without user for optional auth
+    next();
   }
 };
 
 // ==================== UTILITY FUNCTIONS ====================
 
 // Response Formatter - Frontend Compatible
-const formatResponse = (success, message, data = null) => {
-  const response = { success, message, timestamp: new Date().toISOString() };
+const formatResponse = (success, message, data = null, pagination = null) => {
+  const response = { 
+    success, 
+    message, 
+    timestamp: new Date().toISOString() 
+  };
+  
   if (data !== null) response.data = data;
+  if (pagination !== null) response.pagination = pagination;
+  
   return response;
 };
 
@@ -603,31 +1109,70 @@ const formatResponse = (success, message, data = null) => {
 const handleError = (res, error, defaultMessage = 'An error occurred') => {
   console.error('Error:', error);
   
+  // Mongoose validation error
   if (error.name === 'ValidationError') {
     const messages = Object.values(error.errors).map(val => val.message);
-    return res.status(400).json(formatResponse(false, 'Validation Error', { errors: messages }));
+    return res.status(400).json(
+      formatResponse(false, 'Validation Error', { errors: messages })
+    );
   }
   
+  // Mongoose duplicate key error
   if (error.code === 11000) {
-    return res.status(400).json(formatResponse(false, 'Duplicate entry found'));
+    const field = Object.keys(error.keyValue)[0];
+    return res.status(400).json(
+      formatResponse(false, `${field} already exists`)
+    );
   }
   
-  const statusCode = error.status || 500;
-  const message = process.env.NODE_ENV === 'production' && statusCode === 500 ? defaultMessage : error.message;
+  // JWT errors
+  if (error.name === 'JsonWebTokenError') {
+    return res.status(401).json(
+      formatResponse(false, 'Invalid token')
+    );
+  }
   
-  return res.status(statusCode).json(formatResponse(false, message));
+  if (error.name === 'TokenExpiredError') {
+    return res.status(401).json(
+      formatResponse(false, 'Token expired')
+    );
+  }
+  
+  // Custom error with status code
+  const statusCode = error.statusCode || error.status || 500;
+  const message = process.env.NODE_ENV === 'production' && statusCode === 500 
+    ? defaultMessage 
+    : error.message;
+
+  return res.status(statusCode).json(
+    formatResponse(false, message)
+  );
 };
 
-// Email Configuration
-const emailTransporter = nodemailer.createTransporter({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD
+// Email Configuration with better error handling
+const createEmailTransporter = () => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    console.warn('⚠️ Email credentials not configured. Email functionality will be disabled.');
+    return null;
   }
-});
+
+  return nodemailer.createTransporter({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD
+    }
+  });
+};
+
+const emailTransporter = createEmailTransporter();
 
 const sendEmail = async (to, subject, html) => {
+  if (!emailTransporter) {
+    console.warn('Email transporter not available. Skipping email send.');
+    return false;
+  }
+
   try {
     await emailTransporter.sendMail({
       from: process.env.EMAIL_USER || 'noreply@rawwealthy.com',
@@ -635,34 +1180,46 @@ const sendEmail = async (to, subject, html) => {
       subject,
       html
     });
+    console.log(`✅ Email sent to ${to}`);
     return true;
   } catch (error) {
-    console.error('Email sending failed:', error);
+    console.error('❌ Email sending failed:', error);
     return false;
   }
+};
+
+// Pagination helper
+const getPaginationOptions = (req) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
+  const skip = (page - 1) * limit;
+  
+  return { page, limit, skip };
 };
 
 // ==================== DATABASE INITIALIZATION ====================
 const initializeDatabase = async () => {
   try {
-    // Create admin user
+    console.log('🔄 Initializing database...');
+
+    // Create admin user if doesn't exist
     const adminExists = await User.findOne({ email: 'admin@rawwealthy.com' });
     if (!adminExists) {
       const admin = new User({
         full_name: 'Raw Wealthy Admin',
         email: 'admin@rawwealthy.com',
         phone: '+2348000000001',
-        password: process.env.ADMIN_PASSWORD || 'Admin123!@#',
+        password: process.env.ADMIN_PASSWORD,
         role: 'super_admin',
         kyc_verified: true,
         is_verified: true,
-        balance: 1000000
+        balance: 0 // Start with 0 balance for security
       });
       await admin.save();
       console.log('✅ Super Admin user created');
     }
 
-    // Create investment plans - ENHANCED WITH FRONTEND MATCHING
+    // Create investment plans
     const plansExist = await InvestmentPlan.countDocuments();
     if (plansExist === 0) {
       const plans = [
@@ -767,58 +1324,132 @@ const initializeDatabase = async () => {
     console.log('✅ Database initialization completed');
   } catch (error) {
     console.error('❌ Database initialization error:', error);
+    throw error;
   }
 };
 
 // ==================== MONGODB CONNECTION ====================
 const connectDB = async () => {
   try {
-    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://israeldewa1_db_user:rawwealthy@rawwealthy.9cnu0jw.mongodb.net/rawwealthy?retryWrites=true&w=majority';
+    console.log('🔄 Connecting to MongoDB...');
     
-    await mongoose.connect(MONGODB_URI, {
+    const MONGODB_URI = process.env.MONGODB_URI;
+    
+    if (!MONGODB_URI) {
+      throw new Error('MONGODB_URI environment variable is required');
+    }
+
+    const mongooseOptions = {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-    });
+      serverSelectionTimeoutMS: 30000, // 30 seconds
+      socketTimeoutMS: 45000, // 45 seconds
+      maxPoolSize: 10,
+      minPoolSize: 5
+    };
+
+    await mongoose.connect(MONGODB_URI, mongooseOptions);
     
     console.log('✅ MongoDB Connected Successfully!');
+    
+    // Initialize database after successful connection
     await initializeDatabase();
     
   } catch (error) {
     console.error('❌ MongoDB Connection Error:', error.message);
-    setTimeout(connectDB, 10000);
+    
+    // Retry connection after 5 seconds
+    console.log('🔄 Retrying connection in 5 seconds...');
+    setTimeout(connectDB, 5000);
   }
 };
+
+// Handle MongoDB connection events
+mongoose.connection.on('disconnected', () => {
+  console.log('❌ MongoDB disconnected');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB connection error:', err);
+});
 
 // ==================== AUTH ROUTES - 100% FRONTEND COMPATIBLE ====================
 
 // Register - Perfect Frontend Match
 app.post('/api/auth/register', [
-  body('full_name').notEmpty().trim().withMessage('Full name is required'),
-  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('phone').notEmpty().trim().withMessage('Phone number is required'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('referral_code').optional().trim(),
-  body('risk_tolerance').optional().isIn(['low', 'medium', 'high']),
-  body('investment_strategy').optional().isIn(['conservative', 'balanced', 'aggressive'])
+  body('full_name')
+    .notEmpty()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Full name must be between 2 and 100 characters'),
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Valid email is required'),
+  body('phone')
+    .notEmpty()
+    .trim()
+    .withMessage('Phone number is required'),
+  body('password')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters'),
+  body('referral_code')
+    .optional()
+    .trim()
+    .isLength({ min: 6, max: 12 })
+    .withMessage('Referral code must be between 6 and 12 characters'),
+  body('risk_tolerance')
+    .optional()
+    .isIn(['low', 'medium', 'high'])
+    .withMessage('Risk tolerance must be low, medium, or high'),
+  body('investment_strategy')
+    .optional()
+    .isIn(['conservative', 'balanced', 'aggressive'])
+    .withMessage('Investment strategy must be conservative, balanced, or aggressive')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
-    const { full_name, email, phone, password, referral_code, risk_tolerance, investment_strategy } = req.body;
+    const { 
+      full_name, 
+      email, 
+      phone, 
+      password, 
+      referral_code, 
+      risk_tolerance, 
+      investment_strategy 
+    } = req.body;
 
     // Check existing user
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const existingUser = await User.findOne({ 
+      email: email.toLowerCase() 
+    });
+    
     if (existingUser) {
-      return res.status(400).json(formatResponse(false, 'User already exists with this email'));
+      return res.status(400).json(
+        formatResponse(false, 'User already exists with this email')
+      );
     }
 
     // Handle referral
     let referredBy = null;
     if (referral_code) {
-      referredBy = await User.findOne({ referral_code: referral_code.toUpperCase() });
+      referredBy = await User.findOne({ 
+        referral_code: referral_code.toUpperCase() 
+      });
+      
+      if (!referredBy) {
+        return res.status(400).json(
+          formatResponse(false, 'Invalid referral code')
+        );
+      }
     }
 
     // Create user
@@ -837,13 +1468,14 @@ app.post('/api/auth/register', [
     // Generate token
     const token = jwt.sign(
       { id: user._id }, 
-      process.env.JWT_SECRET || 'fallback-secret-key-prod-v30',
+      process.env.JWT_SECRET,
       { expiresIn: '30d' }
     );
 
     // Handle referral bonus
     if (referredBy) {
       const referralBonus = 1000;
+      
       await User.findByIdAndUpdate(referredBy._id, {
         $inc: { 
           balance: referralBonus,
@@ -852,6 +1484,7 @@ app.post('/api/auth/register', [
         }
       });
 
+      // Create referral transaction
       await Transaction.create({
         user: referredBy._id,
         type: 'referral',
@@ -860,7 +1493,7 @@ app.post('/api/auth/register', [
         status: 'completed'
       });
 
-      // Send notification
+      // Send notification to referrer
       await Notification.create({
         user: referredBy._id,
         title: 'Referral Bonus Received!',
@@ -868,7 +1501,7 @@ app.post('/api/auth/register', [
         type: 'success'
       });
 
-      // Real-time update
+      // Update referrer's balance in real-time
       broadcastToUser(referredBy._id.toString(), {
         type: 'balance_update',
         balance: referredBy.balance + referralBonus,
@@ -876,26 +1509,36 @@ app.post('/api/auth/register', [
       });
     }
 
-    res.status(201).json(formatResponse(true, 'User registered successfully', {
-      user: {
-        id: user._id,
-        full_name: user.full_name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        balance: user.balance,
-        referral_code: user.referral_code,
-        kyc_verified: user.kyc_verified,
-        total_earnings: user.total_earnings,
-        referral_earnings: user.referral_earnings,
-        risk_tolerance: user.risk_tolerance,
-        investment_strategy: user.investment_strategy,
-        two_factor_enabled: user.two_factor_enabled,
-        country: user.country,
-        currency: user.currency
-      },
-      token
-    }));
+    // Send welcome notification
+    await Notification.create({
+      user: user._id,
+      title: 'Welcome to Raw Wealthy!',
+      message: 'Your account has been created successfully. Start investing today!',
+      type: 'success'
+    });
+
+    res.status(201).json(
+      formatResponse(true, 'User registered successfully', {
+        user: {
+          id: user._id,
+          full_name: user.full_name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          balance: user.balance,
+          referral_code: user.referral_code,
+          kyc_verified: user.kyc_verified,
+          total_earnings: user.total_earnings,
+          referral_earnings: user.referral_earnings,
+          risk_tolerance: user.risk_tolerance,
+          investment_strategy: user.investment_strategy,
+          two_factor_enabled: user.two_factor_enabled,
+          country: user.country,
+          currency: user.currency
+        },
+        token
+      })
+    );
 
   } catch (error) {
     handleError(res, error, 'Server error during registration');
@@ -904,121 +1547,168 @@ app.post('/api/auth/register', [
 
 // Login - Perfect Frontend Match
 app.post('/api/auth/login', [
-  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('password').notEmpty().withMessage('Password is required')
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Valid email is required'),
+  body('password')
+    .notEmpty()
+    .withMessage('Password is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { email, password, two_factor_code } = req.body;
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select('+password +two_factor_secret');
+    const user = await User.findOne({ 
+      email: email.toLowerCase() 
+    }).select('+password +two_factor_secret');
+    
     if (!user) {
-      return res.status(400).json(formatResponse(false, 'Invalid credentials'));
+      return res.status(400).json(
+        formatResponse(false, 'Invalid credentials')
+      );
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(400).json(formatResponse(false, 'Invalid credentials'));
+      return res.status(400).json(
+        formatResponse(false, 'Invalid credentials')
+      );
+    }
+
+    if (!user.is_active) {
+      return res.status(401).json(
+        formatResponse(false, 'Account is deactivated. Please contact support.')
+      );
     }
 
     // Handle 2FA
     if (user.two_factor_enabled && !two_factor_code) {
-      return res.status(200).json(formatResponse(true, 'Two-factor authentication required', {
-        requires_2fa: true,
-        user_id: user._id
-      }));
+      return res.status(200).json(
+        formatResponse(true, 'Two-factor authentication required', {
+          requires_2fa: true,
+          user_id: user._id
+        })
+      );
     }
 
     if (user.two_factor_enabled && two_factor_code) {
       const is2FATokenValid = user.verify2FAToken(two_factor_code);
       if (!is2FATokenValid) {
-        return res.status(400).json(formatResponse(false, 'Invalid two-factor code'));
+        return res.status(400).json(
+          formatResponse(false, 'Invalid two-factor code')
+        );
       }
     }
 
     // Update login info
     user.last_login = new Date();
+    user.last_active = new Date();
     await user.save();
 
     const token = jwt.sign(
       { id: user._id }, 
-      process.env.JWT_SECRET || 'fallback-secret-key-prod-v30',
+      process.env.JWT_SECRET,
       { expiresIn: '30d' }
     );
 
-    res.json(formatResponse(true, 'Login successful', {
-      user: {
-        id: user._id,
-        full_name: user.full_name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        balance: user.balance,
-        referral_code: user.referral_code,
-        kyc_verified: user.kyc_verified,
-        total_earnings: user.total_earnings,
-        referral_earnings: user.referral_earnings,
-        two_factor_enabled: user.two_factor_enabled,
-        risk_tolerance: user.risk_tolerance,
-        investment_strategy: user.investment_strategy,
-        country: user.country,
-        currency: user.currency
-      },
-      token
-    }));
+    res.json(
+      formatResponse(true, 'Login successful', {
+        user: {
+          id: user._id,
+          full_name: user.full_name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          balance: user.balance,
+          referral_code: user.referral_code,
+          kyc_verified: user.kyc_verified,
+          total_earnings: user.total_earnings,
+          referral_earnings: user.referral_earnings,
+          two_factor_enabled: user.two_factor_enabled,
+          risk_tolerance: user.risk_tolerance,
+          investment_strategy: user.investment_strategy,
+          country: user.country,
+          currency: user.currency
+        },
+        token
+      })
+    );
 
   } catch (error) {
     handleError(res, error, 'Server error during login');
   }
 });
 
-// Password Reset Request - FRONTEND MATCHED
+// Password Reset Request
 app.post('/api/auth/forgot-password', [
-  body('email').isEmail().withMessage('Valid email is required')
+  body('email')
+    .isEmail()
+    .withMessage('Valid email is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { email } = req.body;
     const user = await User.findOne({ email: email.toLowerCase() });
     
     if (!user) {
-      // Don't reveal if user exists
-      return res.json(formatResponse(true, 'If the email exists, a password reset link has been sent'));
+      // Don't reveal if user exists for security
+      return res.json(
+        formatResponse(true, 'If the email exists, a password reset link has been sent')
+      );
     }
 
-    // Generate reset token
+    // Generate reset token (expires in 1 hour)
     const resetToken = jwt.sign(
-      { id: user._id, type: 'password_reset' },
-      process.env.JWT_SECRET || 'fallback-secret-key-prod-v30',
+      { 
+        id: user._id, 
+        type: 'password_reset',
+        timestamp: Date.now()
+      },
+      process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
 
-    // Send email (in real implementation)
+    // In a real implementation, you would send an email
     const resetLink = `${req.get('origin') || 'https://rawwealthy.com'}/reset-password?token=${resetToken}`;
     
     await sendEmail(
       user.email,
       'Password Reset Request - Raw Wealthy',
       `
-        <h2>Password Reset Request</h2>
-        <p>You requested to reset your password. Click the link below to proceed:</p>
-        <a href="${resetLink}" style="background: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">
-          Reset Password
-        </a>
-        <p>This link will expire in 1 hour.</p>
-        <p>If you didn't request this, please ignore this email.</p>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #f59e0b;">Password Reset Request</h2>
+          <p>You requested to reset your password for your Raw Wealthy account.</p>
+          <p>Click the button below to reset your password:</p>
+          <a href="${resetLink}" style="background: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">
+            Reset Password
+          </a>
+          <p style="margin-top: 20px; color: #666;">
+            This link will expire in 1 hour. If you didn't request this, please ignore this email.
+          </p>
+        </div>
       `
     );
 
-    res.json(formatResponse(true, 'If the email exists, a password reset link has been sent'));
+    res.json(
+      formatResponse(true, 'If the email exists, a password reset link has been sent')
+    );
 
   } catch (error) {
     handleError(res, error, 'Error processing password reset request');
@@ -1027,31 +1717,45 @@ app.post('/api/auth/forgot-password', [
 
 // NEW: Password Reset Endpoint for Frontend
 app.post('/api/password/reset', [
-  body('email').isEmail().withMessage('Valid email is required')
+  body('email')
+    .isEmail()
+    .withMessage('Valid email is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { email } = req.body;
     const user = await User.findOne({ email: email.toLowerCase() });
     
     if (!user) {
-      return res.json(formatResponse(true, 'If the email exists, a password reset link has been sent'));
+      return res.json(
+        formatResponse(true, 'If the email exists, a password reset link has been sent')
+      );
     }
 
     // Generate reset token
     const resetToken = jwt.sign(
-      { id: user._id, type: 'password_reset' },
-      process.env.JWT_SECRET || 'fallback-secret-key-prod-v30',
+      { 
+        id: user._id, 
+        type: 'password_reset',
+        timestamp: Date.now()
+      },
+      process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
 
-    res.json(formatResponse(true, 'Password reset instructions sent to your email.', {
-      reset_token: resetToken
-    }));
+    res.json(
+      formatResponse(true, 'Password reset instructions sent to your email.', {
+        reset_token: resetToken
+      })
+    );
 
   } catch (error) {
     handleError(res, error, 'Error processing password reset request');
@@ -1067,7 +1771,9 @@ app.get('/api/plans', async (req, res) => {
       .sort({ is_popular: -1, min_amount: 1 })
       .lean();
 
-    res.json(formatResponse(true, 'Plans retrieved successfully', { plans }));
+    res.json(
+      formatResponse(true, 'Plans retrieved successfully', { plans })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching investment plans');
   }
@@ -1080,7 +1786,9 @@ app.get('/api/investment-plans', async (req, res) => {
       .sort({ is_popular: -1, min_amount: 1 })
       .lean();
 
-    res.json(formatResponse(true, 'Plans retrieved successfully', { plans }));
+    res.json(
+      formatResponse(true, 'Plans retrieved successfully', { plans })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching investment plans');
   }
@@ -1097,7 +1805,9 @@ app.get('/api/plans/popular', async (req, res) => {
     .limit(6)
     .lean();
 
-    res.json(formatResponse(true, 'Popular plans retrieved', { plans }));
+    res.json(
+      formatResponse(true, 'Popular plans retrieved', { plans })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching popular plans');
   }
@@ -1105,20 +1815,30 @@ app.get('/api/plans/popular', async (req, res) => {
 
 // Get Plan by ID
 app.get('/api/plans/:id', [
-  param('id').isMongoId().withMessage('Invalid plan ID')
+  param('id')
+    .isMongoId()
+    .withMessage('Invalid plan ID')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const plan = await InvestmentPlan.findById(req.params.id);
     if (!plan) {
-      return res.status(404).json(formatResponse(false, 'Investment plan not found'));
+      return res.status(404).json(
+        formatResponse(false, 'Investment plan not found')
+      );
     }
 
-    res.json(formatResponse(true, 'Plan retrieved successfully', { plan }));
+    res.json(
+      formatResponse(true, 'Plan retrieved successfully', { plan })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching investment plan');
   }
@@ -1129,9 +1849,7 @@ app.get('/api/plans/:id', [
 // Get User Investments
 app.get('/api/investments', auth, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = getPaginationOptions(req);
     const status = req.query.status;
 
     let query = { user: req.user.id };
@@ -1149,7 +1867,11 @@ app.get('/api/investments', auth, async (req, res) => {
     const total = await Investment.countDocuments(query);
 
     // Calculate stats for frontend
-    const activeInvestments = await Investment.find({ user: req.user.id, status: 'active' });
+    const activeInvestments = await Investment.find({ 
+      user: req.user.id, 
+      status: 'active' 
+    });
+    
     const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
     const totalEarnings = activeInvestments.reduce((sum, inv) => sum + inv.earned_so_far, 0);
 
@@ -1185,7 +1907,9 @@ app.get('/api/investments', auth, async (req, res) => {
       }
     };
 
-    res.json(formatResponse(true, 'Investments retrieved successfully', responseData));
+    res.json(
+      formatResponse(true, 'Investments retrieved successfully', responseData)
+    );
 
   } catch (error) {
     handleError(res, error, 'Error fetching investments');
@@ -1194,14 +1918,25 @@ app.get('/api/investments', auth, async (req, res) => {
 
 // Create Investment - FRONTEND PERFECT MATCH
 app.post('/api/investments', auth, upload.single('payment_proof'), [
-  body('plan_id').isMongoId().withMessage('Invalid plan ID'),
-  body('amount').isFloat({ min: 1000 }).withMessage('Minimum investment is ₦1000'),
-  body('auto_renew').optional().isBoolean().withMessage('Auto renew must be a boolean')
+  body('plan_id')
+    .isMongoId()
+    .withMessage('Invalid plan ID'),
+  body('amount')
+    .isFloat({ min: 1000 })
+    .withMessage('Minimum investment is ₦1000'),
+  body('auto_renew')
+    .optional()
+    .isBoolean()
+    .withMessage('Auto renew must be a boolean')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { plan_id, amount, auto_renew } = req.body;
@@ -1213,20 +1948,28 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
 
     const plan = await InvestmentPlan.findById(plan_id);
     if (!plan) {
-      return res.status(404).json(formatResponse(false, 'Investment plan not found'));
+      return res.status(404).json(
+        formatResponse(false, 'Investment plan not found')
+      );
     }
 
     if (amount < plan.min_amount) {
-      return res.status(400).json(formatResponse(false, `Minimum investment for ${plan.name} is ₦${plan.min_amount.toLocaleString()}`));
+      return res.status(400).json(
+        formatResponse(false, `Minimum investment for ${plan.name} is ₦${plan.min_amount.toLocaleString()}`)
+      );
     }
 
     if (plan.max_amount && amount > plan.max_amount) {
-      return res.status(400).json(formatResponse(false, `Maximum investment for ${plan.name} is ₦${plan.max_amount.toLocaleString()}`));
+      return res.status(400).json(
+        formatResponse(false, `Maximum investment for ${plan.name} is ₦${plan.max_amount.toLocaleString()}`)
+      );
     }
 
     const user = await User.findById(req.user.id);
     if (amount > user.balance) {
-      return res.status(400).json(formatResponse(false, 'Insufficient balance for this investment'));
+      return res.status(400).json(
+        formatResponse(false, 'Insufficient balance for this investment')
+      );
     }
 
     // Create investment
@@ -1280,13 +2023,15 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
       message: `Investment of ₦${amount.toLocaleString()} submitted`
     });
 
-    res.status(201).json(formatResponse(true, 'Investment created successfully! Waiting for admin approval.', { 
-      investment: {
-        ...investment.toObject(),
-        plan_name: plan.name,
-        plan_id: plan._id
-      }
-    }));
+    res.status(201).json(
+      formatResponse(true, 'Investment created successfully! Waiting for admin approval.', { 
+        investment: {
+          ...investment.toObject(),
+          plan_name: plan.name,
+          plan_id: plan._id
+        }
+      })
+    );
 
   } catch (error) {
     handleError(res, error, 'Error creating investment');
@@ -1347,7 +2092,9 @@ app.get('/api/profile', auth, async (req, res) => {
       active_investments: activeInvestments
     };
 
-    res.json(formatResponse(true, 'Profile retrieved successfully', profileData));
+    res.json(
+      formatResponse(true, 'Profile retrieved successfully', profileData)
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching profile');
   }
@@ -1355,22 +2102,56 @@ app.get('/api/profile', auth, async (req, res) => {
 
 // Update User Profile
 app.put('/api/profile', auth, [
-  body('full_name').optional().trim().isLength({ min: 2 }).withMessage('Full name must be at least 2 characters'),
-  body('phone').optional().trim(),
-  body('risk_tolerance').optional().isIn(['low', 'medium', 'high']),
-  body('investment_strategy').optional().isIn(['conservative', 'balanced', 'aggressive']),
-  body('country').optional().trim(),
-  body('currency').optional().isIn(['NGN', 'USD']),
-  body('language').optional().trim(),
-  body('timezone').optional().trim()
+  body('full_name')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Full name must be between 2 and 100 characters'),
+  body('phone')
+    .optional()
+    .trim(),
+  body('risk_tolerance')
+    .optional()
+    .isIn(['low', 'medium', 'high'])
+    .withMessage('Risk tolerance must be low, medium, or high'),
+  body('investment_strategy')
+    .optional()
+    .isIn(['conservative', 'balanced', 'aggressive'])
+    .withMessage('Investment strategy must be conservative, balanced, or aggressive'),
+  body('country')
+    .optional()
+    .trim(),
+  body('currency')
+    .optional()
+    .isIn(['NGN', 'USD'])
+    .withMessage('Currency must be NGN or USD'),
+  body('language')
+    .optional()
+    .trim(),
+  body('timezone')
+    .optional()
+    .trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
-    const { full_name, phone, risk_tolerance, investment_strategy, country, currency, language, timezone } = req.body;
+    const { 
+      full_name, 
+      phone, 
+      risk_tolerance, 
+      investment_strategy, 
+      country, 
+      currency, 
+      language, 
+      timezone 
+    } = req.body;
     
     const updateData = {};
     if (full_name) updateData.full_name = full_name;
@@ -1388,7 +2169,9 @@ app.put('/api/profile', auth, [
       { new: true, runValidators: true }
     );
 
-    res.json(formatResponse(true, 'Profile updated successfully', { user }));
+    res.json(
+      formatResponse(true, 'Profile updated successfully', { user })
+    );
   } catch (error) {
     handleError(res, error, 'Error updating profile');
   }
@@ -1396,16 +2179,33 @@ app.put('/api/profile', auth, [
 
 // NEW ENDPOINT: Preferences update for frontend
 app.put('/api/profile/preferences', auth, [
-  body('risk_tolerance').optional().isIn(['low', 'medium', 'high']),
-  body('investment_strategy').optional().isIn(['conservative', 'balanced', 'aggressive']),
-  body('currency').optional().isIn(['NGN', 'USD']),
-  body('language').optional().trim(),
-  body('timezone').optional().trim()
+  body('risk_tolerance')
+    .optional()
+    .isIn(['low', 'medium', 'high'])
+    .withMessage('Risk tolerance must be low, medium, or high'),
+  body('investment_strategy')
+    .optional()
+    .isIn(['conservative', 'balanced', 'aggressive'])
+    .withMessage('Investment strategy must be conservative, balanced, or aggressive'),
+  body('currency')
+    .optional()
+    .isIn(['NGN', 'USD'])
+    .withMessage('Currency must be NGN or USD'),
+  body('language')
+    .optional()
+    .trim(),
+  body('timezone')
+    .optional()
+    .trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { risk_tolerance, investment_strategy, currency, language, timezone } = req.body;
@@ -1423,7 +2223,9 @@ app.put('/api/profile/preferences', auth, [
       { new: true, runValidators: true }
     );
 
-    res.json(formatResponse(true, 'Preferences updated successfully', { user }));
+    res.json(
+      formatResponse(true, 'Preferences updated successfully', { user })
+    );
   } catch (error) {
     handleError(res, error, 'Error updating preferences');
   }
@@ -1431,13 +2233,21 @@ app.put('/api/profile/preferences', auth, [
 
 // Update Password
 app.put('/api/profile/password', auth, [
-  body('current_password').notEmpty().withMessage('Current password is required'),
-  body('new_password').isLength({ min: 6 }).withMessage('New password must be at least 6 characters')
+  body('current_password')
+    .notEmpty()
+    .withMessage('Current password is required'),
+  body('new_password')
+    .isLength({ min: 6 })
+    .withMessage('New password must be at least 6 characters')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { current_password, new_password } = req.body;
@@ -1446,7 +2256,9 @@ app.put('/api/profile/password', auth, [
     
     const isMatch = await user.comparePassword(current_password);
     if (!isMatch) {
-      return res.status(400).json(formatResponse(false, 'Current password is incorrect'));
+      return res.status(400).json(
+        formatResponse(false, 'Current password is incorrect')
+      );
     }
 
     user.password = new_password;
@@ -1460,7 +2272,9 @@ app.put('/api/profile/password', auth, [
       type: 'success'
     });
 
-    res.json(formatResponse(true, 'Password updated successfully'));
+    res.json(
+      formatResponse(true, 'Password updated successfully')
+    );
   } catch (error) {
     handleError(res, error, 'Error updating password');
   }
@@ -1468,14 +2282,24 @@ app.put('/api/profile/password', auth, [
 
 // Update Bank Details
 app.put('/api/profile/bank', auth, [
-  body('bank_name').notEmpty().withMessage('Bank name is required'),
-  body('account_name').notEmpty().withMessage('Account name is required'),
-  body('account_number').notEmpty().withMessage('Account number is required')
+  body('bank_name')
+    .notEmpty()
+    .withMessage('Bank name is required'),
+  body('account_name')
+    .notEmpty()
+    .withMessage('Account name is required'),
+  body('account_number')
+    .notEmpty()
+    .withMessage('Account number is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { bank_name, account_name, account_number } = req.body;
@@ -1493,7 +2317,9 @@ app.put('/api/profile/bank', auth, [
       { new: true }
     );
 
-    res.json(formatResponse(true, 'Bank details updated successfully', { user }));
+    res.json(
+      formatResponse(true, 'Bank details updated successfully', { user })
+    );
   } catch (error) {
     handleError(res, error, 'Error updating bank details');
   }
@@ -1503,14 +2329,24 @@ app.put('/api/profile/bank', auth, [
 
 // Create Deposit
 app.post('/api/deposits', auth, upload.single('payment_proof'), [
-  body('amount').isFloat({ min: 500 }).withMessage('Minimum deposit is ₦500'),
-  body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal', 'card']).withMessage('Invalid payment method'),
-  body('transaction_hash').optional().trim()
+  body('amount')
+    .isFloat({ min: 500 })
+    .withMessage('Minimum deposit is ₦500'),
+  body('payment_method')
+    .isIn(['bank_transfer', 'crypto', 'paypal', 'card'])
+    .withMessage('Invalid payment method'),
+  body('transaction_hash')
+    .optional()
+    .trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { amount, payment_method, transaction_hash } = req.body;
@@ -1538,7 +2374,9 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
       type: 'info'
     });
 
-    res.status(201).json(formatResponse(true, 'Deposit request submitted successfully! Waiting for admin approval.', { deposit }));
+    res.status(201).json(
+      formatResponse(true, 'Deposit request submitted successfully! Waiting for admin approval.', { deposit })
+    );
   } catch (error) {
     handleError(res, error, 'Error creating deposit');
   }
@@ -1547,9 +2385,7 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
 // Get User Deposits
 app.get('/api/deposits', auth, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = getPaginationOptions(req);
     const status = req.query.status;
 
     let query = { user: req.user.id };
@@ -1565,15 +2401,17 @@ app.get('/api/deposits', auth, async (req, res) => {
 
     const total = await Deposit.countDocuments(query);
 
-    res.json(formatResponse(true, 'Deposits retrieved successfully', {
-      deposits,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    }));
+    res.json(
+      formatResponse(true, 'Deposits retrieved successfully', {
+        deposits,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      })
+    );
 
   } catch (error) {
     handleError(res, error, 'Error fetching deposits');
@@ -1584,25 +2422,54 @@ app.get('/api/deposits', auth, async (req, res) => {
 
 // Create Withdrawal
 app.post('/api/withdrawals', auth, [
-  body('amount').isFloat({ min: 1000 }).withMessage('Minimum withdrawal is ₦1000'),
-  body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal']).withMessage('Invalid payment method'),
-  body('bank_name').optional().trim(),
-  body('account_name').optional().trim(),
-  body('account_number').optional().trim(),
-  body('wallet_address').optional().trim(),
-  body('paypal_email').optional().isEmail().withMessage('Invalid PayPal email')
+  body('amount')
+    .isFloat({ min: 1000 })
+    .withMessage('Minimum withdrawal is ₦1000'),
+  body('payment_method')
+    .isIn(['bank_transfer', 'crypto', 'paypal'])
+    .withMessage('Invalid payment method'),
+  body('bank_name')
+    .optional()
+    .trim(),
+  body('account_name')
+    .optional()
+    .trim(),
+  body('account_number')
+    .optional()
+    .trim(),
+  body('wallet_address')
+    .optional()
+    .trim(),
+  body('paypal_email')
+    .optional()
+    .isEmail()
+    .withMessage('Invalid PayPal email')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
-    const { amount, payment_method, bank_name, account_name, account_number, wallet_address, paypal_email } = req.body;
+    const { 
+      amount, 
+      payment_method, 
+      bank_name, 
+      account_name, 
+      account_number, 
+      wallet_address, 
+      paypal_email 
+    } = req.body;
 
     const user = await User.findById(req.user.id);
     if (parseFloat(amount) > user.balance) {
-      return res.status(400).json(formatResponse(false, 'Insufficient balance for this withdrawal'));
+      return res.status(400).json(
+        formatResponse(false, 'Insufficient balance for this withdrawal')
+      );
     }
 
     const withdrawalData = {
@@ -1613,7 +2480,9 @@ app.post('/api/withdrawals', auth, [
 
     if (payment_method === 'bank_transfer') {
       if (!bank_name || !account_name || !account_number) {
-        return res.status(400).json(formatResponse(false, 'Bank details are required for bank transfer'));
+        return res.status(400).json(
+          formatResponse(false, 'Bank details are required for bank transfer')
+        );
       }
       withdrawalData.bank_details = {
         bank_name,
@@ -1622,12 +2491,16 @@ app.post('/api/withdrawals', auth, [
       };
     } else if (payment_method === 'crypto') {
       if (!wallet_address) {
-        return res.status(400).json(formatResponse(false, 'Wallet address is required for crypto withdrawals'));
+        return res.status(400).json(
+          formatResponse(false, 'Wallet address is required for crypto withdrawals')
+        );
       }
       withdrawalData.wallet_address = wallet_address;
     } else if (payment_method === 'paypal') {
       if (!paypal_email) {
-        return res.status(400).json(formatResponse(false, 'PayPal email is required for PayPal withdrawals'));
+        return res.status(400).json(
+          formatResponse(false, 'PayPal email is required for PayPal withdrawals')
+        );
       }
       withdrawalData.paypal_email = paypal_email;
     }
@@ -1643,7 +2516,9 @@ app.post('/api/withdrawals', auth, [
       type: 'info'
     });
 
-    res.status(201).json(formatResponse(true, 'Withdrawal request submitted successfully! Waiting for admin approval.', { withdrawal }));
+    res.status(201).json(
+      formatResponse(true, 'Withdrawal request submitted successfully! Waiting for admin approval.', { withdrawal })
+    );
   } catch (error) {
     handleError(res, error, 'Error creating withdrawal');
   }
@@ -1652,9 +2527,7 @@ app.post('/api/withdrawals', auth, [
 // Get User Withdrawals
 app.get('/api/withdrawals', auth, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = getPaginationOptions(req);
     const status = req.query.status;
 
     let query = { user: req.user.id };
@@ -1670,15 +2543,17 @@ app.get('/api/withdrawals', auth, async (req, res) => {
 
     const total = await Withdrawal.countDocuments(query);
 
-    res.json(formatResponse(true, 'Withdrawals retrieved successfully', {
-      withdrawals,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    }));
+    res.json(
+      formatResponse(true, 'Withdrawals retrieved successfully', {
+        withdrawals,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching withdrawals');
   }
@@ -1689,9 +2564,7 @@ app.get('/api/withdrawals', auth, async (req, res) => {
 // Get User Transactions
 app.get('/api/transactions', auth, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = getPaginationOptions(req);
     const type = req.query.type;
 
     let query = { user: req.user.id };
@@ -1707,15 +2580,17 @@ app.get('/api/transactions', auth, async (req, res) => {
 
     const total = await Transaction.countDocuments(query);
 
-    res.json(formatResponse(true, 'Transactions retrieved successfully', {
-      transactions,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    }));
+    res.json(
+      formatResponse(true, 'Transactions retrieved successfully', {
+        transactions,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching transactions');
   }
@@ -1743,7 +2618,9 @@ app.get('/api/referrals/stats', auth, async (req, res) => {
       referral_link: `${req.get('origin') || 'https://rawwealthy.com'}?ref=${user.referral_code}`
     };
 
-    res.json(formatResponse(true, 'Referral stats retrieved successfully', { stats }));
+    res.json(
+      formatResponse(true, 'Referral stats retrieved successfully', { stats })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching referral stats');
   }
@@ -1752,9 +2629,7 @@ app.get('/api/referrals/stats', auth, async (req, res) => {
 // Get Referral List
 app.get('/api/referrals/list', auth, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = getPaginationOptions(req);
 
     const referrals = await User.find({ referred_by: req.user.id })
       .select('full_name email phone createdAt total_earnings balance')
@@ -1765,15 +2640,17 @@ app.get('/api/referrals/list', auth, async (req, res) => {
 
     const total = await User.countDocuments({ referred_by: req.user.id });
 
-    res.json(formatResponse(true, 'Referrals retrieved successfully', {
-      referrals,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    }));
+    res.json(
+      formatResponse(true, 'Referrals retrieved successfully', {
+        referrals,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching referrals');
   }
@@ -1787,20 +2664,30 @@ app.post('/api/kyc', auth, upload.fields([
   { name: 'id_back', maxCount: 1 },
   { name: 'selfie_with_id', maxCount: 1 }
 ]), [
-  body('id_type').isIn(['national_id', 'passport', 'driver_license', 'voters_card']).withMessage('Invalid ID type'),
-  body('id_number').notEmpty().withMessage('ID number is required')
+  body('id_type')
+    .isIn(['national_id', 'passport', 'driver_license', 'voters_card'])
+    .withMessage('Invalid ID type'),
+  body('id_number')
+    .notEmpty()
+    .withMessage('ID number is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { id_type, id_number } = req.body;
     const files = req.files;
 
     if (!files || !files.id_front || !files.id_back || !files.selfie_with_id) {
-      return res.status(400).json(formatResponse(false, 'All document images are required'));
+      return res.status(400).json(
+        formatResponse(false, 'All document images are required')
+      );
     }
 
     // Upload files
@@ -1811,9 +2698,15 @@ app.post('/api/kyc', auth, upload.fields([
     ]);
 
     // Check existing KYC
-    const existingKYC = await KYC.findOne({ user: req.user.id, status: { $in: ['pending', 'approved'] } });
+    const existingKYC = await KYC.findOne({ 
+      user: req.user.id, 
+      status: { $in: ['pending', 'approved'] } 
+    });
+    
     if (existingKYC) {
-      return res.status(400).json(formatResponse(false, 'You already have a KYC submission'));
+      return res.status(400).json(
+        formatResponse(false, 'You already have a KYC submission')
+      );
     }
 
     const kyc = new KYC({
@@ -1841,7 +2734,9 @@ app.post('/api/kyc', auth, upload.fields([
       type: 'info'
     });
 
-    res.status(201).json(formatResponse(true, 'KYC submitted successfully! Your documents are under review.', { kyc }));
+    res.status(201).json(
+      formatResponse(true, 'KYC submitted successfully! Your documents are under review.', { kyc })
+    );
   } catch (error) {
     handleError(res, error, 'Error submitting KYC');
   }
@@ -1853,13 +2748,17 @@ app.get('/api/kyc/status', auth, async (req, res) => {
     const kyc = await KYC.findOne({ user: req.user.id }).sort({ createdAt: -1 });
     
     if (!kyc) {
-      return res.json(formatResponse(true, 'KYC status retrieved', { 
-        status: 'not_submitted',
-        message: 'No KYC submission found'
-      }));
+      return res.json(
+        formatResponse(true, 'KYC status retrieved', { 
+          status: 'not_submitted',
+          message: 'No KYC submission found'
+        })
+      );
     }
 
-    res.json(formatResponse(true, 'KYC status retrieved', { kyc }));
+    res.json(
+      formatResponse(true, 'KYC status retrieved', { kyc })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching KYC status');
   }
@@ -1873,7 +2772,9 @@ app.post('/api/2fa/enable', auth, async (req, res) => {
     const user = await User.findById(req.user.id).select('+two_factor_secret');
     
     if (user.two_factor_enabled) {
-      return res.status(400).json(formatResponse(false, '2FA is already enabled'));
+      return res.status(400).json(
+        formatResponse(false, '2FA is already enabled')
+      );
     }
 
     const secret = user.generate2FASecret();
@@ -1881,11 +2782,13 @@ app.post('/api/2fa/enable', auth, async (req, res) => {
 
     const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
 
-    res.json(formatResponse(true, '2FA setup initiated', {
-      secret: secret.base32,
-      qr_code: qrCodeUrl,
-      otpauth_url: secret.otpauth_url
-    }));
+    res.json(
+      formatResponse(true, '2FA setup initiated', {
+        secret: secret.base32,
+        qr_code: qrCodeUrl,
+        otpauth_url: secret.otpauth_url
+      })
+    );
   } catch (error) {
     handleError(res, error, 'Error enabling 2FA');
   }
@@ -1893,24 +2796,34 @@ app.post('/api/2fa/enable', auth, async (req, res) => {
 
 // Verify 2FA
 app.post('/api/2fa/verify', auth, [
-  body('code').notEmpty().withMessage('2FA code is required')
+  body('code')
+    .notEmpty()
+    .withMessage('2FA code is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { code } = req.body;
     const user = await User.findById(req.user.id).select('+two_factor_secret');
 
     if (!user.two_factor_secret) {
-      return res.status(400).json(formatResponse(false, '2FA is not set up'));
+      return res.status(400).json(
+        formatResponse(false, '2FA is not set up')
+      );
     }
 
     const isValidToken = user.verify2FAToken(code);
     if (!isValidToken) {
-      return res.status(400).json(formatResponse(false, 'Invalid 2FA code'));
+      return res.status(400).json(
+        formatResponse(false, 'Invalid 2FA code')
+      );
     }
 
     user.two_factor_enabled = true;
@@ -1924,7 +2837,9 @@ app.post('/api/2fa/verify', auth, [
       type: 'success'
     });
 
-    res.json(formatResponse(true, '2FA enabled successfully'));
+    res.json(
+      formatResponse(true, '2FA enabled successfully')
+    );
   } catch (error) {
     handleError(res, error, 'Error verifying 2FA');
   }
@@ -1932,24 +2847,34 @@ app.post('/api/2fa/verify', auth, [
 
 // Disable 2FA
 app.post('/api/2fa/disable', auth, [
-  body('code').notEmpty().withMessage('2FA code is required')
+  body('code')
+    .notEmpty()
+    .withMessage('2FA code is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { code } = req.body;
     const user = await User.findById(req.user.id).select('+two_factor_secret');
 
     if (!user.two_factor_enabled) {
-      return res.status(400).json(formatResponse(false, '2FA is not enabled'));
+      return res.status(400).json(
+        formatResponse(false, '2FA is not enabled')
+      );
     }
 
     const isValidToken = user.verify2FAToken(code);
     if (!isValidToken) {
-      return res.status(400).json(formatResponse(false, 'Invalid 2FA code'));
+      return res.status(400).json(
+        formatResponse(false, 'Invalid 2FA code')
+      );
     }
 
     user.two_factor_enabled = false;
@@ -1964,7 +2889,9 @@ app.post('/api/2fa/disable', auth, [
       type: 'warning'
     });
 
-    res.json(formatResponse(true, '2FA disabled successfully'));
+    res.json(
+      formatResponse(true, '2FA disabled successfully')
+    );
   } catch (error) {
     handleError(res, error, 'Error disabling 2FA');
   }
@@ -1974,14 +2901,25 @@ app.post('/api/2fa/disable', auth, [
 
 // Create Support Ticket
 app.post('/api/support', auth, [
-  body('subject').notEmpty().withMessage('Subject is required'),
-  body('message').notEmpty().withMessage('Message is required'),
-  body('category').optional().isIn(['general', 'technical', 'billing', 'investment', 'withdrawal', 'kyc', 'other'])
+  body('subject')
+    .notEmpty()
+    .withMessage('Subject is required'),
+  body('message')
+    .notEmpty()
+    .withMessage('Message is required'),
+  body('category')
+    .optional()
+    .isIn(['general', 'technical', 'billing', 'investment', 'withdrawal', 'kyc', 'other'])
+    .withMessage('Invalid category')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { subject, message, category } = req.body;
@@ -2006,7 +2944,9 @@ app.post('/api/support', auth, [
       });
     }
 
-    res.status(201).json(formatResponse(true, 'Support ticket submitted successfully! Our team will respond within 24 hours.', { ticket }));
+    res.status(201).json(
+      formatResponse(true, 'Support ticket submitted successfully! Our team will respond within 24 hours.', { ticket })
+    );
   } catch (error) {
     handleError(res, error, 'Error creating support ticket');
   }
@@ -2015,9 +2955,7 @@ app.post('/api/support', auth, [
 // Get User Support Tickets
 app.get('/api/support/tickets', auth, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = getPaginationOptions(req);
 
     const tickets = await SupportTicket.find({ user: req.user.id })
       .sort({ createdAt: -1 })
@@ -2027,15 +2965,17 @@ app.get('/api/support/tickets', auth, async (req, res) => {
 
     const total = await SupportTicket.countDocuments({ user: req.user.id });
 
-    res.json(formatResponse(true, 'Support tickets retrieved successfully', {
-      tickets,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    }));
+    res.json(
+      formatResponse(true, 'Support tickets retrieved successfully', {
+        tickets,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching support tickets');
   }
@@ -2073,9 +3013,9 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
 
     // Recent activities
     const recentUsers = await User.find({ role: 'user' })
+      .select('full_name email createdAt')
       .sort({ createdAt: -1 })
       .limit(5)
-      .select('full_name email createdAt')
       .lean();
 
     const recentInvestments = await Investment.find({ status: 'pending' })
@@ -2100,7 +3040,9 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
       recent_investments: recentInvestments
     };
 
-    res.json(formatResponse(true, 'Admin dashboard stats retrieved', { stats }));
+    res.json(
+      formatResponse(true, 'Admin dashboard stats retrieved', { stats })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching admin dashboard');
   }
@@ -2218,7 +3160,9 @@ app.get('/api/admin/analytics', adminAuth, async (req, res) => {
       revenue_trends: revenueTrends.map(item => item.revenue)
     };
 
-    res.json(formatResponse(true, 'Admin analytics retrieved', { analytics }));
+    res.json(
+      formatResponse(true, 'Admin analytics retrieved', { analytics })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching admin analytics');
   }
@@ -2243,9 +3187,11 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
       status: inv.status
     }));
 
-    res.json(formatResponse(true, 'Pending investments retrieved', { 
-      investments: formattedInvestments 
-    }));
+    res.json(
+      formatResponse(true, 'Pending investments retrieved', { 
+        investments: formattedInvestments 
+      })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching pending investments');
   }
@@ -2253,12 +3199,18 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
 
 // Approve Investment
 app.post('/api/admin/investments/:id/approve', adminAuth, [
-  param('id').isMongoId().withMessage('Invalid investment ID')
+  param('id')
+    .isMongoId()
+    .withMessage('Invalid investment ID')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const investment = await Investment.findByIdAndUpdate(
@@ -2273,7 +3225,9 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
     ).populate('user plan');
 
     if (!investment) {
-      return res.status(404).json(formatResponse(false, 'Investment not found'));
+      return res.status(404).json(
+        formatResponse(false, 'Investment not found')
+      );
     }
 
     // Send notification to user
@@ -2291,7 +3245,9 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
       message: `Your investment in ${investment.plan.name} has been approved`
     });
 
-    res.json(formatResponse(true, 'Investment approved successfully', { investment }));
+    res.json(
+      formatResponse(true, 'Investment approved successfully', { investment })
+    );
   } catch (error) {
     handleError(res, error, 'Error approving investment');
   }
@@ -2299,20 +3255,30 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
 
 // Reject Investment
 app.post('/api/admin/investments/:id/reject', adminAuth, [
-  param('id').isMongoId().withMessage('Invalid investment ID'),
-  body('reason').optional().trim()
+  param('id')
+    .isMongoId()
+    .withMessage('Invalid investment ID'),
+  body('reason')
+    .optional()
+    .trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const { reason } = req.body;
 
     const investment = await Investment.findById(req.params.id).populate('user plan');
     if (!investment) {
-      return res.status(404).json(formatResponse(false, 'Investment not found'));
+      return res.status(404).json(
+        formatResponse(false, 'Investment not found')
+      );
     }
 
     // Refund amount to user
@@ -2351,7 +3317,9 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
       message: `Refund of ₦${investment.amount.toLocaleString()} for rejected investment`
     });
 
-    res.json(formatResponse(true, 'Investment rejected successfully', { investment }));
+    res.json(
+      formatResponse(true, 'Investment rejected successfully', { investment })
+    );
   } catch (error) {
     handleError(res, error, 'Error rejecting investment');
   }
@@ -2375,9 +3343,11 @@ app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
       payment_method: deposit.payment_method
     }));
 
-    res.json(formatResponse(true, 'Pending deposits retrieved', { 
-      deposits: formattedDeposits 
-    }));
+    res.json(
+      formatResponse(true, 'Pending deposits retrieved', { 
+        deposits: formattedDeposits 
+      })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching pending deposits');
   }
@@ -2385,12 +3355,18 @@ app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
 
 // Approve Deposit
 app.post('/api/admin/deposits/:id/approve', adminAuth, [
-  param('id').isMongoId().withMessage('Invalid deposit ID')
+  param('id')
+    .isMongoId()
+    .withMessage('Invalid deposit ID')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const deposit = await Deposit.findByIdAndUpdate(
@@ -2404,7 +3380,9 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
     ).populate('user');
 
     if (!deposit) {
-      return res.status(404).json(formatResponse(false, 'Deposit not found'));
+      return res.status(404).json(
+        formatResponse(false, 'Deposit not found')
+      );
     }
 
     // Add to user balance
@@ -2437,7 +3415,9 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
       message: `Deposit of ₦${deposit.amount.toLocaleString()} approved`
     });
 
-    res.json(formatResponse(true, 'Deposit approved successfully', { deposit }));
+    res.json(
+      formatResponse(true, 'Deposit approved successfully', { deposit })
+    );
   } catch (error) {
     handleError(res, error, 'Error approving deposit');
   }
@@ -2465,9 +3445,11 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
         (withdrawal.wallet_address || withdrawal.paypal_email)
     }));
 
-    res.json(formatResponse(true, 'Pending withdrawals retrieved', { 
-      withdrawals: formattedWithdrawals 
-    }));
+    res.json(
+      formatResponse(true, 'Pending withdrawals retrieved', { 
+        withdrawals: formattedWithdrawals 
+      })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching pending withdrawals');
   }
@@ -2475,12 +3457,18 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
 
 // Approve Withdrawal
 app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
-  param('id').isMongoId().withMessage('Invalid withdrawal ID')
+  param('id')
+    .isMongoId()
+    .withMessage('Invalid withdrawal ID')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { errors: errors.array() }));
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed', { 
+          errors: errors.array().map(err => err.msg) 
+        })
+      );
     }
 
     const withdrawal = await Withdrawal.findByIdAndUpdate(
@@ -2494,7 +3482,9 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
     ).populate('user');
 
     if (!withdrawal) {
-      return res.status(404).json(formatResponse(false, 'Withdrawal not found'));
+      return res.status(404).json(
+        formatResponse(false, 'Withdrawal not found')
+      );
     }
 
     // Deduct from user balance
@@ -2527,7 +3517,9 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
       message: `Withdrawal of ₦${withdrawal.amount.toLocaleString()} approved`
     });
 
-    res.json(formatResponse(true, 'Withdrawal approved successfully', { withdrawal }));
+    res.json(
+      formatResponse(true, 'Withdrawal approved successfully', { withdrawal })
+    );
   } catch (error) {
     handleError(res, error, 'Error approving withdrawal');
   }
@@ -2536,9 +3528,7 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
 // Get All Users for Admin
 app.get('/api/admin/users', adminAuth, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = getPaginationOptions(req);
     const status = req.query.status;
 
     let query = { role: 'user' };
@@ -2558,15 +3548,17 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
 
     const total = await User.countDocuments(query);
 
-    res.json(formatResponse(true, 'Users retrieved successfully', {
-      users,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    }));
+    res.json(
+      formatResponse(true, 'Users retrieved successfully', {
+        users,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      })
+    );
   } catch (error) {
     handleError(res, error, 'Error fetching users');
   }
@@ -2577,15 +3569,19 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
 app.post('/api/upload', auth, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json(formatResponse(false, 'No file uploaded'));
+      return res.status(400).json(
+        formatResponse(false, 'No file uploaded')
+      );
     }
 
     const folder = req.body.folder || 'general';
     const fileUrl = await handleFileUpload(req.file, folder);
 
-    res.json(formatResponse(true, 'File uploaded successfully', {
-      fileUrl: fileUrl
-    }));
+    res.json(
+      formatResponse(true, 'File uploaded successfully', {
+        fileUrl: fileUrl
+      })
+    );
 
   } catch (error) {
     handleError(res, error, 'Error uploading file');
@@ -2605,6 +3601,7 @@ cron.schedule('0 0 * * *', async () => {
     }).populate('plan').populate('user');
 
     let totalEarnings = 0;
+    let processedCount = 0;
 
     for (const investment of activeInvestments) {
       try {
@@ -2616,7 +3613,6 @@ cron.schedule('0 0 * * *', async () => {
         await investment.save();
 
         // Update user balance and total earnings
-        const user = await User.findById(investment.user._id);
         await User.findByIdAndUpdate(investment.user._id, {
           $inc: { 
             balance: dailyEarning,
@@ -2635,11 +3631,12 @@ cron.schedule('0 0 * * *', async () => {
         });
 
         totalEarnings += dailyEarning;
+        processedCount++;
 
         // Real-time update
         broadcastToUser(investment.user._id.toString(), {
-          type: 'balance_update',
-          balance: user.balance + dailyEarning,
+          type: 'earning_added',
+          amount: dailyEarning,
           message: `Daily earnings of ₦${dailyEarning.toLocaleString()} from ${investment.plan.name}`
         });
 
@@ -2648,7 +3645,7 @@ cron.schedule('0 0 * * *', async () => {
       }
     }
 
-    console.log(`✅ Daily earnings calculated. Total: ₦${totalEarnings.toLocaleString()}`);
+    console.log(`✅ Daily earnings calculated. Processed: ${processedCount}, Total: ₦${totalEarnings.toLocaleString()}`);
   } catch (error) {
     console.error('❌ Error calculating daily earnings:', error);
   }
@@ -2663,6 +3660,8 @@ cron.schedule('0 1 * * *', async () => {
       status: 'active',
       end_date: { $lte: new Date() }
     }).populate('user plan');
+
+    let completedCount = 0;
 
     for (const investment of completedInvestments) {
       try {
@@ -2698,23 +3697,50 @@ cron.schedule('0 1 * * *', async () => {
           });
         }
 
+        completedCount++;
+
       } catch (investmentError) {
         console.error(`Error completing investment ${investment._id}:`, investmentError);
       }
     }
 
-    console.log(`✅ Completed ${completedInvestments.length} investment checks`);
+    console.log(`✅ Completed ${completedCount} investment checks`);
   } catch (error) {
     console.error('❌ Error checking completed investments:', error);
+  }
+});
+
+// Cleanup old data (run weekly)
+cron.schedule('0 2 * * 0', async () => {
+  try {
+    console.log('🔄 Running weekly cleanup...');
+    
+    // Delete notifications older than 90 days
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    
+    const deletedNotifications = await Notification.deleteMany({
+      createdAt: { $lt: ninetyDaysAgo },
+      is_read: true
+    });
+    
+    console.log(`✅ Cleaned up ${deletedNotifications.deletedCount} old notifications`);
+  } catch (error) {
+    console.error('❌ Error during cleanup:', error);
   }
 });
 
 // ==================== HEALTH CHECK ====================
 app.get('/health', async (req, res) => {
   const dbStatus = mongoose.connection.readyState;
-  const statusMap = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
+  const statusMap = { 
+    0: 'disconnected', 
+    1: 'connected', 
+    2: 'connecting', 
+    3: 'disconnecting' 
+  };
   
-  res.json({
+  const healthCheck = {
     success: true,
     status: 'OK',
     message: '🚀 Raw Wealthy Backend v30.0 is running perfectly!',
@@ -2724,8 +3750,18 @@ app.get('/health', async (req, res) => {
     websocket: connectedClients.size,
     environment: process.env.NODE_ENV || 'development',
     uptime: process.uptime(),
-    memory: process.memoryUsage()
-  });
+    memory: process.memoryUsage(),
+    node_version: process.version
+  };
+
+  // If database is not connected, return 503
+  if (dbStatus !== 1) {
+    healthCheck.success = false;
+    healthCheck.status = 'Database Connection Issue';
+    return res.status(503).json(healthCheck);
+  }
+
+  res.json(healthCheck);
 });
 
 // ==================== ROOT ENDPOINT ====================
@@ -2736,6 +3772,7 @@ app.get('/', (req, res) => {
     version: '30.0.0',
     timestamp: new Date().toISOString(),
     status: 'Operational',
+    environment: process.env.NODE_ENV || 'development',
     endpoints: {
       health: '/health',
       api: '/api',
@@ -2760,32 +3797,55 @@ app.use((err, req, res, next) => {
   
   if (err.name === 'ValidationError') {
     const messages = Object.values(err.errors).map(val => val.message);
-    return res.status(400).json(formatResponse(false, 'Validation Error', { errors: messages }));
+    return res.status(400).json(
+      formatResponse(false, 'Validation Error', { errors: messages })
+    );
   }
   
   if (err.code === 11000) {
-    return res.status(400).json(formatResponse(false, 'Duplicate entry found'));
+    return res.status(400).json(
+      formatResponse(false, 'Duplicate entry found')
+    );
   }
   
   if (err.name === 'JsonWebTokenError') {
-    return res.status(401).json(formatResponse(false, 'Invalid token'));
+    return res.status(401).json(
+      formatResponse(false, 'Invalid token')
+    );
+  }
+  
+  if (err.name === 'TokenExpiredError') {
+    return res.status(401).json(
+      formatResponse(false, 'Token expired')
+    );
   }
   
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json(formatResponse(false, 'File too large. Maximum size is 15MB.'));
+      return res.status(400).json(
+        formatResponse(false, 'File too large. Maximum size is 10MB.')
+      );
     }
-    return res.status(400).json(formatResponse(false, `File upload error: ${err.message}`));
+    return res.status(400).json(
+      formatResponse(false, `File upload error: ${err.message}`)
+    );
   }
 
-  res.status(err.status || 500).json(formatResponse(false, 
-    process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message
-  ));
+  const statusCode = err.status || 500;
+  const message = process.env.NODE_ENV === 'production' && statusCode === 500 
+    ? 'Internal Server Error' 
+    : err.message;
+
+  res.status(statusCode).json(
+    formatResponse(false, message)
+  );
 });
 
 // 404 Handler
 app.use('*', (req, res) => {
-  res.status(404).json(formatResponse(false, `Route ${req.originalUrl} not found`));
+  res.status(404).json(
+    formatResponse(false, `Route ${req.originalUrl} not found`)
+  );
 });
 
 // ==================== INITIALIZE APPLICATION ====================
@@ -2794,7 +3854,7 @@ const initializeApp = async () => {
     await connectDB();
     
     const PORT = process.env.PORT || 5000;
-    const server = app.listen(PORT, () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`
 🎯 RAW WEALTHY BACKEND v30.0 - 100% FRONTEND INTEGRATED
 🌐 Server running on port ${PORT}
@@ -2828,6 +3888,25 @@ const initializeApp = async () => {
     server.on('upgrade', (request, socket, head) => {
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
+      });
+    });
+
+    // Graceful shutdown
+    process.on('SIGTERM', () => {
+      console.log('SIGTERM received, shutting down gracefully');
+      server.close(() => {
+        mongoose.connection.close();
+        console.log('Process terminated');
+        process.exit(0);
+      });
+    });
+
+    process.on('SIGINT', () => {
+      console.log('SIGINT received, shutting down gracefully');
+      server.close(() => {
+        mongoose.connection.close();
+        console.log('Process terminated');
+        process.exit(0);
       });
     });
 
