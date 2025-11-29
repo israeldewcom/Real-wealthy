@@ -1,49 +1,27 @@
-# Render Configuration File
 services:
-  # Backend API Service
   - type: web
     name: raw-wealthy-backend
     env: node
     plan: free
     region: ohio
-    branch: main
-    
-    # Build Configuration
     buildCommand: npm install
-    startCommand: npm start
-    
-    # Environment Variables
+    startCommand: npm run render-start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_PASSWORD
-        value: your_secure_admin_password_123
+        generateValue: true
       - key: MONGODB_URI
         fromDatabase:
           name: raw-wealthy-db
           property: connectionString
-    
-    # Health Check
-    healthCheckPath: /health
-    initialDeployHook: curl -X GET https://raw-wealthy-backend.onrender.com/health
-    
-    # Auto-Deploy
-    autoDeploy: true
-    
-    # Scaling
-    numInstances: 1
-    
-    # Advanced
-    disk:
-      name: uploads
-      mountPath: /opt/render/project/src/uploads
-      sizeGB: 1
 
-# Database Service
 databases:
   - name: raw-wealthy-db
     plan: free
+    region: ohio
     databaseName: raw-wealthy
-    ipAllowList: []
+    user: rawwealthy_user
