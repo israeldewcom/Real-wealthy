@@ -18,12 +18,12 @@ const nodemailer = require('nodemailer');
 const QRCode = require('qrcode');
 const speakeasy = require('speakeasy');
 const WebSocket = require('ws');
-const cloudinary = require('cloudinary').v2;
 const crypto = require('crypto');
-const userAgent = require('express-useragent');
 const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
+
+// Remove any other require statements that aren't used!
 
 // ==================== ENHANCED PRODUCTION CONFIGURATION ====================
 const app = express();
