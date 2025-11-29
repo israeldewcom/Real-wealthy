@@ -1,10 +1,9 @@
-# render.yaml
 services:
   - type: web
     name: raw-wealthy-backend
     env: node
     plan: free
-    region: oregon
+    branch: main
     buildCommand: npm install
     startCommand: npm start
     envVars:
@@ -12,27 +11,11 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - key: JWT_SECRET
-        generateValue: true
-      - key: JWT_EXPIRES_IN
-        value: 30d
       - key: MONGODB_URI
-        value: mongodb+srv://Rawmoney:rawmoney@rawwealthy.mwxlqha.mongodb.net/rawwealthy?retryWrites=true&w=majority
-      - key: CLOUDINARY_CLOUD_NAME
-        value: dyotuz5h7
-      - key: CLOUDINARY_API_KEY
-        value: 775719636564583
-      - key: CLOUDINARY_API_SECRET
-        value: -8o6zGglkQhyX-Bs9e5Ug_MSUm4
-      - key: CLIENT_URL
-        value: https://your-frontend.vercel.app
-      - key: EMAIL_USER
-        value: israeldewa1@gmail.com
-      - key: EMAIL_PASS
-        value: wMi5$03PHyMWUNE
-
-databases:
-  - name: rawwealthy-mongodb
-    plan: free
-    databaseName: rawwealthy
-    ipAllowList: []
+        value: mongodb+srv://israeldewa1_db_user:rawwealthy@rawwealthy.9cnu0jw.mongodb.net/rawwealthy?retryWrites=true&w=majority
+      - key: JWT_SECRET
+        value: raw_wealthy_production_jwt_secret_key_2024_v30_secure_encrypted
+      - key: ADMIN_EMAIL
+        value: admin@rawwealthy.com
+      - key: ADMIN_PASSWORD
+        value: Admin123!@#Secure2024
