@@ -1,12 +1,26 @@
 {
   "name": "raw-wealthy-backend",
-  "version": "1.0.0",
-  "description": "Raw Wealthy Investment Platform Backend",
+  "version": "30.0.0",
+  "description": "Raw Wealthy Investment Platform Backend API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "prod": "NODE_ENV=production node server.js",
+    "test": "jest --verbose",
+    "lint": "eslint server.js",
+    "build": "echo 'No build step required for Node.js backend'"
   },
+  "keywords": [
+    "investment",
+    "raw-materials",
+    "fintech",
+    "nodejs",
+    "express",
+    "mongodb"
+  ],
+  "author": "Raw Wealthy Team",
+  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "mongoose": "^7.5.0",
@@ -24,16 +38,27 @@
     "nodemailer": "^6.9.4",
     "qrcode": "^1.5.3",
     "speakeasy": "^2.0.0",
-    "axios": "^1.5.0",
-    "redis": "^4.6.7",
-    "cloudinary": "^1.40.0",
-    "express-useragent": "^1.0.15",
+    "ws": "^8.13.0",
     "moment": "^2.29.4",
     "uuid": "^9.0.0",
-    "dotenv": "^16.3.1",
-    "ws": "^8.14.2"
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "jest": "^29.6.2",
+    "supertest": "^6.3.3",
+    "eslint": "^8.47.0"
   },
   "engines": {
-    "node": ">=18.0.0"
-  }
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/raw-wealthy-backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/raw-wealthy-backend/issues"
+  },
+  "homepage": "https://rawwealthy.com"
 }
