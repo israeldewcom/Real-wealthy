@@ -1,21 +1,49 @@
+# Render Configuration File
 services:
+  # Backend API Service
   - type: web
     name: raw-wealthy-backend
     env: node
     plan: free
+    region: ohio
     branch: main
+    
+    # Build Configuration
     buildCommand: npm install
     startCommand: npm start
+    
+    # Environment Variables
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
-      - key: MONGODB_URI
-        value: mongodb+srv://israeldewa1_db_user:rawwealthy@rawwealthy.9cnu0jw.mongodb.net/rawwealthy?retryWrites=true&w=majority
       - key: JWT_SECRET
-        value: raw_wealthy_production_jwt_secret_key_2024_v30_secure_encrypted
-      - key: ADMIN_EMAIL
-        value: admin@rawwealthy.com
+        generateValue: true
       - key: ADMIN_PASSWORD
-        value: Admin123!@#Secure2024
+        value: your_secure_admin_password_123
+      - key: MONGODB_URI
+        fromDatabase:
+          name: raw-wealthy-db
+          property: connectionString
+    
+    # Health Check
+    healthCheckPath: /health
+    initialDeployHook: curl -X GET https://raw-wealthy-backend.onrender.com/health
+    
+    # Auto-Deploy
+    autoDeploy: true
+    
+    # Scaling
+    numInstances: 1
+    
+    # Advanced
+    disk:
+      name: uploads
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1
+
+# Database Service
+databases:
+  - name: raw-wealthy-db
+    plan: free
+    databaseName: raw-wealthy
+    ipAllowList: []
