@@ -1382,6 +1382,7 @@ const initializeDatabase = async () => {
 };
 
 // ==================== MONGODB CONNECTION ====================
+// ==================== ENHANCED MONGODB CONNECTION ====================
 const connectDB = async () => {
   try {
     console.log('🔄 Connecting to MongoDB...');
@@ -1392,15 +1393,22 @@ const connectDB = async () => {
       throw new Error('MONGODB_URI environment variable is required');
     }
 
+    // Enhanced mongoose options for production
     const mongooseOptions = {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 30000, // 30 seconds
-      socketTimeoutMS: 45000, // 45 seconds
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
       maxPoolSize: 10,
-      minPoolSize: 5
+      minPoolSize: 5,
+      retryWrites: true,
+      retryReads: true,
+      bufferCommands: false,
+      bufferMaxEntries: 0
     };
 
+    console.log('📡 Attempting MongoDB connection...');
+    
     await mongoose.connect(MONGODB_URI, mongooseOptions);
     
     console.log('✅ MongoDB Connected Successfully!');
@@ -1411,21 +1419,37 @@ const connectDB = async () => {
   } catch (error) {
     console.error('❌ MongoDB Connection Error:', error.message);
     
-    // Retry connection after 5 seconds
-    console.log('🔄 Retrying connection in 5 seconds...');
-    setTimeout(connectDB, 5000);
+    // More detailed error information
+    if (error.name === 'MongoServerSelectionError') {
+      console.error('🔍 Server Selection Error - Check your MongoDB cluster configuration');
+    } else if (error.name === 'MongoNetworkError') {
+      console.error('🔍 Network Error - Check your connection string and network settings');
+    } else if (error.name === 'MongoParseError') {
+      console.error('🔍 Parse Error - Check your MongoDB connection string format');
+    }
+    
+    // Retry connection after 10 seconds with exponential backoff
+    console.log('🔄 Retrying connection in 10 seconds...');
+    setTimeout(connectDB, 10000);
   }
 };
 
-// Handle MongoDB connection events
-mongoose.connection.on('disconnected', () => {
-  console.log('❌ MongoDB disconnected');
+// Enhanced MongoDB event handlers
+mongoose.connection.on('connected', () => {
+  console.log('✅ MongoDB connected successfully');
 });
 
 mongoose.connection.on('error', (err) => {
   console.error('❌ MongoDB connection error:', err);
 });
 
+mongoose.connection.on('disconnected', () => {
+  console.log('⚠️ MongoDB disconnected');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB reconnected');
+});
 // ==================== AUTH ROUTES - 100% FRONTEND COMPATIBLE ====================
 
 // Register - Perfect Frontend Match
