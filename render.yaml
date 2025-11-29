@@ -24,4 +24,3 @@ databases:
     plan: free
     region: ohio
     databaseName: raw-wealthy
-    user: rawwealthy_user
