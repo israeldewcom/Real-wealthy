@@ -1,33 +1,40 @@
 // server.js - ULTIMATE PRODUCTION BACKEND v30.0 - 100% FRONTEND PERFECT MATCH
 // ENHANCED FOR RENDER DEPLOYMENT - SECURE & SCALABLE
+// CONVERTED TO ES MODULES FOR RENDER
 
-const express = require('express');
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const cors = require('cors');
-const helmet = require('helmet');
-const compression = require('compression');
-const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
-const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss-clean');
-const hpp = require('hpp');
-const { body, validationResult, param } = require('express-validator');
-const cron = require('node-cron');
-const path = require('path');
-const multer = require('multer');
-const fs = require('fs');
-const nodemailer = require('nodemailer');
-const QRCode = require('qrcode');
-const speakeasy = require('speakeasy');
-const WebSocket = require('ws');
-const crypto = require('crypto');
-const moment = require('moment');
-const { v4: uuidv4 } = require('uuid');
+import express from 'express';
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import cors from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
+import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+import mongoSanitize from 'express-mongo-sanitize';
+import xss from 'xss-clean';
+import hpp from 'hpp';
+import { body, validationResult, param } from 'express-validator';
+import cron from 'node-cron';
+import path from 'path';
+import multer from 'multer';
+import fs from 'fs';
+import nodemailer from 'nodemailer';
+import QRCode from 'qrcode';
+import speakeasy from 'speakeasy';
+import WebSocket from 'ws';
+import crypto from 'crypto';
+import moment from 'moment';
+import { v4 as uuidv4 } from 'uuid';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+// ES Modules equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Enhanced environment configuration with validation
-require('dotenv').config();
+dotenv.config();
 
 // ==================== ENVIRONMENT VALIDATION ====================
 const requiredEnvVars = [
@@ -97,7 +104,7 @@ const corsOptions = {
       "http://localhost:8080",
       "http://127.0.0.1:8080",
       "https://raw-wealthy-frontend.vercel.app",
-      "https://raw-wealthy-backend.onrender.com"  // Added for Render deployment
+      "https://raw-wealthy-backend.onrender.com"
     ];
     
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -3918,4 +3925,4 @@ const initializeApp = async () => {
 
 initializeApp();
 
-module.exports = app;
+export default app;
