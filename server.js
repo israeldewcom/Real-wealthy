@@ -1179,19 +1179,40 @@ const handleError = (res, error, defaultMessage = 'An error occurred') => {
 };
 
 // Email Configuration with better error handling
+// ==================== ENHANCED EMAIL CONFIGURATION ====================
 const createEmailTransporter = () => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
     console.warn('⚠️ Email credentials not configured. Email functionality will be disabled.');
     return null;
   }
 
-  return nodemailer.createTransporter({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD
-    }
-  });
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      },
+      // Enhanced configuration for better reliability
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100
+    });
+
+    // Verify transporter configuration
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error('❌ Email transporter verification failed:', error);
+      } else {
+        console.log('✅ Email transporter is ready to send messages');
+      }
+    });
+
+    return transporter;
+  } catch (error) {
+    console.error('❌ Failed to create email transporter:', error);
+    return null;
+  }
 };
 
 const emailTransporter = createEmailTransporter();
@@ -1203,20 +1224,23 @@ const sendEmail = async (to, subject, html) => {
   }
 
   try {
-    await emailTransporter.sendMail({
+    const mailOptions = {
       from: process.env.EMAIL_USER || 'noreply@rawwealthy.com',
       to,
       subject,
-      html
-    });
-    console.log(`✅ Email sent to ${to}`);
+      html,
+      // Add text version for better deliverability
+      text: html.replace(/<[^>]*>/g, '')
+    };
+
+    const result = await emailTransporter.sendMail(mailOptions);
+    console.log(`✅ Email sent to ${to} - Message ID: ${result.messageId}`);
     return true;
   } catch (error) {
     console.error('❌ Email sending failed:', error);
     return false;
   }
 };
-
 // Pagination helper
 const getPaginationOptions = (req) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
