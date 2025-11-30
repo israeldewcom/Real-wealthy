@@ -1418,6 +1418,43 @@ const connectDB = async () => {
     setTimeout(connectDB, 5000);
   }
 };
+// Test MongoDB connection
+app.get('/api/debug/db', async (req, res) => {
+  const dbStatus = mongoose.connection.readyState;
+  const statusMap = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+  
+  try {
+    // Try to list collections to verify connection
+    const collections = dbStatus === 1 
+      ? await mongoose.connection.db.listCollections().toArray()
+      : [];
+    
+    res.json({
+      success: dbStatus === 1,
+      database: {
+        status: statusMap[dbStatus],
+        readyState: dbStatus,
+        host: mongoose.connection.host || 'unknown',
+        name: mongoose.connection.db?.databaseName || 'unknown',
+        collections: collections.map(c => c.name)
+      },
+      environment: {
+        MONGODB_URI_set: !!process.env.MONGODB_URI,
+        NODE_ENV: process.env.NODE_ENV
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message,
+      database: {
+        status: statusMap[dbStatus],
+        readyState: dbStatus
+      }
+    });
+  }
+});
 // ==================== AUTH ROUTES - 100% FRONTEND COMPATIBLE ====================
 
 // Register - Perfect Frontend Match
