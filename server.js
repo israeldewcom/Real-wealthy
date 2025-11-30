@@ -1382,29 +1382,30 @@ const initializeDatabase = async () => {
 };
 
 // ==================== MONGODB CONNECTION ====================
-// ==================== ENHANCED MONGODB CONNECTION ====================
+// ==================== GUARANTEED MONGODB CONNECTION ====================
 const connectDB = async () => {
   try {
     console.log('🔄 Connecting to MongoDB...');
-    
+
     const MONGODB_URI = process.env.MONGODB_URI;
     
     if (!MONGODB_URI) {
       throw new Error('MONGODB_URI environment variable is required');
     }
 
-    // Enhanced mongoose options for production
+    // SECURE & MODERN CONNECTION OPTIONS (NO DEPRECATED SETTINGS)
     const mongooseOptions = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
+      // Essential timeouts
       serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
+      
+      // Connection pooling
       maxPoolSize: 10,
       minPoolSize: 5,
+      
+      // Retry logic
       retryWrites: true,
-      retryReads: true,
-      bufferCommands: false,
-      bufferMaxEntries: 0
+      retryReads: true
     };
 
     console.log('📡 Attempting MongoDB connection...');
@@ -1419,16 +1420,18 @@ const connectDB = async () => {
   } catch (error) {
     console.error('❌ MongoDB Connection Error:', error.message);
     
-    // More detailed error information
+    // Detailed error diagnostics
     if (error.name === 'MongoServerSelectionError') {
-      console.error('🔍 Server Selection Error - Check your MongoDB cluster configuration');
+      console.error('🔍 Server Selection Error - Check your MongoDB Atlas IP whitelist');
     } else if (error.name === 'MongoNetworkError') {
-      console.error('🔍 Network Error - Check your connection string and network settings');
+      console.error('🔍 Network Error - Check firewall/network settings');
     } else if (error.name === 'MongoParseError') {
-      console.error('🔍 Parse Error - Check your MongoDB connection string format');
+      console.error('🔍 Parse Error - Check connection string format');
+    } else if (error.name === 'MongoError' && error.code === 8000) {
+      console.error('🔍 Authentication Error - Check username/password');
     }
     
-    // Retry connection after 10 seconds with exponential backoff
+    // Retry connection after 10 seconds
     console.log('🔄 Retrying connection in 10 seconds...');
     setTimeout(connectDB, 10000);
   }
@@ -1440,7 +1443,7 @@ mongoose.connection.on('connected', () => {
 });
 
 mongoose.connection.on('error', (err) => {
-  console.error('❌ MongoDB connection error:', err);
+  console.error('❌ MongoDB connection error:', err.message);
 });
 
 mongoose.connection.on('disconnected', () => {
