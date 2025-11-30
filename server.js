@@ -1382,7 +1382,7 @@ const initializeDatabase = async () => {
 };
 
 // ==================== MONGODB CONNECTION ====================
-// ==================== GUARANTEED MONGODB CONNECTION ====================
+// ==================== GUARANTEED MONGODB CONNECTION FIX ====================
 const connectDB = async () => {
   try {
     console.log('🔄 Connecting to MongoDB...');
@@ -1390,54 +1390,48 @@ const connectDB = async () => {
     const MONGODB_URI = process.env.MONGODB_URI;
     
     if (!MONGODB_URI) {
+      console.error('❌ MONGODB_URI is missing');
       throw new Error('MONGODB_URI environment variable is required');
     }
 
-    // SECURE & MODERN CONNECTION OPTIONS (NO DEPRECATED SETTINGS)
+    // MINIMAL MODERN OPTIONS - NO DEPRECATED SETTINGS
     const mongooseOptions = {
-      // Essential timeouts
-      serverSelectionTimeoutMS: 30000,
+      serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
-      
-      // Connection pooling
-      maxPoolSize: 10,
-      minPoolSize: 5,
-      
-      // Retry logic
-      retryWrites: true,
-      retryReads: true
     };
 
     console.log('📡 Attempting MongoDB connection...');
     
+    // SIMPLE CONNECTION - NO COMPLEX OPTIONS
     await mongoose.connect(MONGODB_URI, mongooseOptions);
     
     console.log('✅ MongoDB Connected Successfully!');
     
-    // Initialize database after successful connection
+    // Test the connection
+    await mongoose.connection.db.admin().ping();
+    console.log('✅ Database ping successful');
+    
+    // Initialize database
     await initializeDatabase();
     
   } catch (error) {
-    console.error('❌ MongoDB Connection Error:', error.message);
+    console.error('❌ MongoDB Connection Failed:', error.message);
     
-    // Detailed error diagnostics
+    // Specific error handling
     if (error.name === 'MongoServerSelectionError') {
-      console.error('🔍 Server Selection Error - Check your MongoDB Atlas IP whitelist');
+      console.error('💡 Solution: Check MongoDB Atlas IP whitelist - add 0.0.0.0/0');
     } else if (error.name === 'MongoNetworkError') {
-      console.error('🔍 Network Error - Check firewall/network settings');
+      console.error('💡 Solution: Check network connectivity and credentials');
     } else if (error.name === 'MongoParseError') {
-      console.error('🔍 Parse Error - Check connection string format');
-    } else if (error.name === 'MongoError' && error.code === 8000) {
-      console.error('🔍 Authentication Error - Check username/password');
+      console.error('💡 Solution: Check connection string format');
     }
     
-    // Retry connection after 10 seconds
-    console.log('🔄 Retrying connection in 10 seconds...');
-    setTimeout(connectDB, 10000);
+    console.log('🔄 Retrying connection in 5 seconds...');
+    setTimeout(connectDB, 5000);
   }
 };
 
-// Enhanced MongoDB event handlers
+// MongoDB event handlers
 mongoose.connection.on('connected', () => {
   console.log('✅ MongoDB connected successfully');
 });
@@ -1447,11 +1441,7 @@ mongoose.connection.on('error', (err) => {
 });
 
 mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ MongoDB disconnected');
-});
-
-mongoose.connection.on('reconnected', () => {
-  console.log('✅ MongoDB reconnected');
+  console.log('⚠️ MongoDB disconnected - attempting reconnect...');
 });
 // ==================== AUTH ROUTES - 100% FRONTEND COMPATIBLE ====================
 
