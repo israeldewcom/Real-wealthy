@@ -1,37 +1,32 @@
-import fetch from 'node-fetch';
-
-const HEALTH_CHECK_URL = process.env.RENDER_HEALTH_CHECK_URL || 'http://localhost:10000/health';
-
-async function checkHealth() {
-  try {
-    console.log('🔍 Performing health check...');
-    
-    const response = await fetch(HEALTH_CHECK_URL, {
-      timeout: 10000,
-      headers: {
-        'User-Agent': 'Raw-Wealthy-Health-Check/1.0'
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+app.get('/health', async (req, res) => {
+  const dbStatus = mongoose.connection.readyState;
+  const statusMap = { 
+    0: 'disconnected', 
+    1: 'connected', 
+    2: 'connecting', 
+    3: 'disconnecting' 
+  };
+  
+  // Get MongoDB connection details (masked for security)
+  const mongoUri = process.env.MONGODB_URI || 'not-set';
+  const maskedUri = mongoUri.replace(/mongodb\+srv:\/\/([^:]+):([^@]+)@/, 'mongodb+srv://$1:****@');
+  
+  const healthCheck = {
+    success: dbStatus === 1,
+    status: dbStatus === 1 ? 'OK' : 'Database Connecting',
+    message: dbStatus === 1 ? '🚀 API fully operational' : 'Database connection in progress',
+    timestamp: new Date().toISOString(),
+    database: statusMap[dbStatus],
+    database_status: dbStatus,
+    environment: process.env.NODE_ENV,
+    version: '31.0.0',
+    debug_info: {
+      mongo_uri_configured: !!process.env.MONGODB_URI,
+      mongo_uri_length: mongoUri.length,
+      jwt_secret_configured: !!process.env.JWT_SECRET,
+      admin_password_configured: !!process.env.ADMIN_PASSWORD
     }
-    
-    const data = await response.json();
-    
-    if (data.success && data.database === 'connected') {
-      console.log('✅ Health check PASSED');
-      console.log(`📊 Database: ${data.database}`);
-      console.log(`🌐 Environment: ${data.environment}`);
-      console.log(`⏰ Uptime: ${Math.floor(data.uptime)} seconds`);
-      process.exit(0);
-    } else {
-      throw new Error('Health check response indicates failure');
-    }
-  } catch (error) {
-    console.error('❌ Health check FAILED:', error.message);
-    process.exit(1);
-  }
-}
+  };
 
-checkHealth();
+  res.status(dbStatus === 1 ? 200 : 503).json(healthCheck);
+});
