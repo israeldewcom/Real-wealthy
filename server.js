@@ -1382,7 +1382,7 @@ const initializeDatabase = async () => {
 };
 
 // ==================== MONGODB CONNECTION ====================
-// ==================== GUARANTEED MONGODB CONNECTION FIX ====================
+// ==================== ULTIMATE MONGODB CONNECTION FIX ====================
 const connectDB = async () => {
   try {
     console.log('🔄 Connecting to MongoDB...');
@@ -1390,40 +1390,42 @@ const connectDB = async () => {
     const MONGODB_URI = process.env.MONGODB_URI;
     
     if (!MONGODB_URI) {
-      console.error('❌ MONGODB_URI is missing');
-      throw new Error('MONGODB_URI environment variable is required');
+      console.error('❌ MONGODB_URI is missing!');
+      console.error('💡 Please set MONGODB_URI in Render environment variables');
+      process.exit(1);
     }
 
-    // MINIMAL MODERN OPTIONS - NO DEPRECATED SETTINGS
-    const mongooseOptions = {
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-    };
-
-    console.log('📡 Attempting MongoDB connection...');
+    // ULTRA-SIMPLE CONNECTION - NO OPTIONS THAT CAN CAUSE ERRORS
+    console.log('📡 Attempting MongoDB connection with simplified settings...');
     
-    // SIMPLE CONNECTION - NO COMPLEX OPTIONS
-    await mongoose.connect(MONGODB_URI, mongooseOptions);
+    // Use minimal options that are guaranteed to work
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000, // 10 second timeout
+      socketTimeoutMS: 45000, // 45 second socket timeout
+    });
     
     console.log('✅ MongoDB Connected Successfully!');
     
     // Test the connection
-    await mongoose.connection.db.admin().ping();
-    console.log('✅ Database ping successful');
+    const db = mongoose.connection.db;
+    await db.command({ ping: 1 });
+    console.log('✅ Database ping successful - Connection verified!');
     
     // Initialize database
     await initializeDatabase();
     
   } catch (error) {
-    console.error('❌ MongoDB Connection Failed:', error.message);
+    console.error('❌ MONGODB CONNECTION FAILED:', error.message);
     
-    // Specific error handling
+    // Specific error diagnostics
     if (error.name === 'MongoServerSelectionError') {
-      console.error('💡 Solution: Check MongoDB Atlas IP whitelist - add 0.0.0.0/0');
+      console.error('🔍 SOLUTION: Check MongoDB Atlas Network Access - Add 0.0.0.0/0 to IP whitelist');
     } else if (error.name === 'MongoNetworkError') {
-      console.error('💡 Solution: Check network connectivity and credentials');
+      console.error('🔍 SOLUTION: Check your connection string format and credentials');
     } else if (error.name === 'MongoParseError') {
-      console.error('💡 Solution: Check connection string format');
+      console.error('🔍 SOLUTION: Remove any special characters from password in connection string');
+    } else if (error.code === 8000) {
+      console.error('🔍 SOLUTION: Authentication failed - check username and password');
     }
     
     console.log('🔄 Retrying connection in 5 seconds...');
@@ -1433,15 +1435,19 @@ const connectDB = async () => {
 
 // MongoDB event handlers
 mongoose.connection.on('connected', () => {
-  console.log('✅ MongoDB connected successfully');
+  console.log('✅ MongoDB event: connected');
 });
 
 mongoose.connection.on('error', (err) => {
-  console.error('❌ MongoDB connection error:', err.message);
+  console.error('❌ MongoDB event: error -', err.message);
 });
 
 mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ MongoDB disconnected - attempting reconnect...');
+  console.log('⚠️ MongoDB event: disconnected');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB event: reconnected');
 });
 // ==================== AUTH ROUTES - 100% FRONTEND COMPATIBLE ====================
 
