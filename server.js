@@ -1382,79 +1382,51 @@ const initializeDatabase = async () => {
 };
 
 // ==================== MONGODB CONNECTION ====================
-// ==================== GUARANTEED MONGODB CONNECTION ====================
+// ==================== FINAL MONGODB CONNECTION ====================
 const connectDB = async () => {
   try {
-    console.log('🔧 Starting MongoDB connection...');
+    console.log('🔧 Connecting to MongoDB...');
 
     if (!process.env.MONGODB_URI) {
-      console.error('❌ MONGODB_URI is not set in environment variables');
-      console.log('💡 Please set MONGODB_URI in Render environment variables');
-      return;
+      throw new Error('MONGODB_URI is not set in environment variables');
     }
 
-    console.log('📡 Connecting to MongoDB...');
-    
-    // SIMPLE CONNECTION - NO COMPLEX OPTIONS
-    await mongoose.connect(process.env.MONGODB_URI);
-    
+    console.log('📡 MONGODB_URI found, attempting connection...');
+
+    // Simple connection - no complex options that might cause issues
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+    });
+
     console.log('✅ MongoDB Connected Successfully!');
     console.log('🏠 Host:', mongoose.connection.host);
-    console.log('📊 Database:', mongoose.connection.db?.databaseName);
+    console.log('📊 Database:', mongoose.connection.name);
+    
+    return true;
     
   } catch (error) {
     console.error('💥 MongoDB connection failed:', error.message);
     
-    // Specific error messages
+    // Specific troubleshooting based on error
     if (error.name === 'MongoServerSelectionError') {
-      console.log('🔧 SOLUTION: Check MongoDB Atlas Network Access - Add IP 0.0.0.0/0');
-    } else if (error.name === 'MongoParseError') {
-      console.log('🔧 SOLUTION: Check your MONGODB_URI format');
-    } else if (error.name === 'MongoNetworkError') {
-      console.log('🔧 SOLUTION: Network issue - check firewall or VPN');
+      console.log('🔧 SOLUTION: Check MongoDB Atlas Network Access');
+      console.log('1. Go to MongoDB Atlas → Network Access');
+      console.log('2. Click "Add IP Address"');
+      console.log('3. Add "0.0.0.0/0" (allow all IPs)');
+    }
+    else if (error.name === 'MongoParseError') {
+      console.log('🔧 SOLUTION: Check MONGODB_URI format in Render environment variables');
+      console.log('Format should be: mongodb+srv://username:password@cluster.mongodb.net/database');
+    }
+    else if (error.message.includes('auth failed')) {
+      console.log('🔧 SOLUTION: Authentication failed - check username/password');
+      console.log('Make sure username "rawwealthy" exists in MongoDB Atlas');
     }
     
-    console.log('🔄 Retrying connection in 5 seconds...');
-    setTimeout(connectDB, 5000);
+    return false;
   }
 };
-// Test MongoDB connection
-app.get('/api/debug/db', async (req, res) => {
-  const dbStatus = mongoose.connection.readyState;
-  const statusMap = ['disconnected', 'connected', 'connecting', 'disconnecting'];
-  
-  try {
-    // Try to list collections to verify connection
-    const collections = dbStatus === 1 
-      ? await mongoose.connection.db.listCollections().toArray()
-      : [];
-    
-    res.json({
-      success: dbStatus === 1,
-      database: {
-        status: statusMap[dbStatus],
-        readyState: dbStatus,
-        host: mongoose.connection.host || 'unknown',
-        name: mongoose.connection.db?.databaseName || 'unknown',
-        collections: collections.map(c => c.name)
-      },
-      environment: {
-        MONGODB_URI_set: !!process.env.MONGODB_URI,
-        NODE_ENV: process.env.NODE_ENV
-      },
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.json({
-      success: false,
-      error: error.message,
-      database: {
-        status: statusMap[dbStatus],
-        readyState: dbStatus
-      }
-    });
-  }
-});
 // ==================== AUTH ROUTES - 100% FRONTEND COMPATIBLE ====================
 
 // Register - Perfect Frontend Match
