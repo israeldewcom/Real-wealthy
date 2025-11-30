@@ -1429,8 +1429,6 @@ mongoose.connection.on('connected', () => {
 mongoose.connection.on('error', (err) => {
   console.error('❌ MongoDB event: Error -', err.message);
 });
-// ==================== ULTIMATE MONGODB CONNECTION FIX ====================
-
 // ==================== AUTH ROUTES - 100% FRONTEND COMPATIBLE ====================
 
 // Register - Perfect Frontend Match
