@@ -1382,78 +1382,42 @@ const initializeDatabase = async () => {
 };
 
 // ==================== MONGODB CONNECTION ====================
-// ==================== GUARANTEED MONGODB FIX ====================
+// ==================== GUARANTEED MONGODB CONNECTION ====================
 const connectDB = async () => {
   try {
     console.log('🔧 Starting MongoDB connection...');
 
     if (!process.env.MONGODB_URI) {
-      console.error('❌ MONGODB_URI is not set');
-      // Create a simple user model anyway so server starts
-      console.log('⚠️ Starting without MongoDB - will retry');
+      console.error('❌ MONGODB_URI is not set in environment variables');
+      console.log('💡 Please set MONGODB_URI in Render environment variables');
       return;
     }
 
-    console.log('📡 Connecting to MongoDB Atlas...');
+    console.log('📡 Connecting to MongoDB...');
     
-    // RENDER-OPTIMIZED CONNECTION - DIFFERENT FROM BEFORE
-    const options = {
-      serverSelectionTimeoutMS: 30000, // 30 seconds
-      socketTimeoutMS: 45000, // 45 seconds
-      bufferCommands: false,
-      bufferMaxEntries: 0,
-      maxPoolSize: 10,
-      retryWrites: true,
-      w: 'majority'
-    };
-
-    await mongoose.connect(process.env.MONGODB_URI, options);
+    // SIMPLE CONNECTION - NO COMPLEX OPTIONS
+    await mongoose.connect(process.env.MONGODB_URI);
     
-    console.log('🎉 SUCCESS: MongoDB Connected!');
-    console.log('📊 Database:', mongoose.connection.db?.databaseName || 'Connected');
+    console.log('✅ MongoDB Connected Successfully!');
     console.log('🏠 Host:', mongoose.connection.host);
-    
-    // Initialize data after successful connection
-    await initializeData();
+    console.log('📊 Database:', mongoose.connection.db?.databaseName);
     
   } catch (error) {
     console.error('💥 MongoDB connection failed:', error.message);
     
-    // Specific error handling
+    // Specific error messages
     if (error.name === 'MongoServerSelectionError') {
       console.log('🔧 SOLUTION: Check MongoDB Atlas Network Access - Add IP 0.0.0.0/0');
+    } else if (error.name === 'MongoParseError') {
+      console.log('🔧 SOLUTION: Check your MONGODB_URI format');
     } else if (error.name === 'MongoNetworkError') {
-      console.log('🔧 SOLUTION: Check your connection string format');
-    } else if (error.name === 'MongooseServerSelectionError') {
-      console.log('🔧 SOLUTION: MongoDB Atlas cluster may be sleeping - wake it up');
+      console.log('🔧 SOLUTION: Network issue - check firewall or VPN');
     }
     
-    console.log('🔄 Retrying connection in 10 seconds...');
-    setTimeout(connectDB, 10000);
+    console.log('🔄 Retrying connection in 5 seconds...');
+    setTimeout(connectDB, 5000);
   }
 };
-
-// Enhanced event handlers
-mongoose.connection.on('connected', () => {
-  console.log('✅ Mongoose connected to MongoDB');
-});
-
-mongoose.connection.on('error', (err) => {
-  console.error('❌ Mongoose connection error:', err.message);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ Mongoose disconnected from MongoDB');
-  console.log('🔄 Attempting to reconnect...');
-  setTimeout(connectDB, 5000);
-});
-
-// Handle process termination
-process.on('SIGINT', async () => {
-  await mongoose.connection.close();
-  console.log('MongoDB connection closed through app termination');
-  process.exit(0);
-});
 // ==================== AUTH ROUTES - 100% FRONTEND COMPATIBLE ====================
 
 // Register - Perfect Frontend Match
