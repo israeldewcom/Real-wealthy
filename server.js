@@ -63,135 +63,39 @@ console.log('✅ Environment variables validated');
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 5000;
 const connectDBWithRetry = async (retries = MAX_RETRIES) => {
-  try {
-    console.log(`🔄 Attempting MongoDB connection (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})...`);
-    
-    if (!process.env.MONGODB_URI) {
-      throw new Error('MONGODB_URI is not defined in environment variables');
-    }
-
-    // Debug the connection details
-    debugMongoDBConnection(process.env.MONGODB_URI);
-
-    // Updated connection options - SIMPLIFIED VERSION
-    await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 30000,
-      socketTimeoutMS: 45000,
-    });
-    
-    console.log('✅ MongoDB Connected Successfully!');
-    console.log('🏠 Host:', mongoose.connection.host);
-    console.log('📊 Database:', mongoose.connection.name);
-    
-    // Initialize database after successful connection
-    await initializeDatabase();
-    
-    return true;
-    
-  } catch (error) {
-    console.error(`❌ MongoDB connection attempt failed: ${error.message}`);
-    
-    // More specific error handling
-    if (error.message.includes('bad auth') || error.message.includes('authentication failed')) {
-      console.error('🔴 AUTHENTICATION ERROR:');
-      console.error('   1. Check your MongoDB username and password');
-      console.error('   2. Verify the user has proper permissions');
-      console.error('   3. Check if the database exists');
-    }
-    
-    if (retries > 0) {
-      console.log(`🔄 Retrying in ${RETRY_DELAY / 1000} seconds... (${retries} retries left)`);
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-      return connectDBWithRetry(retries - 1);
-    } else {
-      console.error('💥 All MongoDB connection attempts failed');
-      console.log('🔄 Continuing with in-memory data storage...');
-      return false;
+  for (let i = 1; i <= retries; i++) {
+    try {
+      console.log(`🔄 MongoDB connection attempt ${i}/${retries}...`);
+      
+      const mongoURI = process.env.MONGODB_URI;
+      if (!mongoURI) {
+        throw new Error('MONGODB_URI environment variable is not set');
+      }
+      
+      // Simple connection - no complex options
+      await mongoose.connect(mongoURI);
+      
+      console.log('✅ MongoDB Connected Successfully!');
+      console.log(`📊 Database: ${mongoose.connection.name}`);
+      console.log(`🏠 Host: ${mongoose.connection.host}`);
+      
+      await initializeDatabase();
+      return true;
+      
+    } catch (error) {
+      console.error(`❌ Attempt ${i} failed: ${error.message}`);
+      
+      if (i < retries) {
+        console.log(`⏳ Waiting ${RETRY_DELAY/1000} seconds before next attempt...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      } else {
+        console.error('💥 All connection attempts failed');
+        console.log('📝 Falling back to memory storage');
+        return false;
+      }
     }
   }
-};
-
-    const debugMongoDBConnection = (uri) => {
-  try {
-    // Parse the URI to extract components
-    const match = uri.match(/mongodb\+srv:\/\/([^:]+):([^@]+)@([^/]+)\/([^?]+)/);
-    if (match) {
-      const [, username, password, host, dbname] = match;
-      console.log(`🔍 MongoDB Connection Details:`);
-      console.log(`   👤 Username: ${username}`);
-      console.log(`   🔒 Password: ${password ? '****' + password.slice(-4) : 'empty'}`);
-      console.log(`   🏠 Host: ${host}`);
-      console.log(`   📁 Database: ${dbname}`);
-      console.log(`   📊 Full URI masked: mongodb+srv://${username}:****@${host}/${dbname}`);
-    }
-  } catch (e) {
-    console.log('🔍 Could not parse MongoDB URI');
-  }
-};
-    // Log the MongoDB URI (masked for security)
-    const uri = process.env.MONGODB_URI;
-    const maskedUri = uri.replace(/mongodb(\+srv)?:\/\/([^:]+):([^@]+)@/, 'mongodb$1://$2:****@');
-    console.log(`📊 Connecting to MongoDB: ${maskedUri}`);
-
-    // Updated connection options for Mongoose 6+
-    const connectionOptions = {
-      serverSelectionTimeoutMS: 30000,  // Increased from 10s to 30s
-      socketTimeoutMS: 45000,
-      maxPoolSize: 10,                  // Reduced for Render's free tier
-      minPoolSize: 2,
-      retryWrites: true,
-      w: 'majority'
-    };
-
-    await mongoose.connect(process.env.MONGODB_URI, connectionOptions);
-    
-    console.log('✅ MongoDB Connected Successfully!');
-    console.log('🏠 Host:', mongoose.connection.host);
-    console.log('📊 Database:', mongoose.connection.name);
-    // Enhanced Connection Monitoring
-mongoose.connection.on('connecting', () => {
-  console.log('🔄 Mongoose is connecting to MongoDB...');
-});
-
-mongoose.connection.on('reconnected', () => {
-  console.log('✅ Mongoose reconnected to MongoDB');
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ Mongoose disconnected from MongoDB');
-  console.log('💡 Running in memory storage mode - DATA MAY BE LOST');
-});
-
-// Handle process termination
-process.on('SIGINT', async () => {
-  await mongoose.connection.close();
-  console.log('MongoDB connection closed due to app termination');
-  process.exit(0);
-});
-    // Initialize database after successful connection
-    await initializeDatabase();
-    
-    return true;
-    
-  } catch (error) {
-    console.error(`❌ MongoDB connection attempt failed: ${error.message}`);
-    
-    if (retries > 0) {
-      console.log(`🔄 Retrying in ${RETRY_DELAY / 1000} seconds... (${retries} retries left)`);
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-      return connectDBWithRetry(retries - 1);
-    } else {
-      console.error('💥 All MongoDB connection attempts failed');
-      console.log('🔄 Continuing with in-memory data storage...');
-      console.log('💡 TROUBLESHOOTING TIPS:');
-      console.log('1. Check MONGODB_URI environment variable');
-      console.log('2. Verify MongoDB Atlas IP whitelist includes Render IP');
-      console.log('3. Check MongoDB user permissions');
-      return false;
-    }
-  }
-};
-
+};  
 // ==================== ENHANCED EXPRESS SETUP ====================
 const app = express();
 
