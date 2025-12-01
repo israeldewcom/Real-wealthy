@@ -49,7 +49,7 @@ const requiredEnvVars = [
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'temp-jwt-secret-for-development-1234567890';
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://israeldewa1_db_user:P@ssw0rd!123@rawwealthy.9cnu0jw.mongodb.net/rawwealthy';
-process.env.CLIENT_URL = process.env.CLIENT_URL || 'https://raw-wealthy-frontend.vercel.app';
+process.env.CLIENT_URL = process.env.CLIENT_URL || 'https://us-raw-wealthy.vercel.app/';
 
 console.log('🔍 Environment check:');
 console.log('- MONGODB_URI set:', !!process.env.MONGODB_URI);
@@ -151,17 +151,17 @@ if (process.env.NODE_ENV === 'production') {
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
-      "https://real-earning.vercel.app",
+      "https://us-raw-wealthy.vercel.app/",
       "http://localhost:3000",
       "http://127.0.0.1:5500",
       "http://localhost:5500",
-      "https://raw-wealthy-frontend.vercel.app",
+      "https://us-raw-wealthy.vercel.app/",
       "https://rawwealthy.com",
-      "https://www.rawwealthy.com",
+      "https://us-raw-wealthy.vercel.app/",
       "http://localhost:3001",
-      "https://raw-wealthy.vercel.app",
+      "https://us-raw-wealthy.vercel.app/",
       "https://raw-wealthy-yibn.onrender.com",
-      "https://raw-wealthy-frontend.vercel.app",
+      "https://us-raw-wealthy.vercel.app/",
       "http://localhost:8080",
       "http://127.0.0.1:8080",
       "https://raw-wealthy-backend.onrender.com",
