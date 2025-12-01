@@ -1454,7 +1454,33 @@ const initializeDatabase = async () => {
       await admin.save();
       console.log('✅ Super Admin user created');
     }
-
+// Database reconnect endpoint (for debugging)
+app.post('/api/admin/reconnect-db', adminAuth, async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      return res.json(formatResponse(true, 'Database is already connected'));
+    }
+    
+    console.log('🔄 Admin manually triggering database reconnection...');
+    await mongoose.disconnect();
+    
+    const connected = await connectDBWithRetry(3);
+    
+    if (connected) {
+      res.json(formatResponse(true, 'Database reconnected successfully', {
+        dbState: mongoose.connection.readyState,
+        dbHost: mongoose.connection.host,
+        dbName: mongoose.connection.name
+      }));
+    } else {
+      res.status(500).json(formatResponse(false, 'Failed to reconnect to database', {
+        usingMemoryStorage: true
+      }));
+    }
+  } catch (error) {
+    handleError(res, error, 'Error reconnecting to database');
+  }
+});
     // Create investment plans if they don't exist
     const plansExist = await InvestmentPlan.countDocuments();
     if (plansExist === 0) {
