@@ -1,0 +1,37 @@
+const mongoose = require('mongoose');
+
+const MONGODB_URI = process.env.MONGODB_URI || 'your-connection-string-here';
+
+async function testConnection() {
+  console.log('Testing MongoDB connection...');
+  
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+    });
+    
+    console.log('✅ Connection successful!');
+    console.log('Host:', mongoose.connection.host);
+    console.log('Database:', mongoose.connection.name);
+    
+    // List collections to verify access
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    console.log('Available collections:', collections.map(c => c.name));
+    
+    await mongoose.disconnect();
+    console.log('Disconnected successfully.');
+    
+  } catch (error) {
+    console.error('❌ Connection failed:', error.message);
+    
+    if (error.message.includes('bad auth')) {
+      console.log('\n🔴 AUTHENTICATION ISSUE DETECTED');
+      console.log('Possible solutions:');
+      console.log('1. Reset your MongoDB Atlas password');
+      console.log('2. Create a new database user');
+      console.log('3. Check IP whitelist in MongoDB Atlas');
+    }
+  }
+}
+
+testConnection();
