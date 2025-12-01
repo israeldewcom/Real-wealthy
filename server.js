@@ -27,7 +27,6 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { fileTypeFromBuffer } from 'file-type';
 
 // ES Modules equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
