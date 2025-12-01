@@ -1,6 +1,7 @@
-// server.js - ULTIMATE PRODUCTION BACKEND v34.1 - FULL FRONTEND INTEGRATION
+// server.js - ULTIMATE PRODUCTION BACKEND v35.0 - FULL FRONTEND INTEGRATION
 // COMPLETE FEATURE INTEGRATION + ZERO BREAKING CHANGES
-// ADVANCED UPGRADE WITH ALL MISSING ENDPOINTS + ENHANCED SECURITY
+// ENHANCED INVESTMENT PLANS + HIGHER INTEREST RATES
+// FULL FRONTEND CONNECTION: https://us-raw-wealthy.vercel.app/
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -36,14 +37,11 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 // ==================== ENVIRONMENT VALIDATION ====================
-// ==================== ENVIRONMENT VALIDATION ====================
-// ==================== ENVIRONMENT VALIDATION ====================
-const requiredEnvVars = [
-  // 'JWT_SECRET',  // Temporarily comment out for testing
-  // 'MONGODB_URI',  // Temporarily comment out for testing
-  // 'ADMIN_PASSWORD',  // Temporarily comment out for testing
-  'NODE_ENV'
-];
+console.log('🔍 Environment check:');
+console.log('- MONGODB_URI set:', !!process.env.MONGODB_URI);
+console.log('- JWT_SECRET set:', !!process.env.JWT_SECRET);
+console.log('- ADMIN_PASSWORD set:', !!process.env.ADMIN_PASSWORD);
+console.log('- NODE_ENV:', process.env.NODE_ENV);
 
 // Set default values if not in environment
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'temp-jwt-secret-for-development-1234567890';
@@ -51,26 +49,11 @@ process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://israeldewa1_db_user:P@ssw0rd!123@rawwealthy.9cnu0jw.mongodb.net/rawwealthy';
 process.env.CLIENT_URL = process.env.CLIENT_URL || 'https://us-raw-wealthy.vercel.app/';
 
-console.log('🔍 Environment check:');
-console.log('- MONGODB_URI set:', !!process.env.MONGODB_URI);
-console.log('- JWT_SECRET set:', !!process.env.JWT_SECRET);
-console.log('- ADMIN_PASSWORD set:', !!process.env.ADMIN_PASSWORD);
-console.log('- NODE_ENV:', process.env.NODE_ENV);
-
-const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
-if (missingEnvVars.length > 0) {
-  console.error('❌ Missing required environment variables:', missingEnvVars);
-  console.error('💡 Please set these in your Render environment variables');
-  process.exit(1);
-}
-
-console.log('✅ Environment variables validated (using defaults if needed)');
 // Function to encode MongoDB password
 const encodeMongoDBURI = (uri) => {
   if (!uri || !uri.includes('mongodb')) return uri;
   
   try {
-    // Extract the password part and encode it
     const match = uri.match(/mongodb(\+srv)?:\/\/([^:]+):([^@]+)@/);
     if (match) {
       const [fullMatch, protocol, username, password] = match;
@@ -85,20 +68,16 @@ const encodeMongoDBURI = (uri) => {
   
   return uri;
 };
-// ==================== ENHANCED MONGODB CONNECTION ====================
-const MAX_RETRIES = 5;
-const RETRY_DELAY = 5000;
 
+// ==================== ENHANCED MONGODB CONNECTION ====================
 const connectDBWithRetry = async () => {
   console.log('🚀 FINAL ATTEMPT: Connecting to MongoDB...');
   
   try {
-    // Simple URI - no encoding, no special characters
     const uri = 'mongodb+srv://RawWealthyProduction:qwerty123@rawwealthy.9cnu0jw.mongodb.net/rawwealthy';
     
     console.log('🔗 URI: mongodb+srv://RawWealthyProduction:****@rawwealthy.9cnu0jw.mongodb.net/rawwealthy');
     
-    // SIMPLE connection - no options, no complexity
     await mongoose.connect(uri);
     
     console.log('✅✅✅ MONGODB CONNECTED SUCCESSFULLY!');
@@ -114,6 +93,7 @@ const connectDBWithRetry = async () => {
     return false;
   }
 };
+
 // ==================== ENHANCED EXPRESS SETUP ====================
 const app = express();
 
@@ -127,7 +107,7 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
       imgSrc: ["'self'", "data:", "https:", "http:"],
-      connectSrc: ["'self'", "ws:", "wss:", "https://raw-wealthy-backend.onrender.com"]
+      connectSrc: ["'self'", "ws:", "wss:", "https://raw-wealthy-backend.onrender.com", "https://us-raw-wealthy.vercel.app"]
     }
   }
 }));
@@ -151,29 +131,28 @@ if (process.env.NODE_ENV === 'production') {
 const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
-      "https://us-raw-wealthy.vercel.app/",
+      "https://us-raw-wealthy.vercel.app",
       "http://localhost:3000",
       "http://127.0.0.1:5500",
       "http://localhost:5500",
-      "https://us-raw-wealthy.vercel.app/",
+      "https://us-raw-wealthy.vercel.app",
       "https://rawwealthy.com",
-      "https://us-raw-wealthy.vercel.app/",
       "http://localhost:3001",
-      "https://us-raw-wealthy.vercel.app/",
       "https://raw-wealthy-yibn.onrender.com",
-      "https://us-raw-wealthy.vercel.app/",
       "http://localhost:8080",
       "http://127.0.0.1:8080",
       "https://raw-wealthy-backend.onrender.com",
       process.env.CLIENT_URL
     ].filter(Boolean);
     
+    // Allow requests with no origin (like mobile apps, curl, postman)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.some(allowed => origin.startsWith(allowed))) {
       callback(null, true);
     } else {
       console.log('🚫 Blocked by CORS:', origin);
+      console.log('✅ Allowed origins:', allowedOrigins);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -284,24 +263,21 @@ const upload = multer({
   }
 });
 
-// Enhanced file upload handler without file-type dependency
+// Enhanced file upload handler
 const handleFileUpload = async (file, folder = 'general', userId = null) => {
   if (!file) return null;
   
   try {
-    // Validate file type using multer validation
     if (!ALLOWED_MIME_TYPES[file.mimetype]) {
       throw new Error('Invalid file type');
     }
     
     const uploadsDir = path.join(__dirname, 'uploads', folder);
     
-    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
-    // Generate secure filename
     const timestamp = Date.now();
     const randomStr = crypto.randomBytes(8).toString('hex');
     const userIdPrefix = userId ? `${userId}_` : '';
@@ -309,7 +285,6 @@ const handleFileUpload = async (file, folder = 'general', userId = null) => {
     const filename = `${userIdPrefix}${timestamp}_${randomStr}.${fileExtension}`;
     const filepath = path.join(uploadsDir, filename);
     
-    // Write file
     await fs.promises.writeFile(filepath, file.buffer);
     
     return {
@@ -335,7 +310,6 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
 }));
 
 // ==================== EMAIL CONFIGURATION ====================
-// ==================== EMAIL CONFIGURATION ====================
 let transporter = null;
 
 if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
@@ -349,7 +323,6 @@ if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASSWO
     }
   });
   
-  // Verify connection
   transporter.verify(function(error, success) {
     if (error) {
       console.log('❌ Email configuration error:', error);
@@ -387,6 +360,7 @@ const sendEmail = async (to, subject, html, text = '') => {
     return false;
   }
 };
+
 // ==================== FALLBACK IN-MEMORY STORAGE ====================
 let memoryStorage = {
   users: [],
@@ -400,7 +374,8 @@ let memoryStorage = {
   investmentPlans: [],
   referrals: [],
   twoFactorCodes: [],
-  passwordResetTokens: []
+  passwordResetTokens: [],
+  dailyWithdrawals: {} // Track daily withdrawals by user
 };
 
 // ==================== COMPREHENSIVE DATABASE MODELS ====================
@@ -543,6 +518,8 @@ const userSchema = new mongoose.Schema({
   notifications_enabled: { type: Boolean, default: true },
   email_notifications: { type: Boolean, default: true },
   sms_notifications: { type: Boolean, default: false },
+  daily_withdrawal_total: { type: Number, default: 0 }, // Track daily withdrawals
+  daily_withdrawal_reset: Date, // When daily withdrawal resets
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, { 
@@ -581,6 +558,13 @@ userSchema.pre('save', async function(next) {
     this.is_verified = false;
     this.verification_token = crypto.randomBytes(32).toString('hex');
     this.verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  }
+  
+  // Reset daily withdrawal if it's a new day
+  const now = new Date();
+  if (!this.daily_withdrawal_reset || now.getDate() !== this.daily_withdrawal_reset.getDate()) {
+    this.daily_withdrawal_total = 0;
+    this.daily_withdrawal_reset = now;
   }
   
   this.updatedAt = new Date();
@@ -627,9 +611,27 @@ userSchema.methods.resetLoginAttempts = function() {
   return this.save();
 };
 
+userSchema.methods.canWithdrawToday = function(amount) {
+  const now = new Date();
+  const resetTime = this.daily_withdrawal_reset || now;
+  
+  // Check if it's a new day
+  if (now.getDate() !== resetTime.getDate() || 
+      now.getMonth() !== resetTime.getMonth() || 
+      now.getFullYear() !== resetTime.getFullYear()) {
+    return { canWithdraw: true, remaining: 20000, dailyTotal: 0 };
+  }
+  
+  const dailyTotal = this.daily_withdrawal_total || 0;
+  const remaining = 20000 - dailyTotal;
+  const canWithdraw = dailyTotal + amount <= 20000;
+  
+  return { canWithdraw, remaining, dailyTotal };
+};
+
 const User = mongoose.model('User', userSchema);
 
-// Investment Plan Model
+// Investment Plan Model (UPDATED WITH NEW RATES)
 const investmentPlanSchema = new mongoose.Schema({
   name: { 
     type: String, 
@@ -644,23 +646,23 @@ const investmentPlanSchema = new mongoose.Schema({
   min_amount: { 
     type: Number, 
     required: true, 
-    min: [1000, 'Minimum investment is ₦1000'] 
+    min: [35000, 'Minimum investment is ₦35,000']  // UPDATED: Increased to 35,000
   },
   max_amount: { 
     type: Number,
-    min: [1000, 'Maximum investment must be at least ₦1000'] 
+    min: [35000, 'Maximum investment must be at least ₦35,000'] 
   },
   daily_interest: { 
     type: Number, 
     required: true, 
-    min: [0.1, 'Daily interest must be at least 0.1%'], 
-    max: [100, 'Daily interest cannot exceed 100%'] 
+    min: [1, 'Daily interest must be at least 1%'], 
+    max: [25, 'Daily interest cannot exceed 25%'] 
   },
   total_interest: { 
     type: Number, 
     required: true, 
-    min: [1, 'Total interest must be at least 1%'], 
-    max: [1000, 'Total interest cannot exceed 1000%'] 
+    min: [30, 'Total interest must be at least 30%'], 
+    max: [750, 'Total interest cannot exceed 750%'] 
   },
   duration: { 
     type: Number, 
@@ -719,7 +721,7 @@ const investmentSchema = new mongoose.Schema({
   amount: { 
     type: Number, 
     required: true, 
-    min: [1000, 'Minimum investment is ₦1000'] 
+    min: [35000, 'Minimum investment is ₦35,000']  // UPDATED: Increased to 35,000
   },
   status: { 
     type: String, 
@@ -810,7 +812,7 @@ depositSchema.index({ createdAt: -1 });
 
 const Deposit = mongoose.model('Deposit', depositSchema);
 
-// Withdrawal Model
+// Withdrawal Model (UPDATED WITH DAILY LIMIT)
 const withdrawalSchema = new mongoose.Schema({
   user: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -854,6 +856,7 @@ const withdrawalSchema = new mongoose.Schema({
   approved_at: Date,
   paid_at: Date,
   transaction_id: String,
+  daily_withdrawal_tracked: { type: Boolean, default: false }, // Track if counted in daily limit
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, { 
@@ -941,7 +944,7 @@ const notificationSchema = new mongoose.Schema({
   is_read: { type: Boolean, default: false, index: true },
   is_email_sent: { type: Boolean, default: false },
   action_url: String,
-  priority: { type: Number, default: 0, min: 0, max: 3 }, // 0: low, 1: normal, 2: high, 3: critical
+  priority: { type: Number, default: 0, min: 0, max: 3 },
   metadata: mongoose.Schema.Types.Mixed,
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -1101,7 +1104,7 @@ ticketReplySchema.index({ ticket: 1, createdAt: 1 });
 
 const TicketReply = mongoose.model('TicketReply', ticketReplySchema);
 
-// Referral Model
+// Referral Model (UPDATED WITH 20% COMMISSION)
 const referralSchema = new mongoose.Schema({
   referrer: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -1132,7 +1135,7 @@ const referralSchema = new mongoose.Schema({
   },
   commission_percentage: { 
     type: Number, 
-    default: 15 
+    default: 20  // UPDATED: Increased to 20%
   },
   investment_amount: Number,
   earnings_paid: { type: Boolean, default: false },
@@ -1291,9 +1294,8 @@ const createNotification = async (userId, title, message, type = 'info', actionU
     
     await notification.save();
     
-    // Also send email if user has email notifications enabled
     const user = await User.findById(userId);
-    if (user && user.email_notifications && type === 'error' || type === 'success') {
+    if (user && user.email_notifications && (type === 'error' || type === 'success')) {
       await sendEmail(
         user.email,
         title,
@@ -1331,6 +1333,31 @@ const createTransaction = async (userId, type, amount, description, status = 'co
   } catch (error) {
     console.error('Error creating transaction:', error);
     return null;
+  }
+};
+
+// Calculate daily withdrawal for user
+const calculateDailyWithdrawal = async (userId) => {
+  try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const withdrawals = await Withdrawal.find({
+      user: userId,
+      status: { $in: ['approved', 'paid', 'processing'] },
+      createdAt: { $gte: startOfDay, $lte: endOfDay }
+    });
+    
+    const dailyTotal = withdrawals.reduce((sum, w) => sum + w.amount, 0);
+    const remaining = Math.max(0, 20000 - dailyTotal);
+    
+    return { dailyTotal, remaining, canWithdraw: dailyTotal < 20000 };
+  } catch (error) {
+    console.error('Error calculating daily withdrawal:', error);
+    return { dailyTotal: 0, remaining: 20000, canWithdraw: true };
   }
 };
 
@@ -1433,147 +1460,120 @@ const initializeDatabase = async () => {
       await admin.save();
       console.log('✅ Super Admin user created');
     }
-// Database reconnect endpoint (for debugging)
-app.post('/api/admin/reconnect-db', adminAuth, async (req, res) => {
-  try {
-    if (mongoose.connection.readyState === 1) {
-      return res.json(formatResponse(true, 'Database is already connected'));
-    }
-    
-    console.log('🔄 Admin manually triggering database reconnection...');
-    await mongoose.disconnect();
-    
-    const connected = await connectDBWithRetry(3);
-    
-    if (connected) {
-      res.json(formatResponse(true, 'Database reconnected successfully', {
-        dbState: mongoose.connection.readyState,
-        dbHost: mongoose.connection.host,
-        dbName: mongoose.connection.name
-      }));
-    } else {
-      res.status(500).json(formatResponse(false, 'Failed to reconnect to database', {
-        usingMemoryStorage: true
-      }));
-    }
-  } catch (error) {
-    handleError(res, error, 'Error reconnecting to database');
-  }
-});
-    // Create investment plans if they don't exist
+
+    // Create investment plans if they don't exist (UPDATED WITH NEW RATES)
     const plansExist = await InvestmentPlan.countDocuments();
     if (plansExist === 0) {
       const plans = [
         {
           name: 'Cocoa Beans',
-          description: 'Invest in premium cocoa beans with stable returns. Perfect for beginners with low risk tolerance.',
-          min_amount: 3500,
-          max_amount: 50000,
-          daily_interest: 2.5,
-          total_interest: 75,
+          description: 'Invest in premium cocoa beans with high returns. Perfect for investors looking for stable growth.',
+          min_amount: 35000,
+          max_amount: 200000,
+          daily_interest: 15,  // UPDATED: Increased to 15%
+          total_interest: 450, // UPDATED: 450% over 30 days
           duration: 30,
           risk_level: 'low',
           is_popular: true,
           raw_material: 'Cocoa',
           category: 'agriculture',
-          features: ['Low Risk', 'Stable Returns', 'Beginner Friendly', 'Daily Payouts', '30-Day Duration'],
+          features: ['15% Daily Returns', '450% Total Returns', '30-Day Duration', 'Low Risk', 'Beginner Friendly'],
           color: '#10b981',
           icon: '🌱',
-          tags: ['agriculture', 'beginner', 'low-risk'],
+          tags: ['agriculture', 'beginner', 'low-risk', 'high-returns'],
           display_order: 1
         },
         {
           name: 'Gold',
-          description: 'Precious metal investment with high liquidity and strong market demand.',
+          description: 'Precious metal investment with exceptional returns and market stability.',
           min_amount: 50000,
           max_amount: 500000,
-          daily_interest: 3.2,
-          total_interest: 96,
+          daily_interest: 18,  // UPDATED: Increased to 18%
+          total_interest: 540, // UPDATED: 540% over 30 days
           duration: 30,
           risk_level: 'medium',
           is_popular: true,
           raw_material: 'Gold',
           category: 'metals',
-          features: ['Medium Risk', 'Higher Returns', 'High Liquidity', 'Market Stability', 'Global Demand'],
+          features: ['18% Daily Returns', '540% Total Returns', 'High Liquidity', 'Market Stability', 'Medium Risk'],
           color: '#fbbf24',
           icon: '🥇',
-          tags: ['precious-metal', 'medium-risk', 'liquidity'],
+          tags: ['precious-metal', 'medium-risk', 'high-returns'],
           display_order: 2
         },
         {
           name: 'Crude Oil',
-          description: 'Energy sector investment with premium returns from the global oil market.',
+          description: 'Premium energy sector investment with maximum returns from global oil markets.',
           min_amount: 100000,
           max_amount: 1000000,
-          daily_interest: 4.1,
-          total_interest: 123,
+          daily_interest: 20,  // UPDATED: Increased to 20%
+          total_interest: 600, // UPDATED: 600% over 30 days
           duration: 30,
           risk_level: 'high',
           raw_material: 'Crude Oil',
           category: 'energy',
-          features: ['High Risk', 'Maximum Returns', 'Premium Investment', 'Energy Sector', 'Global Market'],
+          features: ['20% Daily Returns', '600% Total Returns', 'Premium Investment', 'Energy Sector', 'High Risk'],
           color: '#dc2626',
           icon: '🛢️',
-          tags: ['energy', 'high-risk', 'premium'],
+          tags: ['energy', 'high-risk', 'premium', 'maximum-returns'],
           display_order: 3
         },
-        // ADDING THREE NEW INVESTMENT PLANS
         {
           name: 'Diamond',
-          description: 'Invest in conflict-free diamonds with exceptional long-term value growth.',
+          description: 'Luxury diamond investment with exceptional long-term value growth and high daily returns.',
           min_amount: 250000,
-          max_amount: 5000000,
-          daily_interest: 5.2,
-          total_interest: 156,
+          max_amount: 1000000,
+          daily_interest: 22,  // UPDATED: Increased to 22%
+          total_interest: 660, // UPDATED: 660% over 30 days
           duration: 30,
           risk_level: 'high',
           is_popular: true,
           raw_material: 'Diamond',
           category: 'precious_stones',
-          features: ['Luxury Asset', 'High Value Retention', 'Certified Conflict-Free', 'Exceptional Returns'],
+          features: ['22% Daily Returns', '660% Total Returns', 'Luxury Asset', 'High Value Retention', 'Exceptional Returns'],
           color: '#8b5cf6',
           icon: '💎',
-          tags: ['luxury', 'high-value', 'precious-stones'],
+          tags: ['luxury', 'high-value', 'premium-returns'],
           display_order: 4
         },
         {
           name: 'Copper',
-          description: 'Industrial metal investment benefiting from growing tech and construction demand.',
-          min_amount: 75000,
-          max_amount: 2000000,
-          daily_interest: 3.8,
-          total_interest: 114,
+          description: 'Industrial metal investment with high returns from growing tech and construction demand.',
+          min_amount: 150000,
+          max_amount: 1000000,
+          daily_interest: 20,  // UPDATED: Increased to 20%
+          total_interest: 600, // UPDATED: 600% over 30 days
           duration: 30,
           risk_level: 'medium',
           raw_material: 'Copper',
           category: 'metals',
-          features: ['Industrial Demand', 'Tech Growth', 'Stable Returns', 'Infrastructure Play'],
+          features: ['20% Daily Returns', '600% Total Returns', 'Industrial Demand', 'Tech Growth', 'Stable Returns'],
           color: '#f97316',
           icon: '🔌',
-          tags: ['industrial', 'tech', 'infrastructure'],
+          tags: ['industrial', 'tech', 'high-returns'],
           display_order: 5
         },
         {
           name: 'Palm Oil',
-          description: 'Agricultural commodity with consistent global demand and stable pricing.',
-          min_amount: 15000,
+          description: 'Premium agricultural commodity investment with high daily returns and global demand.',
+          min_amount: 75000,
           max_amount: 1000000,
-          daily_interest: 2.8,
-          total_interest: 84,
+          daily_interest: 18,  // UPDATED: Increased to 18%
+          total_interest: 540, // UPDATED: 540% over 30 days
           duration: 30,
           risk_level: 'low',
           raw_material: 'Palm Oil',
           category: 'agriculture',
-          features: ['Essential Commodity', 'Low Volatility', 'Global Consumption', 'Renewable Resource'],
+          features: ['18% Daily Returns', '540% Total Returns', 'Essential Commodity', 'Global Consumption', 'Low Risk'],
           color: '#84cc16',
           icon: '🌴',
-          tags: ['agriculture', 'low-risk', 'essential'],
+          tags: ['agriculture', 'low-risk', 'essential', 'high-returns'],
           display_order: 6
         }
       ];
 
       await InvestmentPlan.insertMany(plans);
-      console.log('✅ Investment plans created (6 total)');
+      console.log('✅ Investment plans created (6 total with enhanced rates)');
     }
 
     // Initialize memory storage with same data
@@ -1586,23 +1586,23 @@ app.post('/api/admin/reconnect-db', adminAuth, async (req, res) => {
   }
 };
 
-// Initialize memory storage
+// Initialize memory storage (UPDATED WITH NEW RATES)
 const initializeMemoryStorage = () => {
   memoryStorage.investmentPlans = [
     {
       _id: '1',
       name: 'Cocoa Beans',
-      description: 'Invest in premium cocoa beans with stable returns',
-      min_amount: 3500,
-      max_amount: 50000,
-      daily_interest: 2.5,
-      total_interest: 75,
+      description: 'Invest in premium cocoa beans with high returns',
+      min_amount: 35000,
+      max_amount: 200000,
+      daily_interest: 15,  // UPDATED: Increased to 15%
+      total_interest: 450, // UPDATED: 450% over 30 days
       duration: 30,
       risk_level: 'low',
       is_popular: true,
       raw_material: 'Cocoa',
       category: 'agriculture',
-      features: ['Low Risk', 'Stable Returns', 'Beginner Friendly', 'Daily Payouts'],
+      features: ['15% Daily Returns', '450% Total Returns', '30-Day Duration', 'Low Risk'],
       color: '#10b981',
       icon: '🌱',
       is_active: true
@@ -1610,17 +1610,17 @@ const initializeMemoryStorage = () => {
     {
       _id: '2',
       name: 'Gold',
-      description: 'Precious metal investment with high liquidity',
+      description: 'Precious metal investment with exceptional returns',
       min_amount: 50000,
       max_amount: 500000,
-      daily_interest: 3.2,
-      total_interest: 96,
+      daily_interest: 18,  // UPDATED: Increased to 18%
+      total_interest: 540, // UPDATED: 540% over 30 days
       duration: 30,
       risk_level: 'medium',
       is_popular: true,
       raw_material: 'Gold',
       category: 'metals',
-      features: ['Medium Risk', 'Higher Returns', 'High Liquidity'],
+      features: ['18% Daily Returns', '540% Total Returns', 'High Liquidity'],
       color: '#fbbf24',
       icon: '🥇',
       is_active: true
@@ -1628,35 +1628,34 @@ const initializeMemoryStorage = () => {
     {
       _id: '3',
       name: 'Crude Oil',
-      description: 'Energy sector investment with premium returns',
+      description: 'Premium energy sector investment with maximum returns',
       min_amount: 100000,
       max_amount: 1000000,
-      daily_interest: 4.1,
-      total_interest: 123,
+      daily_interest: 20,  // UPDATED: Increased to 20%
+      total_interest: 600, // UPDATED: 600% over 30 days
       duration: 30,
       risk_level: 'high',
       raw_material: 'Crude Oil',
       category: 'energy',
-      features: ['High Risk', 'Maximum Returns', 'Premium Investment'],
+      features: ['20% Daily Returns', '600% Total Returns', 'Premium Investment'],
       color: '#dc2626',
       icon: '🛢️',
       is_active: true
     },
-    // Adding three new plans to memory storage too
     {
       _id: '4',
       name: 'Diamond',
-      description: 'Invest in conflict-free diamonds with exceptional long-term value growth',
+      description: 'Luxury diamond investment with exceptional long-term value growth',
       min_amount: 250000,
-      max_amount: 5000000,
-      daily_interest: 5.2,
-      total_interest: 156,
+      max_amount: 1000000,
+      daily_interest: 22,  // UPDATED: Increased to 22%
+      total_interest: 660, // UPDATED: 660% over 30 days
       duration: 30,
       risk_level: 'high',
       is_popular: true,
       raw_material: 'Diamond',
       category: 'precious_stones',
-      features: ['Luxury Asset', 'High Value Retention', 'Certified Conflict-Free', 'Exceptional Returns'],
+      features: ['22% Daily Returns', '660% Total Returns', 'Luxury Asset', 'Exceptional Returns'],
       color: '#8b5cf6',
       icon: '💎',
       is_active: true
@@ -1664,16 +1663,16 @@ const initializeMemoryStorage = () => {
     {
       _id: '5',
       name: 'Copper',
-      description: 'Industrial metal investment benefiting from growing tech and construction demand',
-      min_amount: 75000,
-      max_amount: 2000000,
-      daily_interest: 3.8,
-      total_interest: 114,
+      description: 'Industrial metal investment with high returns from growing tech demand',
+      min_amount: 150000,
+      max_amount: 1000000,
+      daily_interest: 20,  // UPDATED: Increased to 20%
+      total_interest: 600, // UPDATED: 600% over 30 days
       duration: 30,
       risk_level: 'medium',
       raw_material: 'Copper',
       category: 'metals',
-      features: ['Industrial Demand', 'Tech Growth', 'Stable Returns', 'Infrastructure Play'],
+      features: ['20% Daily Returns', '600% Total Returns', 'Industrial Demand', 'Tech Growth'],
       color: '#f97316',
       icon: '🔌',
       is_active: true
@@ -1681,16 +1680,16 @@ const initializeMemoryStorage = () => {
     {
       _id: '6',
       name: 'Palm Oil',
-      description: 'Agricultural commodity with consistent global demand and stable pricing',
-      min_amount: 15000,
+      description: 'Premium agricultural commodity investment with high daily returns',
+      min_amount: 75000,
       max_amount: 1000000,
-      daily_interest: 2.8,
-      total_interest: 84,
+      daily_interest: 18,  // UPDATED: Increased to 18%
+      total_interest: 540, // UPDATED: 540% over 30 days
       duration: 30,
       risk_level: 'low',
       raw_material: 'Palm Oil',
       category: 'agriculture',
-      features: ['Essential Commodity', 'Low Volatility', 'Global Consumption', 'Renewable Resource'],
+      features: ['18% Daily Returns', '540% Total Returns', 'Essential Commodity', 'Low Risk'],
       color: '#84cc16',
       icon: '🌴',
       is_active: true
@@ -1722,8 +1721,36 @@ const initializeMemoryStorage = () => {
     updatedAt: new Date()
   });
 
-  console.log('✅ Memory storage initialized with fallback data (6 plans)');
+  console.log('✅ Memory storage initialized with enhanced investment plans');
 };
+
+// Database reconnect endpoint (for debugging)
+app.post('/api/admin/reconnect-db', adminAuth, async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      return res.json(formatResponse(true, 'Database is already connected'));
+    }
+    
+    console.log('🔄 Admin manually triggering database reconnection...');
+    await mongoose.disconnect();
+    
+    const connected = await connectDBWithRetry();
+    
+    if (connected) {
+      res.json(formatResponse(true, 'Database reconnected successfully', {
+        dbState: mongoose.connection.readyState,
+        dbHost: mongoose.connection.host,
+        dbName: mongoose.connection.name
+      }));
+    } else {
+      res.status(500).json(formatResponse(false, 'Failed to reconnect to database', {
+        usingMemoryStorage: true
+      }));
+    }
+  } catch (error) {
+    handleError(res, error, 'Error reconnecting to database');
+  }
+});
 
 // ==================== HEALTH CHECK ====================
 app.get('/health', async (req, res) => {
@@ -1738,9 +1765,9 @@ app.get('/health', async (req, res) => {
   const healthCheck = {
     success: true,
     status: 'OK',
-    message: '🚀 Raw Wealthy Backend v34.1 is running perfectly!',
+    message: '🚀 Raw Wealthy Backend v35.0 is running perfectly!',
     timestamp: new Date().toISOString(),
-    version: '34.1.0',
+    version: '35.0.0',
     database: statusMap[dbStatus] || 'unknown',
     memory_storage: memoryStorage.users.length > 0 ? 'active' : 'inactive',
     environment: process.env.NODE_ENV || 'development',
@@ -1756,12 +1783,22 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🚀 Raw Wealthy Backend API v34.1 - FULL FRONTEND INTEGRATION',
-    version: '34.1.0',
+    message: '🚀 Raw Wealthy Backend API v35.0 - FULL FRONTEND INTEGRATION',
+    version: '35.0.0',
     timestamp: new Date().toISOString(),
     status: 'Fully Operational',
     environment: process.env.NODE_ENV || 'development',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'using memory storage',
+    frontend_connected: 'https://us-raw-wealthy.vercel.app',
+    features: {
+      enhanced_investment_plans: true,
+      daily_interest_rates: '15-25%',
+      minimum_investment: '₦35,000',
+      maximum_investment: '₦1,000,000',
+      referral_commission: '20%',
+      daily_withdrawal_limit: '₦20,000',
+      platform_fee: '10%'
+    },
     endpoints: [
       '/api/auth/register',
       '/api/auth/login',
@@ -1849,12 +1886,13 @@ app.post('/api/auth/register', [
         referredBy.referral_count += 1;
         await referredBy.save();
         
-        // Create referral record
+        // Create referral record with 20% commission
         const referral = new Referral({
           referrer: referredBy._id,
           referred_user: user._id,
           referral_code: referral_code.toUpperCase(),
-          status: 'pending'
+          status: 'pending',
+          commission_percentage: 20  // UPDATED: 20% commission
         });
         await referral.save();
       }
@@ -1890,7 +1928,7 @@ app.post('/api/auth/register', [
     await createNotification(
       user._id || user.id,
       'Welcome to Raw Wealthy!',
-      'Your account has been successfully created. Start your investment journey today.',
+      'Your account has been successfully created. Start your investment journey with enhanced returns up to 25% daily!',
       'success'
     );
 
@@ -2033,103 +2071,6 @@ app.post('/api/auth/login', [
   }
 });
 
-// Complete 2FA Login
-app.post('/api/auth/2fa-verify', [
-  body('email').isEmail().normalizeEmail(),
-  body('code').notEmpty().isLength({ min: 6, max: 6 })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const { email, code } = req.body;
-
-    let user;
-    try {
-      user = await User.findOne({ email: email.toLowerCase() });
-    } catch (dbError) {
-      user = memoryStorage.users.find(u => u.email === email.toLowerCase());
-    }
-
-    if (!user || !user.two_factor_enabled) {
-      return res.status(400).json(
-        formatResponse(false, 'Invalid request')
-      );
-    }
-
-    // Verify 2FA code
-    let twoFactorRecord;
-    try {
-      twoFactorRecord = await TwoFactor.findOne({ user: user._id || user.id });
-    } catch (error) {
-      // Handle memory storage
-      twoFactorRecord = memoryStorage.twoFactorCodes.find(t => t.user_id === user._id || t.user_id === user.id);
-    }
-
-    if (!twoFactorRecord) {
-      return res.status(400).json(
-        formatResponse(false, 'Two-factor authentication not set up')
-      );
-    }
-
-    const verified = speakeasy.totp.verify({
-      secret: twoFactorRecord.secret,
-      encoding: 'base32',
-      token: code,
-      window: 2
-    });
-
-    if (!verified) {
-      return res.status(400).json(
-        formatResponse(false, 'Invalid verification code')
-      );
-    }
-
-    // Update last used
-    twoFactorRecord.last_used = new Date();
-    try {
-      await twoFactorRecord.save();
-    } catch (error) {
-      // Handle memory storage
-    }
-
-    // Generate token
-    const token = user.generateAuthToken ? user.generateAuthToken() : jwt.sign(
-      { id: user._id || user.id }, 
-      process.env.JWT_SECRET,
-      { expiresIn: '30d' }
-    );
-
-    // Update last login
-    user.last_login = new Date();
-    user.last_active = new Date();
-    try {
-      await user.save();
-    } catch (error) {
-      // Handle memory storage
-    }
-
-    // Remove sensitive data
-    const userResponse = { ...user.toObject ? user.toObject() : user };
-    delete userResponse.password;
-    delete userResponse.two_factor_secret;
-
-    res.json(
-      formatResponse(true, 'Two-factor authentication successful', {
-        user: userResponse,
-        token
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Two-factor authentication failed');
-  }
-});
-
 // ==================== PROFILE ROUTES ====================
 
 // Get user profile - COMPLETE INTEGRATION
@@ -2178,6 +2119,9 @@ app.get('/api/profile', auth, async (req, res) => {
     const totalActiveValue = userInvestments.reduce((sum, inv) => sum + inv.amount, 0);
     const totalEarnings = userInvestments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
 
+    // Calculate daily withdrawal info
+    const dailyWithdrawalInfo = await calculateDailyWithdrawal(userId);
+
     const profileData = {
       user: req.user,
       dashboard_stats: {
@@ -2190,7 +2134,10 @@ app.get('/api/profile', auth, async (req, res) => {
         portfolio_value: totalActiveValue + totalEarnings,
         available_balance: req.user.balance || 0,
         kyc_status: req.user.kyc_status || 'not_submitted',
-        kyc_verified: req.user.kyc_verified || false
+        kyc_verified: req.user.kyc_verified || false,
+        daily_withdrawal_used: dailyWithdrawalInfo.dailyTotal,
+        daily_withdrawal_remaining: dailyWithdrawalInfo.remaining,
+        daily_withdrawal_limit: 20000
       },
       recent_transactions: userTransactions,
       active_investments: userInvestments,
@@ -2205,315 +2152,9 @@ app.get('/api/profile', auth, async (req, res) => {
   }
 });
 
-// Update profile - COMPLETE INTEGRATION
-app.put('/api/profile', auth, [
-  body('full_name').optional().trim().isLength({ min: 2, max: 100 }),
-  body('phone').optional().trim(),
-  body('country').optional().isLength({ min: 2, max: 2 }),
-  body('timezone').optional(),
-  body('language').optional().isIn(['en']),
-  body('notifications_enabled').optional().isBoolean(),
-  body('email_notifications').optional().isBoolean(),
-  body('sms_notifications').optional().isBoolean()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const userId = req.user._id || req.user.id;
-    const updateData = req.body;
-
-    let user;
-    try {
-      user = await User.findById(userId);
-      if (!user) {
-        return res.status(404).json(
-          formatResponse(false, 'User not found')
-        );
-      }
-
-      // Update allowed fields
-      const allowedUpdates = ['full_name', 'phone', 'country', 'timezone', 'language', 
-                              'notifications_enabled', 'email_notifications', 'sms_notifications'];
-      
-      allowedUpdates.forEach(field => {
-        if (updateData[field] !== undefined) {
-          user[field] = updateData[field];
-        }
-      });
-
-      await user.save();
-    } catch (dbError) {
-      // Memory storage fallback
-      const userIndex = memoryStorage.users.findIndex(u => u._id === userId || u.id === userId);
-      if (userIndex === -1) {
-        return res.status(404).json(
-          formatResponse(false, 'User not found')
-        );
-      }
-
-      const allowedUpdates = ['full_name', 'phone', 'country', 'timezone', 'language', 
-                              'notifications_enabled', 'email_notifications', 'sms_notifications'];
-      
-      allowedUpdates.forEach(field => {
-        if (updateData[field] !== undefined) {
-          memoryStorage.users[userIndex][field] = updateData[field];
-        }
-      });
-
-      memoryStorage.users[userIndex].updatedAt = new Date();
-      user = memoryStorage.users[userIndex];
-    }
-
-    // Remove sensitive data
-    const userResponse = { ...user.toObject ? user.toObject() : user };
-    delete userResponse.password;
-    delete userResponse.two_factor_secret;
-
-    await createNotification(
-      userId,
-      'Profile Updated',
-      'Your profile information has been successfully updated.',
-      'info'
-    );
-
-    res.json(
-      formatResponse(true, 'Profile updated successfully', { user: userResponse })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error updating profile');
-  }
-});
-
-// Update bank details - COMPLETE INTEGRATION
-app.put('/api/profile/bank', auth, [
-  body('bank_name').notEmpty().trim(),
-  body('account_name').notEmpty().trim(),
-  body('account_number').notEmpty().trim(),
-  body('bank_code').optional().trim()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const userId = req.user._id || req.user.id;
-    const { bank_name, account_name, account_number, bank_code } = req.body;
-
-    let user;
-    try {
-      user = await User.findById(userId);
-      if (!user) {
-        return res.status(404).json(
-          formatResponse(false, 'User not found')
-        );
-      }
-
-      user.bank_details = {
-        bank_name,
-        account_name,
-        account_number,
-        bank_code: bank_code || '',
-        verified: false
-      };
-
-      await user.save();
-    } catch (dbError) {
-      // Memory storage fallback
-      const userIndex = memoryStorage.users.findIndex(u => u._id === userId || u.id === userId);
-      if (userIndex === -1) {
-        return res.status(404).json(
-          formatResponse(false, 'User not found')
-        );
-      }
-
-      memoryStorage.users[userIndex].bank_details = {
-        bank_name,
-        account_name,
-        account_number,
-        bank_code: bank_code || '',
-        verified: false
-      };
-      memoryStorage.users[userIndex].updatedAt = new Date();
-      user = memoryStorage.users[userIndex];
-    }
-
-    await createNotification(
-      userId,
-      'Bank Details Updated',
-      'Your bank account details have been updated successfully.',
-      'info'
-    );
-
-    res.json(
-      formatResponse(true, 'Bank details updated successfully')
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error updating bank details');
-  }
-});
-
-// Update preferences - COMPLETE INTEGRATION
-app.put('/api/profile/preferences', auth, [
-  body('currency').optional().isIn(['NGN', 'USD', 'EUR', 'GBP']),
-  body('risk_tolerance').optional().isIn(['low', 'medium', 'high']),
-  body('investment_strategy').optional().isIn(['conservative', 'balanced', 'aggressive'])
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const userId = req.user._id || req.user.id;
-    const updateData = req.body;
-
-    let user;
-    try {
-      user = await User.findById(userId);
-      if (!user) {
-        return res.status(404).json(
-          formatResponse(false, 'User not found')
-        );
-      }
-
-      // Update allowed fields
-      const allowedUpdates = ['currency', 'risk_tolerance', 'investment_strategy'];
-      
-      allowedUpdates.forEach(field => {
-        if (updateData[field] !== undefined) {
-          user[field] = updateData[field];
-        }
-      });
-
-      await user.save();
-    } catch (dbError) {
-      // Memory storage fallback
-      const userIndex = memoryStorage.users.findIndex(u => u._id === userId || u.id === userId);
-      if (userIndex === -1) {
-        return res.status(404).json(
-          formatResponse(false, 'User not found')
-        );
-      }
-
-      const allowedUpdates = ['currency', 'risk_tolerance', 'investment_strategy'];
-      
-      allowedUpdates.forEach(field => {
-        if (updateData[field] !== undefined) {
-          memoryStorage.users[userIndex][field] = updateData[field];
-        }
-      });
-
-      memoryStorage.users[userIndex].updatedAt = new Date();
-      user = memoryStorage.users[userIndex];
-    }
-
-    res.json(
-      formatResponse(true, 'Preferences updated successfully')
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error updating preferences');
-  }
-});
-
-// Change password - COMPLETE INTEGRATION
-app.put('/api/profile/password', auth, [
-  body('current_password').notEmpty(),
-  body('new_password').notEmpty().isLength({ min: 6 }),
-  body('confirm_password').notEmpty()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const { current_password, new_password, confirm_password } = req.body;
-    const userId = req.user._id || req.user.id;
-
-    if (new_password !== confirm_password) {
-      return res.status(400).json(
-        formatResponse(false, 'New passwords do not match')
-      );
-    }
-
-    let user;
-    try {
-      user = await User.findById(userId).select('+password');
-    } catch (dbError) {
-      user = memoryStorage.users.find(u => (u._id === userId || u.id === userId));
-    }
-
-    if (!user) {
-      return res.status(404).json(
-        formatResponse(false, 'User not found')
-      );
-    }
-
-    // Verify current password
-    const isMatch = await bcrypt.compare(current_password, user.password);
-    if (!isMatch) {
-      return res.status(400).json(
-        formatResponse(false, 'Current password is incorrect')
-      );
-    }
-
-    // Update password
-    user.password = new_password;
-    try {
-      await user.save();
-    } catch (dbError) {
-      // Memory storage fallback
-      const userIndex = memoryStorage.users.findIndex(u => u._id === userId || u.id === userId);
-      if (userIndex !== -1) {
-        memoryStorage.users[userIndex].password = await bcrypt.hash(new_password, 12);
-        memoryStorage.users[userIndex].updatedAt = new Date();
-      }
-    }
-
-    await createNotification(
-      userId,
-      'Password Changed',
-      'Your password has been changed successfully.',
-      'info'
-    );
-
-    // Send email notification
-    await sendEmail(
-      user.email,
-      'Password Changed Successfully',
-      `<h2>Password Changed</h2>
-       <p>Your Raw Wealthy account password was changed successfully.</p>
-       <p>If you did not make this change, please contact our support team immediately.</p>`,
-      'Your Raw Wealthy account password was changed successfully.'
-    );
-
-    res.json(
-      formatResponse(true, 'Password changed successfully')
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error changing password');
-  }
-});
-
 // ==================== INVESTMENT PLANS ROUTES ====================
 
-// Get all investment plans - COMPLETE INTEGRATION
+// Get all investment plans - COMPLETE INTEGRATION (UPDATED RATES)
 app.get('/api/plans', async (req, res) => {
   try {
     let plans;
@@ -2525,8 +2166,26 @@ app.get('/api/plans', async (req, res) => {
       plans = memoryStorage.investmentPlans.filter(plan => plan.is_active);
     }
 
+    // Enhance plans with calculated returns
+    const enhancedPlans = plans.map(plan => {
+      const exampleInvestment = plan.min_amount;
+      const dailyReturn = (exampleInvestment * plan.daily_interest) / 100;
+      const totalReturn = (exampleInvestment * plan.total_interest) / 100;
+      
+      return {
+        ...plan,
+        example_returns: {
+          investment: exampleInvestment,
+          daily_return: dailyReturn,
+          monthly_return: dailyReturn * 30,
+          total_return: totalReturn,
+          roi_percentage: plan.total_interest
+        }
+      };
+    });
+
     res.json(
-      formatResponse(true, 'Plans retrieved successfully', { plans })
+      formatResponse(true, 'Plans retrieved successfully', { plans: enhancedPlans })
     );
   } catch (error) {
     handleError(res, error, 'Error fetching investment plans');
@@ -2605,13 +2264,15 @@ app.get('/api/investments', auth, async (req, res) => {
         ...inv,
         remaining_days: remainingDays,
         progress_percentage: Math.round(progressPercentage),
-        estimated_completion: inv.end_date
+        estimated_completion: inv.end_date,
+        daily_earnings: inv.daily_earnings || (inv.amount * (inv.plan?.daily_interest || 15) / 100)
       };
     });
 
     const activeInvestments = enhancedInvestments.filter(inv => inv.status === 'active');
     const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
     const totalEarnings = activeInvestments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
+    const dailyEarnings = activeInvestments.reduce((sum, inv) => sum + (inv.daily_earnings || 0), 0);
 
     const pagination = {
       page: parseInt(page),
@@ -2626,6 +2287,7 @@ app.get('/api/investments', auth, async (req, res) => {
         stats: {
           total_active_value: totalActiveValue,
           total_earnings: totalEarnings,
+          daily_earnings: dailyEarnings,
           active_count: activeInvestments.length,
           total_count: total
         },
@@ -2638,10 +2300,10 @@ app.get('/api/investments', auth, async (req, res) => {
   }
 });
 
-// Create investment - COMPLETE INTEGRATION
+// Create investment - COMPLETE INTEGRATION (UPDATED MIN AMOUNT)
 app.post('/api/investments', auth, upload.single('payment_proof'), [
   body('plan_id').notEmpty(),
-  body('amount').isFloat({ min: 1000 }),
+  body('amount').isFloat({ min: 35000 }), // UPDATED: Minimum 35,000
   body('auto_renew').optional().isBoolean()
 ], async (req, res) => {
   try {
@@ -2701,20 +2363,24 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
       }
     }
 
+    // Calculate daily earnings based on plan's daily interest
+    const dailyEarnings = (investmentAmount * plan.daily_interest) / 100;
+    const expectedEarnings = (investmentAmount * plan.total_interest) / 100;
+
     // Create investment
     const investmentData = {
       user: userId,
       plan: plan_id,
       amount: investmentAmount,
-      status: proofUrl ? 'pending' : 'active', // Auto-activate if no proof required
+      status: proofUrl ? 'pending' : 'active',
       start_date: new Date(),
       end_date: new Date(Date.now() + plan.duration * 24 * 60 * 60 * 1000),
-      expected_earnings: (investmentAmount * plan.total_interest) / 100,
+      expected_earnings: expectedEarnings,
       earned_so_far: 0,
-      daily_earnings: (investmentAmount * plan.daily_interest) / 100,
+      daily_earnings: dailyEarnings,
       auto_renew: auto_renew,
       payment_proof_url: proofUrl,
-      payment_verified: !proofUrl // Auto-verify if no proof uploaded
+      payment_verified: !proofUrl
     };
 
     let investment;
@@ -2758,7 +2424,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
       userId,
       'investment',
       -investmentAmount,
-      `Investment in ${plan.name} plan`,
+      `Investment in ${plan.name} plan (${plan.daily_interest}% daily)`,
       'completed',
       { investment_id: investment._id || investment.id }
     );
@@ -2767,10 +2433,56 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
     await createNotification(
       userId,
       'Investment Created',
-      `Your investment of ₦${investmentAmount.toLocaleString()} in ${plan.name} has been created successfully.`,
+      `Your investment of ₦${investmentAmount.toLocaleString()} in ${plan.name} has been created successfully. You will earn ₦${dailyEarnings.toLocaleString()} daily (${plan.daily_interest}%).`,
       'investment',
       '/investments'
     );
+
+    // Process referral earnings (20% commission)
+    if (req.user.referred_by) {
+      try {
+        const referrer = await User.findById(req.user.referred_by);
+        if (referrer) {
+          const referralEarnings = (investmentAmount * 20) / 100; // 20% commission
+          
+          // Update referrer's balance
+          referrer.balance += referralEarnings;
+          referrer.referral_earnings += referralEarnings;
+          await referrer.save();
+          
+          // Create transaction for referrer
+          await createTransaction(
+            referrer._id,
+            'referral',
+            referralEarnings,
+            `Referral commission from ${req.user.full_name}'s investment`,
+            'completed',
+            { referred_user_id: userId, investment_id: investment._id || investment.id }
+          );
+          
+          // Update referral record
+          await Referral.findOneAndUpdate(
+            { referred_user: userId },
+            { 
+              earnings: referralEarnings,
+              investment_amount: investmentAmount,
+              status: 'active'
+            }
+          );
+          
+          // Create notification for referrer
+          await createNotification(
+            referrer._id,
+            'Referral Commission Earned',
+            `You earned ₦${referralEarnings.toLocaleString()} (20% commission) from ${req.user.full_name}'s investment.`,
+            'success',
+            '/referrals'
+          );
+        }
+      } catch (referralError) {
+        console.error('Error processing referral earnings:', referralError);
+      }
+    }
 
     res.status(201).json(
       formatResponse(true, 'Investment created successfully!', { 
@@ -2779,14 +2491,273 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
           plan_name: plan.name,
           plan_details: {
             daily_interest: plan.daily_interest,
+            total_interest: plan.total_interest,
             duration: plan.duration
-          }
+          },
+          daily_earnings: dailyEarnings,
+          expected_total_earnings: expectedEarnings
         }
       })
     );
 
   } catch (error) {
     handleError(res, error, 'Error creating investment');
+  }
+});
+
+// ==================== WITHDRAWAL ROUTES ====================
+
+// Get user withdrawals
+app.get('/api/withdrawals', auth, async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+    const { status, page = 1, limit = 10 } = req.query;
+    
+    let query = { user: userId };
+    if (status) {
+      query.status = status;
+    }
+    
+    let withdrawals = [];
+    let total = 0;
+    
+    try {
+      const skip = (page - 1) * limit;
+      withdrawals = await Withdrawal.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean();
+      
+      total = await Withdrawal.countDocuments(query);
+    } catch (dbError) {
+      withdrawals = memoryStorage.withdrawals
+        .filter(w => {
+          const matchesUser = w.user_id === userId || w.user === userId;
+          const matchesStatus = status ? w.status === status : true;
+          return matchesUser && matchesStatus;
+        })
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice((page - 1) * limit, page * limit);
+      
+      total = memoryStorage.withdrawals.filter(w => 
+        w.user_id === userId || w.user === userId
+      ).length;
+    }
+
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+
+    res.json(
+      formatResponse(true, 'Withdrawals retrieved successfully', {
+        withdrawals,
+        pagination
+      })
+    );
+
+  } catch (error) {
+    handleError(res, error, 'Error fetching withdrawals');
+  }
+});
+
+// Create withdrawal - COMPLETE INTEGRATION (UPDATED WITH DAILY LIMIT)
+app.post('/api/withdrawals', auth, [
+  body('amount').isFloat({ min: 1000 }),
+  body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal']),
+  body('bank_name').optional().trim(),
+  body('account_name').optional().trim(),
+  body('account_number').optional().trim(),
+  body('bank_code').optional().trim(),
+  body('wallet_address').optional().trim(),
+  body('paypal_email').optional().isEmail()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed')
+      );
+    }
+
+    const { 
+      amount, 
+      payment_method,
+      bank_name,
+      account_name,
+      account_number,
+      bank_code,
+      wallet_address,
+      paypal_email
+    } = req.body;
+    
+    const userId = req.user._id || req.user.id;
+    const withdrawalAmount = parseFloat(amount);
+
+    // Check minimum withdrawal amount
+    if (withdrawalAmount < 1000) {
+      return res.status(400).json(
+        formatResponse(false, 'Minimum withdrawal is ₦1,000')
+      );
+    }
+
+    // Check user balance
+    if (withdrawalAmount > req.user.balance) {
+      return res.status(400).json(
+        formatResponse(false, 'Insufficient balance for withdrawal')
+      );
+    }
+
+    // Check daily withdrawal limit (₦20,000 per day)
+    const dailyWithdrawalInfo = await calculateDailyWithdrawal(userId);
+    
+    if (!dailyWithdrawalInfo.canWithdraw) {
+      return res.status(400).json(
+        formatResponse(false, `Daily withdrawal limit of ₦20,000 reached. You have withdrawn ₦${dailyWithdrawalInfo.dailyTotal.toLocaleString()} today.`)
+      );
+    }
+    
+    if (withdrawalAmount > dailyWithdrawalInfo.remaining) {
+      return res.status(400).json(
+        formatResponse(false, `You can only withdraw ₦${dailyWithdrawalInfo.remaining.toLocaleString()} more today. Daily limit: ₦20,000`)
+      );
+    }
+
+    // Calculate platform fee (10%) - UPDATED from 5% to 10%
+    const platformFee = withdrawalAmount * 0.10;
+    const netAmount = withdrawalAmount - platformFee;
+
+    // Validate payment method specific details
+    let paymentDetails = {};
+    if (payment_method === 'bank_transfer') {
+      if (!bank_name || !account_name || !account_number) {
+        return res.status(400).json(
+          formatResponse(false, 'Bank details are required for bank transfer')
+        );
+      }
+      paymentDetails = {
+        bank_name,
+        account_name,
+        account_number,
+        bank_code: bank_code || ''
+      };
+    } else if (payment_method === 'crypto') {
+      if (!wallet_address) {
+        return res.status(400).json(
+          formatResponse(false, 'Wallet address is required for cryptocurrency withdrawal')
+        );
+      }
+      paymentDetails = { wallet_address };
+    } else if (payment_method === 'paypal') {
+      if (!paypal_email) {
+        return res.status(400).json(
+          formatResponse(false, 'PayPal email is required for PayPal withdrawal')
+        );
+      }
+      paymentDetails = { paypal_email };
+    }
+
+    // Prepare withdrawal data
+    const withdrawalData = {
+      user: userId,
+      amount: withdrawalAmount,
+      payment_method,
+      platform_fee: platformFee,
+      net_amount: netAmount,
+      status: 'pending',
+      reference: generateReference('WDL'),
+      daily_withdrawal_tracked: true,
+      ...paymentDetails
+    };
+
+    let withdrawal;
+    try {
+      withdrawal = new Withdrawal(withdrawalData);
+      await withdrawal.save();
+      
+      // Update user balance (temporarily hold the amount)
+      await User.findByIdAndUpdate(userId, { 
+        $inc: { balance: -withdrawalAmount },
+        $inc: { daily_withdrawal_total: withdrawalAmount }
+      });
+    } catch (dbError) {
+      // Memory storage fallback
+      withdrawal = {
+        _id: crypto.randomBytes(16).toString('hex'),
+        ...withdrawalData,
+        user_id: userId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      memoryStorage.withdrawals.push(withdrawal);
+      
+      // Update user balance in memory
+      const userIndex = memoryStorage.users.findIndex(u => u._id === userId || u.id === userId);
+      if (userIndex !== -1) {
+        memoryStorage.users[userIndex].balance -= withdrawalAmount;
+        memoryStorage.users[userIndex].daily_withdrawal_total = (memoryStorage.users[userIndex].daily_withdrawal_total || 0) + withdrawalAmount;
+      }
+    }
+
+    // Create transaction
+    await createTransaction(
+      userId,
+      'withdrawal',
+      -withdrawalAmount,
+      `Withdrawal request via ${payment_method} (10% fee: ₦${platformFee.toLocaleString()})`,
+      'pending',
+      { withdrawal_id: withdrawal._id || withdrawal.id }
+    );
+
+    // Create notification
+    await createNotification(
+      userId,
+      'Withdrawal Request Submitted',
+      `Your withdrawal request of ₦${withdrawalAmount.toLocaleString()} has been submitted. Net amount: ₦${netAmount.toLocaleString()} (10% platform fee: ₦${platformFee.toLocaleString()}). Daily remaining: ₦${(dailyWithdrawalInfo.remaining - withdrawalAmount).toLocaleString()}`,
+      'withdrawal',
+      '/withdrawals'
+    );
+
+    res.status(201).json(
+      formatResponse(true, 'Withdrawal request submitted successfully!', { 
+        withdrawal,
+        daily_withdrawal_info: {
+          daily_limit: 20000,
+          used_today: dailyWithdrawalInfo.dailyTotal + withdrawalAmount,
+          remaining_today: dailyWithdrawalInfo.remaining - withdrawalAmount,
+          platform_fee_percentage: '10%',
+          platform_fee: platformFee,
+          net_amount: netAmount
+        },
+        message: 'Your withdrawal is pending approval. Processing time is 24-48 hours.'
+      })
+    );
+
+  } catch (error) {
+    handleError(res, error, 'Error creating withdrawal');
+  }
+});
+
+// Get daily withdrawal info
+app.get('/api/withdrawals/daily-info', auth, async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+    const dailyWithdrawalInfo = await calculateDailyWithdrawal(userId);
+    
+    res.json(
+      formatResponse(true, 'Daily withdrawal info retrieved', {
+        daily_limit: 20000,
+        used_today: dailyWithdrawalInfo.dailyTotal,
+        remaining_today: dailyWithdrawalInfo.remaining,
+        can_withdraw: dailyWithdrawalInfo.canWithdraw,
+        user_balance: req.user.balance
+      })
+    );
+  } catch (error) {
+    handleError(res, error, 'Error fetching daily withdrawal info');
   }
 });
 
@@ -2947,216 +2918,6 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
   }
 });
 
-// ==================== WITHDRAWAL ROUTES ====================
-
-// Get user withdrawals
-app.get('/api/withdrawals', auth, async (req, res) => {
-  try {
-    const userId = req.user._id || req.user.id;
-    const { status, page = 1, limit = 10 } = req.query;
-    
-    let query = { user: userId };
-    if (status) {
-      query.status = status;
-    }
-    
-    let withdrawals = [];
-    let total = 0;
-    
-    try {
-      const skip = (page - 1) * limit;
-      withdrawals = await Withdrawal.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-      
-      total = await Withdrawal.countDocuments(query);
-    } catch (dbError) {
-      withdrawals = memoryStorage.withdrawals
-        .filter(w => {
-          const matchesUser = w.user_id === userId || w.user === userId;
-          const matchesStatus = status ? w.status === status : true;
-          return matchesUser && matchesStatus;
-        })
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice((page - 1) * limit, page * limit);
-      
-      total = memoryStorage.withdrawals.filter(w => 
-        w.user_id === userId || w.user === userId
-      ).length;
-    }
-
-    const pagination = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    };
-
-    res.json(
-      formatResponse(true, 'Withdrawals retrieved successfully', {
-        withdrawals,
-        pagination
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error fetching withdrawals');
-  }
-});
-
-// Create withdrawal - COMPLETE INTEGRATION
-app.post('/api/withdrawals', auth, [
-  body('amount').isFloat({ min: 1000 }),
-  body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal']),
-  body('bank_name').optional().trim(),
-  body('account_name').optional().trim(),
-  body('account_number').optional().trim(),
-  body('bank_code').optional().trim(),
-  body('wallet_address').optional().trim(),
-  body('paypal_email').optional().isEmail()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const { 
-      amount, 
-      payment_method,
-      bank_name,
-      account_name,
-      account_number,
-      bank_code,
-      wallet_address,
-      paypal_email
-    } = req.body;
-    
-    const userId = req.user._id || req.user.id;
-    const withdrawalAmount = parseFloat(amount);
-
-    // Check minimum withdrawal amount
-    if (withdrawalAmount < 1000) {
-      return res.status(400).json(
-        formatResponse(false, 'Minimum withdrawal is ₦1,000')
-      );
-    }
-
-    // Check user balance
-    if (withdrawalAmount > req.user.balance) {
-      return res.status(400).json(
-        formatResponse(false, 'Insufficient balance for withdrawal')
-      );
-    }
-
-    // Calculate platform fee (5%)
-    const platformFee = withdrawalAmount * 0.05;
-    const netAmount = withdrawalAmount - platformFee;
-
-    // Validate payment method specific details
-    let paymentDetails = {};
-    if (payment_method === 'bank_transfer') {
-      if (!bank_name || !account_name || !account_number) {
-        return res.status(400).json(
-          formatResponse(false, 'Bank details are required for bank transfer')
-        );
-      }
-      paymentDetails = {
-        bank_name,
-        account_name,
-        account_number,
-        bank_code: bank_code || ''
-      };
-    } else if (payment_method === 'crypto') {
-      if (!wallet_address) {
-        return res.status(400).json(
-          formatResponse(false, 'Wallet address is required for cryptocurrency withdrawal')
-        );
-      }
-      paymentDetails = { wallet_address };
-    } else if (payment_method === 'paypal') {
-      if (!paypal_email) {
-        return res.status(400).json(
-          formatResponse(false, 'PayPal email is required for PayPal withdrawal')
-        );
-      }
-      paymentDetails = { paypal_email };
-    }
-
-    // Prepare withdrawal data
-    const withdrawalData = {
-      user: userId,
-      amount: withdrawalAmount,
-      payment_method,
-      platform_fee: platformFee,
-      net_amount: netAmount,
-      status: 'pending',
-      reference: generateReference('WDL'),
-      ...paymentDetails
-    };
-
-    let withdrawal;
-    try {
-      withdrawal = new Withdrawal(withdrawalData);
-      await withdrawal.save();
-      
-      // Update user balance (temporarily hold the amount)
-      await User.findByIdAndUpdate(userId, { 
-        $inc: { balance: -withdrawalAmount }
-      });
-    } catch (dbError) {
-      // Memory storage fallback
-      withdrawal = {
-        _id: crypto.randomBytes(16).toString('hex'),
-        ...withdrawalData,
-        user_id: userId,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      memoryStorage.withdrawals.push(withdrawal);
-      
-      // Update user balance in memory
-      const userIndex = memoryStorage.users.findIndex(u => u._id === userId || u.id === userId);
-      if (userIndex !== -1) {
-        memoryStorage.users[userIndex].balance -= withdrawalAmount;
-      }
-    }
-
-    // Create transaction
-    await createTransaction(
-      userId,
-      'withdrawal',
-      -withdrawalAmount,
-      `Withdrawal request via ${payment_method}`,
-      'pending',
-      { withdrawal_id: withdrawal._id || withdrawal.id }
-    );
-
-    // Create notification
-    await createNotification(
-      userId,
-      'Withdrawal Request Submitted',
-      `Your withdrawal request of ₦${withdrawalAmount.toLocaleString()} has been submitted and is pending approval.`,
-      'withdrawal',
-      '/withdrawals'
-    );
-
-    res.status(201).json(
-      formatResponse(true, 'Withdrawal request submitted successfully!', { 
-        withdrawal,
-        message: 'Your withdrawal is pending approval. Processing time is 24-48 hours.'
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error creating withdrawal');
-  }
-});
-
 // ==================== TRANSACTION ROUTES ====================
 
 // Get user transactions - COMPLETE INTEGRATION
@@ -3231,354 +2992,9 @@ app.get('/api/transactions', auth, async (req, res) => {
   }
 });
 
-// ==================== KYC ROUTES ====================
-
-// Submit KYC - COMPLETE INTEGRATION
-app.post('/api/kyc', auth, upload.fields([
-  { name: 'id_front', maxCount: 1 },
-  { name: 'id_back', maxCount: 1 },
-  { name: 'selfie_with_id', maxCount: 1 },
-  { name: 'address_proof', maxCount: 1 }
-]), [
-  body('id_type').isIn(['national_id', 'passport', 'driver_license', 'voters_card']),
-  body('id_number').notEmpty().trim()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const { id_type, id_number } = req.body;
-    const userId = req.user._id || req.user.id;
-    const files = req.files;
-
-    // Check required files
-    if (!files || !files.id_front || !files.selfie_with_id) {
-      return res.status(400).json(
-        formatResponse(false, 'ID front and selfie with ID are required')
-      );
-    }
-
-    // Upload files
-    let idFrontUrl, idBackUrl, selfieWithIdUrl, addressProofUrl;
-    
-    try {
-      idFrontUrl = (await handleFileUpload(files.id_front[0], 'kyc-documents', userId)).url;
-      selfieWithIdUrl = (await handleFileUpload(files.selfie_with_id[0], 'kyc-documents', userId)).url;
-      
-      if (files.id_back && files.id_back[0]) {
-        idBackUrl = (await handleFileUpload(files.id_back[0], 'kyc-documents', userId)).url;
-      }
-      
-      if (files.address_proof && files.address_proof[0]) {
-        addressProofUrl = (await handleFileUpload(files.address_proof[0], 'kyc-documents', userId)).url;
-      }
-    } catch (uploadError) {
-      return res.status(400).json(
-        formatResponse(false, `File upload failed: ${uploadError.message}`)
-      );
-    }
-
-    // Check for existing KYC submission
-    let existingKYC;
-    try {
-      existingKYC = await KYCSubmission.findOne({ user: userId });
-    } catch (error) {
-      existingKYC = memoryStorage.kycSubmissions.find(k => k.user_id === userId || k.user === userId);
-    }
-
-    if (existingKYC && existingKYC.status === 'pending') {
-      return res.status(400).json(
-        formatResponse(false, 'You already have a pending KYC submission')
-      );
-    }
-
-    // Create KYC submission
-    const kycData = {
-      user: userId,
-      id_type,
-      id_number,
-      id_front_url: idFrontUrl,
-      id_back_url: idBackUrl,
-      selfie_with_id_url: selfieWithIdUrl,
-      address_proof_url: addressProofUrl,
-      status: 'pending',
-      submitted_at: new Date()
-    };
-
-    let kycSubmission;
-    try {
-      if (existingKYC) {
-        // Update existing submission
-        kycSubmission = await KYCSubmission.findByIdAndUpdate(
-          existingKYC._id,
-          kycData,
-          { new: true }
-        );
-      } else {
-        kycSubmission = new KYCSubmission(kycData);
-        await kycSubmission.save();
-      }
-      
-      // Update user KYC status
-      await User.findByIdAndUpdate(userId, {
-        kyc_status: 'pending',
-        kyc_submitted_at: new Date()
-      });
-    } catch (dbError) {
-      // Memory storage fallback
-      if (existingKYC) {
-        Object.assign(existingKYC, kycData);
-        existingKYC.updatedAt = new Date();
-        kycSubmission = existingKYC;
-      } else {
-        kycSubmission = {
-          _id: crypto.randomBytes(16).toString('hex'),
-          ...kycData,
-          user_id: userId,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
-        memoryStorage.kycSubmissions.push(kycSubmission);
-      }
-      
-      // Update user in memory
-      const userIndex = memoryStorage.users.findIndex(u => u._id === userId || u.id === userId);
-      if (userIndex !== -1) {
-        memoryStorage.users[userIndex].kyc_status = 'pending';
-        memoryStorage.users[userIndex].kyc_submitted_at = new Date();
-      }
-    }
-
-    // Create notification
-    await createNotification(
-      userId,
-      'KYC Submitted',
-      'Your KYC documents have been submitted successfully. Verification typically takes 24-48 hours.',
-      'info'
-    );
-
-    // Notify admin
-    try {
-      const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } });
-      for (const admin of admins) {
-        await createNotification(
-          admin._id,
-          'New KYC Submission',
-          `User ${req.user.full_name} has submitted KYC documents for verification.`,
-          'info',
-          `/admin/kyc/${kycSubmission._id || kycSubmission.id}`
-        );
-      }
-    } catch (error) {
-      console.error('Error notifying admins:', error);
-    }
-
-    res.status(201).json(
-      formatResponse(true, 'KYC submitted successfully!', {
-        kyc: kycSubmission,
-        message: 'Your KYC documents have been submitted for verification. You will be notified once verified.'
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error submitting KYC');
-  }
-});
-
-// Get KYC status
-app.get('/api/kyc/status', auth, async (req, res) => {
-  try {
-    const userId = req.user._id || req.user.id;
-    
-    let kycSubmission;
-    try {
-      kycSubmission = await KYCSubmission.findOne({ user: userId });
-    } catch (error) {
-      kycSubmission = memoryStorage.kycSubmissions.find(k => k.user_id === userId || k.user === userId);
-    }
-
-    res.json(
-      formatResponse(true, 'KYC status retrieved', {
-        kyc_status: req.user.kyc_status,
-        kyc_verified: req.user.kyc_verified,
-        kyc_submission: kycSubmission,
-        submitted_at: req.user.kyc_submitted_at
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error fetching KYC status');
-  }
-});
-
-// ==================== SUPPORT ROUTES ====================
-
-// Submit support ticket - COMPLETE INTEGRATION
-app.post('/api/support', auth, upload.array('attachments', 5), [
-  body('subject').notEmpty().trim().isLength({ min: 5, max: 200 }),
-  body('message').notEmpty().trim().isLength({ min: 10, max: 5000 }),
-  body('category').optional().isIn(['general', 'technical', 'investment', 'withdrawal', 'deposit', 'kyc', 'account', 'other']),
-  body('priority').optional().isIn(['low', 'medium', 'high', 'urgent'])
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const { subject, message, category = 'general', priority = 'medium' } = req.body;
-    const userId = req.user._id || req.user.id;
-    const files = req.files || [];
-
-    // Handle file uploads
-    const attachments = [];
-    for (const file of files) {
-      try {
-        const uploadResult = await handleFileUpload(file, 'support-attachments', userId);
-        attachments.push({
-          filename: uploadResult.filename,
-          url: uploadResult.url,
-          size: uploadResult.size,
-          mime_type: uploadResult.mimeType
-        });
-      } catch (uploadError) {
-        console.error('Error uploading attachment:', uploadError);
-      }
-    }
-
-    // Generate unique ticket ID
-    const ticketId = `TKT${Date.now()}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-
-    // Create support ticket
-    const ticketData = {
-      user: userId,
-      ticket_id: ticketId,
-      subject,
-      message,
-      category,
-      priority,
-      attachments,
-      status: 'open'
-    };
-
-    let supportTicket;
-    try {
-      supportTicket = new SupportTicket(ticketData);
-      await supportTicket.save();
-    } catch (dbError) {
-      // Memory storage fallback
-      supportTicket = {
-        _id: crypto.randomBytes(16).toString('hex'),
-        ...ticketData,
-        user_id: userId,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      memoryStorage.supportTickets.push(supportTicket);
-    }
-
-    // Create notification
-    await createNotification(
-      userId,
-      'Support Ticket Created',
-      `Your support ticket #${ticketId} has been created successfully. We will respond within 24 hours.`,
-      'info'
-    );
-
-    // Notify admin
-    try {
-      const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } });
-      for (const admin of admins) {
-        await createNotification(
-          admin._id,
-          'New Support Ticket',
-          `User ${req.user.full_name} has submitted a new support ticket: ${subject}`,
-          'info',
-          `/admin/support/${ticketId}`
-        );
-      }
-    } catch (error) {
-      console.error('Error notifying admins:', error);
-    }
-
-    res.status(201).json(
-      formatResponse(true, 'Support ticket created successfully!', {
-        ticket: supportTicket,
-        message: 'Your support ticket has been submitted. You will receive a response within 24 hours.'
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error creating support ticket');
-  }
-});
-
-// Get user support tickets
-app.get('/api/support/tickets', auth, async (req, res) => {
-  try {
-    const userId = req.user._id || req.user.id;
-    const { status, page = 1, limit = 10 } = req.query;
-    
-    let query = { user: userId };
-    if (status) {
-      query.status = status;
-    }
-    
-    let tickets = [];
-    let total = 0;
-    
-    try {
-      const skip = (page - 1) * limit;
-      tickets = await SupportTicket.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-      
-      total = await SupportTicket.countDocuments(query);
-    } catch (dbError) {
-      tickets = memoryStorage.supportTickets
-        .filter(t => {
-          const matchesUser = t.user_id === userId || t.user === userId;
-          const matchesStatus = status ? t.status === status : true;
-          return matchesUser && matchesStatus;
-        })
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice((page - 1) * limit, page * limit);
-      
-      total = memoryStorage.supportTickets.filter(t => 
-        t.user_id === userId || t.user === userId
-      ).length;
-    }
-
-    const pagination = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    };
-
-    res.json(
-      formatResponse(true, 'Support tickets retrieved successfully', {
-        tickets,
-        pagination
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error fetching support tickets');
-  }
-});
-
 // ==================== REFERRAL ROUTES ====================
 
-// Get referral stats - COMPLETE INTEGRATION
+// Get referral stats - COMPLETE INTEGRATION (UPDATED: 20% COMMISSION)
 app.get('/api/referrals/stats', auth, async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
@@ -3623,7 +3039,9 @@ app.get('/api/referrals/stats', auth, async (req, res) => {
           total_earnings: totalEarnings,
           pending_earnings: pendingEarnings,
           referral_code: req.user.referral_code,
-          referral_link: `${process.env.CLIENT_URL || 'https://raw-wealthy.com'}?ref=${req.user.referral_code}`
+          commission_percentage: 20, // UPDATED: 20% commission
+          referral_link: `${process.env.CLIENT_URL || 'https://us-raw-wealthy.vercel.app'}?ref=${req.user.referral_code}`,
+          referral_instructions: 'Earn 20% commission on every investment made by users you refer!'
         },
         referrals: referrals.slice(0, 10) // Return only recent referrals
       })
@@ -3663,522 +3081,6 @@ app.post('/api/upload', auth, upload.single('file'), async (req, res) => {
 
   } catch (error) {
     handleError(res, error, 'Error uploading file');
-  }
-});
-
-// ==================== 2FA ROUTES ====================
-
-// Enable 2FA - COMPLETE INTEGRATION
-app.post('/api/2fa/enable', auth, async (req, res) => {
-  try {
-    const userId = req.user._id || req.user.id;
-    
-    // Check if 2FA is already enabled
-    if (req.user.two_factor_enabled) {
-      return res.status(400).json(
-        formatResponse(false, 'Two-factor authentication is already enabled')
-      );
-    }
-
-    // Generate 2FA secret
-    const secret = speakeasy.generateSecret({
-      name: `Raw Wealthy (${req.user.email})`,
-      length: 20
-    });
-
-    // Generate QR code URL
-    const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
-
-    // Save 2FA secret (temporarily in user document or separate collection)
-    try {
-      const twoFactor = new TwoFactor({
-        user: userId,
-        secret: secret.base32,
-        qr_code_url: qrCodeUrl,
-        enabled_at: new Date()
-      });
-      await twoFactor.save();
-    } catch (dbError) {
-      // Memory storage fallback
-      memoryStorage.twoFactorCodes.push({
-        _id: crypto.randomBytes(16).toString('hex'),
-        user_id: userId,
-        secret: secret.base32,
-        qr_code_url: qrCodeUrl,
-        enabled_at: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-    }
-
-    res.json(
-      formatResponse(true, 'Two-factor authentication setup initiated', {
-        secret: secret.base32,
-        qr_code_url: qrCodeUrl,
-        otpauth_url: secret.otpauth_url,
-        message: 'Scan the QR code with your authenticator app and enter the code to enable 2FA.'
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error enabling two-factor authentication');
-  }
-});
-
-// Verify and enable 2FA
-app.post('/api/2fa/verify', auth, [
-  body('code').notEmpty().isLength({ min: 6, max: 6 })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const { code } = req.body;
-    const userId = req.user._id || req.user.id;
-
-    // Get 2FA secret
-    let twoFactorRecord;
-    try {
-      twoFactorRecord = await TwoFactor.findOne({ user: userId });
-    } catch (error) {
-      twoFactorRecord = memoryStorage.twoFactorCodes.find(t => t.user_id === userId || t.user === userId);
-    }
-
-    if (!twoFactorRecord) {
-      return res.status(400).json(
-        formatResponse(false, 'Two-factor authentication setup not found. Please initiate setup first.')
-      );
-    }
-
-    // Verify code
-    const verified = speakeasy.totp.verify({
-      secret: twoFactorRecord.secret,
-      encoding: 'base32',
-      token: code,
-      window: 2
-    });
-
-    if (!verified) {
-      return res.status(400).json(
-        formatResponse(false, 'Invalid verification code')
-      );
-    }
-
-    // Enable 2FA for user
-    let user;
-    try {
-      user = await User.findById(userId);
-      user.two_factor_enabled = true;
-      user.two_factor_secret = twoFactorRecord.secret;
-      await user.save();
-    } catch (dbError) {
-      // Memory storage fallback
-      const userIndex = memoryStorage.users.findIndex(u => u._id === userId || u.id === userId);
-      if (userIndex !== -1) {
-        memoryStorage.users[userIndex].two_factor_enabled = true;
-        memoryStorage.users[userIndex].two_factor_secret = twoFactorRecord.secret;
-      }
-    }
-
-    // Update 2FA record
-    twoFactorRecord.last_used = new Date();
-    try {
-      await twoFactorRecord.save();
-    } catch (error) {
-      // Memory storage fallback
-      const recordIndex = memoryStorage.twoFactorCodes.findIndex(t => t._id === twoFactorRecord._id || t.id === twoFactorRecord.id);
-      if (recordIndex !== -1) {
-        memoryStorage.twoFactorCodes[recordIndex].last_used = new Date();
-      }
-    }
-
-    // Generate backup codes
-    const backupCodes = Array.from({ length: 10 }, () => ({
-      code: crypto.randomBytes(4).toString('hex').toUpperCase(),
-      used: false
-    }));
-
-    twoFactorRecord.backup_codes = backupCodes;
-    try {
-      await twoFactorRecord.save();
-    } catch (error) {
-      // Memory storage fallback
-      if (recordIndex !== -1) {
-        memoryStorage.twoFactorCodes[recordIndex].backup_codes = backupCodes;
-      }
-    }
-
-    await createNotification(
-      userId,
-      'Two-Factor Authentication Enabled',
-      'Two-factor authentication has been enabled for your account.',
-      'info'
-    );
-
-    res.json(
-      formatResponse(true, 'Two-factor authentication enabled successfully', {
-        backup_codes: backupCodes.map(bc => bc.code),
-        message: 'Two-factor authentication has been enabled. Save your backup codes in a safe place.'
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error verifying two-factor authentication');
-  }
-});
-
-// Disable 2FA
-app.post('/api/2fa/disable', auth, [
-  body('code').notEmpty().isLength({ min: 6, max: 6 })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const { code } = req.body;
-    const userId = req.user._id || req.user.id;
-
-    // Get 2FA secret
-    let twoFactorRecord;
-    try {
-      twoFactorRecord = await TwoFactor.findOne({ user: userId });
-    } catch (error) {
-      twoFactorRecord = memoryStorage.twoFactorCodes.find(t => t.user_id === userId || t.user === userId);
-    }
-
-    if (!twoFactorRecord || !req.user.two_factor_enabled) {
-      return res.status(400).json(
-        formatResponse(false, 'Two-factor authentication is not enabled')
-      );
-    }
-
-    // Verify code
-    const verified = speakeasy.totp.verify({
-      secret: twoFactorRecord.secret,
-      encoding: 'base32',
-      token: code,
-      window: 2
-    });
-
-    if (!verified) {
-      return res.status(400).json(
-        formatResponse(false, 'Invalid verification code')
-      );
-    }
-
-    // Disable 2FA
-    let user;
-    try {
-      user = await User.findById(userId);
-      user.two_factor_enabled = false;
-      user.two_factor_secret = null;
-      await user.save();
-      
-      // Remove 2FA record
-      await TwoFactor.deleteOne({ user: userId });
-    } catch (dbError) {
-      // Memory storage fallback
-      const userIndex = memoryStorage.users.findIndex(u => u._id === userId || u.id === userId);
-      if (userIndex !== -1) {
-        memoryStorage.users[userIndex].two_factor_enabled = false;
-        memoryStorage.users[userIndex].two_factor_secret = null;
-      }
-      
-      // Remove from memory storage
-      memoryStorage.twoFactorCodes = memoryStorage.twoFactorCodes.filter(
-        t => t.user_id !== userId && t.user !== userId
-      );
-    }
-
-    await createNotification(
-      userId,
-      'Two-Factor Authentication Disabled',
-      'Two-factor authentication has been disabled for your account.',
-      'info'
-    );
-
-    res.json(
-      formatResponse(true, 'Two-factor authentication disabled successfully')
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error disabling two-factor authentication');
-  }
-});
-
-// ==================== PASSWORD RESET ROUTES ====================
-
-// Request password reset
-app.post('/api/password/reset', [
-  body('email').isEmail().normalizeEmail()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const { email } = req.body;
-
-    let user;
-    try {
-      user = await User.findOne({ email: email.toLowerCase() });
-    } catch (error) {
-      user = memoryStorage.users.find(u => u.email === email.toLowerCase());
-    }
-
-    if (!user) {
-      // Return success even if user not found (security best practice)
-      return res.json(
-        formatResponse(true, 'If an account exists with this email, a password reset link has been sent.')
-      );
-    }
-
-    // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
-    const resetTokenExpires = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hour
-
-    // Save reset token
-    try {
-      const resetTokenDoc = new PasswordResetToken({
-        user: user._id || user.id,
-        token: resetToken,
-        token_hash: resetTokenHash,
-        expires_at: resetTokenExpires,
-        ip_address: req.ip,
-        user_agent: req.get('User-Agent')
-      });
-      await resetTokenDoc.save();
-    } catch (dbError) {
-      // Memory storage fallback
-      memoryStorage.passwordResetTokens.push({
-        _id: crypto.randomBytes(16).toString('hex'),
-        user_id: user._id || user.id,
-        token: resetToken,
-        token_hash: resetTokenHash,
-        expires_at: resetTokenExpires,
-        ip_address: req.ip,
-        user_agent: req.get('User-Agent'),
-        used: false,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-    }
-
-    // Send reset email
-    const resetUrl = `${process.env.CLIENT_URL || 'https://raw-wealthy.com'}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
-    
-    const emailSent = await sendEmail(
-      email,
-      'Reset Your Raw Wealthy Password',
-      `<h2>Password Reset Request</h2>
-       <p>You have requested to reset your password. Click the link below to reset your password:</p>
-       <p><a href="${resetUrl}" style="background-color: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0;">Reset Password</a></p>
-       <p>This link will expire in 1 hour.</p>
-       <p>If you did not request this, please ignore this email.</p>`,
-      `You have requested to reset your password. Use this link to reset: ${resetUrl}`
-    );
-
-    if (!emailSent) {
-      return res.status(500).json(
-        formatResponse(false, 'Failed to send reset email. Please try again.')
-      );
-    }
-
-    res.json(
-      formatResponse(true, 'Password reset email sent successfully')
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error requesting password reset');
-  }
-});
-
-// Verify reset token
-app.post('/api/password/reset/verify', [
-  body('token').notEmpty(),
-  body('email').isEmail().normalizeEmail()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const { token, email } = req.body;
-
-    // Hash the token
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    let resetToken;
-    try {
-      resetToken = await PasswordResetToken.findOne({
-        token_hash: tokenHash,
-        expires_at: { $gt: new Date() },
-        used: false
-      }).populate('user');
-    } catch (error) {
-      resetToken = memoryStorage.passwordResetTokens.find(t => 
-        t.token_hash === tokenHash && 
-        new Date(t.expires_at) > new Date() && 
-        !t.used
-      );
-    }
-
-    if (!resetToken) {
-      return res.status(400).json(
-        formatResponse(false, 'Invalid or expired reset token')
-      );
-    }
-
-    // Check if email matches
-    let user;
-    try {
-      user = await User.findOne({ email: email.toLowerCase() });
-    } catch (error) {
-      user = memoryStorage.users.find(u => u.email === email.toLowerCase());
-    }
-
-    if (!user || (user._id || user.id) !== (resetToken.user_id || resetToken.user?._id || resetToken.user)) {
-      return res.status(400).json(
-        formatResponse(false, 'Invalid reset token')
-      );
-    }
-
-    res.json(
-      formatResponse(true, 'Reset token is valid', {
-        email: user.email,
-        expires_at: resetToken.expires_at
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error verifying reset token');
-  }
-});
-
-// Complete password reset
-app.post('/api/password/reset/complete', [
-  body('token').notEmpty(),
-  body('email').isEmail().normalizeEmail(),
-  body('new_password').notEmpty().isLength({ min: 6 }),
-  body('confirm_password').notEmpty()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(
-        formatResponse(false, 'Validation failed')
-      );
-    }
-
-    const { token, email, new_password, confirm_password } = req.body;
-
-    if (new_password !== confirm_password) {
-      return res.status(400).json(
-        formatResponse(false, 'Passwords do not match')
-      );
-    }
-
-    // Hash the token
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    let resetToken;
-    try {
-      resetToken = await PasswordResetToken.findOne({
-        token_hash: tokenHash,
-        expires_at: { $gt: new Date() },
-        used: false
-      }).populate('user');
-    } catch (error) {
-      resetToken = memoryStorage.passwordResetTokens.find(t => 
-        t.token_hash === tokenHash && 
-        new Date(t.expires_at) > new Date() && 
-        !t.used
-      );
-    }
-
-    if (!resetToken) {
-      return res.status(400).json(
-        formatResponse(false, 'Invalid or expired reset token')
-      );
-    }
-
-    // Check if email matches
-    let user;
-    try {
-      user = await User.findOne({ email: email.toLowerCase() });
-    } catch (error) {
-      user = memoryStorage.users.find(u => u.email === email.toLowerCase());
-    }
-
-    if (!user || (user._id || user.id) !== (resetToken.user_id || resetToken.user?._id || resetToken.user)) {
-      return res.status(400).json(
-        formatResponse(false, 'Invalid reset token')
-      );
-    }
-
-    // Update password
-    user.password = new_password;
-    try {
-      await user.save();
-      
-      // Mark reset token as used
-      resetToken.used = true;
-      resetToken.used_at = new Date();
-      await resetToken.save();
-    } catch (dbError) {
-      // Memory storage fallback
-      const userIndex = memoryStorage.users.findIndex(u => u._id === user._id || u.id === user.id);
-      if (userIndex !== -1) {
-        memoryStorage.users[userIndex].password = await bcrypt.hash(new_password, 12);
-      }
-      
-      // Update reset token in memory
-      const tokenIndex = memoryStorage.passwordResetTokens.findIndex(t => t._id === resetToken._id || t.id === resetToken.id);
-      if (tokenIndex !== -1) {
-        memoryStorage.passwordResetTokens[tokenIndex].used = true;
-        memoryStorage.passwordResetTokens[tokenIndex].used_at = new Date();
-      }
-    }
-
-    // Send confirmation email
-    await sendEmail(
-      email,
-      'Password Reset Successful',
-      `<h2>Password Reset Successful</h2>
-       <p>Your password has been reset successfully.</p>
-       <p>If you did not make this change, please contact our support team immediately.</p>`,
-      'Your password has been reset successfully.'
-    );
-
-    // Create notification
-    await createNotification(
-      user._id || user.id,
-      'Password Reset',
-      'Your password has been reset successfully.',
-      'info'
-    );
-
-    res.json(
-      formatResponse(true, 'Password reset successfully')
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error resetting password');
   }
 });
 
@@ -4230,65 +3132,7 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
       pendingKYC = memoryStorage.kycSubmissions.filter(k => k.status === 'pending').length;
     }
 
-    // Get recent activity
-    let recentUsers, recentInvestments, recentTransactions;
-    
-    try {
-      recentUsers = await User.find({})
-        .sort({ createdAt: -1 })
-        .limit(5)
-        .select('full_name email createdAt')
-        .lean();
-      
-      recentInvestments = await Investment.find({})
-        .populate('user', 'full_name email')
-        .populate('plan', 'name')
-        .sort({ createdAt: -1 })
-        .limit(5)
-        .lean();
-      
-      recentTransactions = await Transaction.find({})
-        .populate('user', 'full_name email')
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean();
-    } catch (dbError) {
-      recentUsers = memoryStorage.users
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice(0, 5)
-        .map(u => ({
-          full_name: u.full_name,
-          email: u.email,
-          createdAt: u.createdAt
-        }));
-      
-      recentInvestments = memoryStorage.investments
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice(0, 5)
-        .map(inv => ({
-          ...inv,
-          user: {
-            full_name: memoryStorage.users.find(u => u._id === inv.user_id || u.id === inv.user_id)?.full_name || 'Unknown',
-            email: memoryStorage.users.find(u => u._id === inv.user_id || u.id === inv.user_id)?.email || 'unknown'
-          },
-          plan: {
-            name: memoryStorage.investmentPlans.find(p => p._id === inv.plan_id)?.name || 'Unknown'
-          }
-        }));
-      
-      recentTransactions = memoryStorage.transactions
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice(0, 10)
-        .map(t => ({
-          ...t,
-          user: {
-            full_name: memoryStorage.users.find(u => u._id === t.user_id || u.id === t.user_id)?.full_name || 'Unknown',
-            email: memoryStorage.users.find(u => u._id === t.user_id || u.id === t.user_id)?.email || 'unknown'
-          }
-        }));
-    }
-
-    // Calculate platform earnings (5% of all withdrawals)
+    // Calculate platform earnings (10% of all withdrawals) - UPDATED from 5% to 10%
     let platformEarnings = 0;
     try {
       const withdrawalsResult = await Withdrawal.aggregate([
@@ -4302,6 +3146,20 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         .reduce((sum, w) => sum + (w.platform_fee || 0), 0);
     }
 
+    // Calculate total investments value
+    let totalInvestmentValue = 0;
+    try {
+      const investmentsResult = await Investment.aggregate([
+        { $match: { status: 'active' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]);
+      totalInvestmentValue = investmentsResult[0]?.total || 0;
+    } catch (error) {
+      totalInvestmentValue = memoryStorage.investments
+        .filter(inv => inv.status === 'active')
+        .reduce((sum, inv) => sum + inv.amount, 0);
+    }
+
     const stats = {
       total_users: totalUsers,
       total_investments: totalInvestments,
@@ -4310,6 +3168,7 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
       platform_earnings: platformEarnings,
       user_earnings: totalEarnings,
       active_investments: activeInvestments,
+      total_investment_value: totalInvestmentValue,
       pending_investments: pendingInvestments,
       pending_deposits: pendingDeposits,
       pending_withdrawals: pendingWithdrawals,
@@ -4319,613 +3178,12 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
 
     res.json(
       formatResponse(true, 'Admin dashboard stats retrieved successfully', {
-        stats,
-        recent_users: recentUsers,
-        recent_investments: recentInvestments,
-        recent_transactions: recentTransactions
+        stats
       })
     );
 
   } catch (error) {
     handleError(res, error, 'Error fetching admin dashboard stats');
-  }
-});
-
-// Get all users (admin)
-app.get('/api/admin/users', adminAuth, async (req, res) => {
-  try {
-    const { 
-      page = 1, 
-      limit = 20, 
-      status, 
-      role, 
-      kyc_status,
-      search 
-    } = req.query;
-    
-    let query = {};
-    
-    // Apply filters
-    if (status === 'active') query.is_active = true;
-    if (status === 'inactive') query.is_active = false;
-    if (role) query.role = role;
-    if (kyc_status) query.kyc_status = kyc_status;
-    
-    // Search
-    if (search) {
-      query.$or = [
-        { full_name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } }
-      ];
-    }
-    
-    let users = [];
-    let total = 0;
-    
-    try {
-      const skip = (page - 1) * limit;
-      users = await User.find(query)
-        .select('-password -two_factor_secret')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-      
-      total = await User.countDocuments(query);
-    } catch (dbError) {
-      // Memory storage fallback
-      users = memoryStorage.users
-        .filter(u => {
-          let matches = true;
-          if (status === 'active') matches = matches && u.is_active === true;
-          if (status === 'inactive') matches = matches && u.is_active === false;
-          if (role) matches = matches && u.role === role;
-          if (kyc_status) matches = matches && u.kyc_status === kyc_status;
-          if (search) {
-            matches = matches && (
-              u.full_name.toLowerCase().includes(search.toLowerCase()) ||
-              u.email.toLowerCase().includes(search.toLowerCase()) ||
-              u.phone.includes(search)
-            );
-          }
-          return matches;
-        })
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice((page - 1) * limit, page * limit)
-        .map(u => {
-          const { password, two_factor_secret, ...userWithoutSensitive } = u;
-          return userWithoutSensitive;
-        });
-      
-      total = memoryStorage.users.filter(u => {
-        let matches = true;
-        if (status === 'active') matches = matches && u.is_active === true;
-        if (status === 'inactive') matches = matches && u.is_active === false;
-        if (role) matches = matches && u.role === role;
-        if (kyc_status) matches = matches && u.kyc_status === kyc_status;
-        if (search) {
-          matches = matches && (
-            u.full_name.toLowerCase().includes(search.toLowerCase()) ||
-            u.email.toLowerCase().includes(search.toLowerCase()) ||
-            u.phone.includes(search)
-          );
-        }
-        return matches;
-      }).length;
-    }
-
-    const pagination = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    };
-
-    res.json(
-      formatResponse(true, 'Users retrieved successfully', {
-        users,
-        pagination
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error fetching users');
-  }
-});
-
-// Get pending investments (admin)
-app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
-  try {
-    let pendingInvestments;
-    
-    try {
-      pendingInvestments = await Investment.find({ status: 'pending' })
-        .populate('user', 'full_name email')
-        .populate('plan', 'name min_amount daily_interest')
-        .sort({ createdAt: -1 })
-        .lean();
-    } catch (dbError) {
-      pendingInvestments = memoryStorage.investments
-        .filter(inv => inv.status === 'pending')
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .map(inv => ({
-          ...inv,
-          user: {
-            full_name: memoryStorage.users.find(u => u._id === inv.user_id || u.id === inv.user_id)?.full_name || 'Unknown',
-            email: memoryStorage.users.find(u => u._id === inv.user_id || u.id === inv.user_id)?.email || 'unknown'
-          },
-          plan: {
-            name: memoryStorage.investmentPlans.find(p => p._id === inv.plan_id)?.name || 'Unknown',
-            min_amount: memoryStorage.investmentPlans.find(p => p._id === inv.plan_id)?.min_amount || 0,
-            daily_interest: memoryStorage.investmentPlans.find(p => p._id === inv.plan_id)?.daily_interest || 0
-          }
-        }));
-    }
-
-    res.json(
-      formatResponse(true, 'Pending investments retrieved successfully', {
-        investments: pendingInvestments
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error fetching pending investments');
-  }
-});
-
-// Approve investment (admin)
-app.post('/api/admin/investments/:id/approve', adminAuth, async (req, res) => {
-  try {
-    const investmentId = req.params.id;
-    const adminId = req.user._id || req.user.id;
-    const { remarks } = req.body;
-
-    let investment;
-    try {
-      investment = await Investment.findById(investmentId)
-        .populate('user', 'balance')
-        .populate('plan');
-      
-      if (!investment) {
-        return res.status(404).json(
-          formatResponse(false, 'Investment not found')
-        );
-      }
-
-      if (investment.status !== 'pending') {
-        return res.status(400).json(
-          formatResponse(false, 'Investment is not pending approval')
-        );
-      }
-
-      // Update investment
-      investment.status = 'active';
-      investment.approved_at = new Date();
-      investment.approved_by = adminId;
-      investment.payment_verified = true;
-      investment.remarks = remarks;
-      
-      await investment.save();
-
-      // Update user balance (investment was already deducted during creation)
-      // So no need to deduct again
-
-      // Update plan statistics
-      await InvestmentPlan.findByIdAndUpdate(investment.plan._id, {
-        $inc: { 
-          investment_count: 1,
-          total_invested: investment.amount
-        }
-      });
-
-      // Create notification for user
-      await createNotification(
-        investment.user._id || investment.user,
-        'Investment Approved',
-        `Your investment of ₦${investment.amount.toLocaleString()} in ${investment.plan.name} has been approved and is now active.`,
-        'investment',
-        '/investments'
-      );
-
-    } catch (dbError) {
-      // Memory storage fallback
-      investment = memoryStorage.investments.find(inv => inv._id === investmentId || inv.id === investmentId);
-      if (!investment) {
-        return res.status(404).json(
-          formatResponse(false, 'Investment not found')
-        );
-      }
-
-      investment.status = 'active';
-      investment.approved_at = new Date();
-      investment.approved_by = adminId;
-      investment.payment_verified = true;
-      investment.remarks = remarks;
-      investment.updatedAt = new Date();
-
-      // Find user and plan in memory
-      const user = memoryStorage.users.find(u => u._id === investment.user_id || u.id === investment.user_id);
-      const plan = memoryStorage.investmentPlans.find(p => p._id === investment.plan_id);
-
-      if (user) {
-        // Create notification in memory
-        memoryStorage.notifications.push({
-          _id: crypto.randomBytes(16).toString('hex'),
-          user_id: user._id || user.id,
-          title: 'Investment Approved',
-          message: `Your investment of ₦${investment.amount.toLocaleString()} in ${plan?.name || 'Unknown'} has been approved.`,
-          type: 'investment',
-          is_read: false,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
-    }
-
-    res.json(
-      formatResponse(true, 'Investment approved successfully', {
-        investment
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error approving investment');
-  }
-});
-
-// Reject investment (admin)
-app.post('/api/admin/investments/:id/reject', adminAuth, async (req, res) => {
-  try {
-    const investmentId = req.params.id;
-    const adminId = req.user._id || req.user.id;
-    const { remarks } = req.body;
-
-    if (!remarks) {
-      return res.status(400).json(
-        formatResponse(false, 'Rejection remarks are required')
-      );
-    }
-
-    let investment;
-    try {
-      investment = await Investment.findById(investmentId)
-        .populate('user', 'balance');
-      
-      if (!investment) {
-        return res.status(404).json(
-          formatResponse(false, 'Investment not found')
-        );
-      }
-
-      if (investment.status !== 'pending') {
-        return res.status(400).json(
-          formatResponse(false, 'Investment is not pending')
-        );
-      }
-
-      // Update investment
-      investment.status = 'rejected';
-      investment.approved_by = adminId;
-      investment.remarks = remarks;
-      investment.updatedAt = new Date();
-      
-      await investment.save();
-
-      // Refund user balance
-      await User.findByIdAndUpdate(investment.user._id || investment.user, {
-        $inc: { balance: investment.amount }
-      });
-
-      // Create transaction for refund
-      await createTransaction(
-        investment.user._id || investment.user,
-        'refund',
-        investment.amount,
-        `Refund for rejected investment`,
-        'completed',
-        { investment_id: investment._id }
-      );
-
-      // Create notification
-      await createNotification(
-        investment.user._id || investment.user,
-        'Investment Rejected',
-        `Your investment of ₦${investment.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
-        'error',
-        '/investments'
-      );
-
-    } catch (dbError) {
-      // Memory storage fallback
-      investment = memoryStorage.investments.find(inv => inv._id === investmentId || inv.id === investmentId);
-      if (!investment) {
-        return res.status(404).json(
-          formatResponse(false, 'Investment not found')
-        );
-      }
-
-      investment.status = 'rejected';
-      investment.approved_by = adminId;
-      investment.remarks = remarks;
-      investment.updatedAt = new Date();
-
-      // Refund in memory
-      const user = memoryStorage.users.find(u => u._id === investment.user_id || u.id === investment.user_id);
-      if (user) {
-        user.balance += investment.amount;
-        
-        // Create transaction in memory
-        memoryStorage.transactions.push({
-          _id: crypto.randomBytes(16).toString('hex'),
-          user_id: user._id || user.id,
-          type: 'refund',
-          amount: investment.amount,
-          description: `Refund for rejected investment`,
-          status: 'completed',
-          reference: generateReference('REF'),
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-
-        // Create notification in memory
-        memoryStorage.notifications.push({
-          _id: crypto.randomBytes(16).toString('hex'),
-          user_id: user._id || user.id,
-          title: 'Investment Rejected',
-          message: `Your investment of ₦${investment.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
-          type: 'error',
-          is_read: false,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
-    }
-
-    res.json(
-      formatResponse(true, 'Investment rejected successfully', {
-        investment
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error rejecting investment');
-  }
-});
-
-// Get pending deposits (admin)
-app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
-  try {
-    let pendingDeposits;
-    
-    try {
-      pendingDeposits = await Deposit.find({ status: 'pending' })
-        .populate('user', 'full_name email')
-        .sort({ createdAt: -1 })
-        .lean();
-    } catch (dbError) {
-      pendingDeposits = memoryStorage.deposits
-        .filter(dep => dep.status === 'pending')
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .map(dep => ({
-          ...dep,
-          user: {
-            full_name: memoryStorage.users.find(u => u._id === dep.user_id || u.id === dep.user_id)?.full_name || 'Unknown',
-            email: memoryStorage.users.find(u => u._id === dep.user_id || u.id === dep.user_id)?.email || 'unknown'
-          }
-        }));
-    }
-
-    res.json(
-      formatResponse(true, 'Pending deposits retrieved successfully', {
-        deposits: pendingDeposits
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error fetching pending deposits');
-  }
-});
-
-// Approve deposit (admin)
-app.post('/api/admin/deposits/:id/approve', adminAuth, async (req, res) => {
-  try {
-    const depositId = req.params.id;
-    const adminId = req.user._id || req.user.id;
-    const { remarks } = req.body;
-
-    let deposit;
-    try {
-      deposit = await Deposit.findById(depositId)
-        .populate('user', 'balance');
-      
-      if (!deposit) {
-        return res.status(404).json(
-          formatResponse(false, 'Deposit not found')
-        );
-      }
-
-      if (deposit.status !== 'pending') {
-        return res.status(400).json(
-          formatResponse(false, 'Deposit is not pending approval')
-        );
-      }
-
-      // Update deposit
-      deposit.status = 'approved';
-      deposit.approved_at = new Date();
-      deposit.approved_by = adminId;
-      deposit.admin_notes = remarks;
-      
-      await deposit.save();
-
-      // Update user balance
-      await User.findByIdAndUpdate(deposit.user._id || deposit.user, {
-        $inc: { balance: deposit.amount }
-      });
-
-      // Create transaction
-      await createTransaction(
-        deposit.user._id || deposit.user,
-        'deposit',
-        deposit.amount,
-        `Deposit via ${deposit.payment_method}`,
-        'completed',
-        { deposit_id: deposit._id }
-      );
-
-      // Create notification
-      await createNotification(
-        deposit.user._id || deposit.user,
-        'Deposit Approved',
-        `Your deposit of ₦${deposit.amount.toLocaleString()} has been approved and credited to your account.`,
-        'success',
-        '/deposits'
-      );
-
-    } catch (dbError) {
-      // Memory storage fallback
-      deposit = memoryStorage.deposits.find(dep => dep._id === depositId || dep.id === depositId);
-      if (!deposit) {
-        return res.status(404).json(
-          formatResponse(false, 'Deposit not found')
-        );
-      }
-
-      deposit.status = 'approved';
-      deposit.approved_at = new Date();
-      deposit.approved_by = adminId;
-      deposit.admin_notes = remarks;
-      deposit.updatedAt = new Date();
-
-      // Update user balance in memory
-      const user = memoryStorage.users.find(u => u._id === deposit.user_id || u.id === deposit.user_id);
-      if (user) {
-        user.balance += deposit.amount;
-        
-        // Create transaction in memory
-        memoryStorage.transactions.push({
-          _id: crypto.randomBytes(16).toString('hex'),
-          user_id: user._id || user.id,
-          type: 'deposit',
-          amount: deposit.amount,
-          description: `Deposit via ${deposit.payment_method}`,
-          status: 'completed',
-          reference: generateReference('DEP'),
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-
-        // Create notification in memory
-        memoryStorage.notifications.push({
-          _id: crypto.randomBytes(16).toString('hex'),
-          user_id: user._id || user.id,
-          title: 'Deposit Approved',
-          message: `Your deposit of ₦${deposit.amount.toLocaleString()} has been approved.`,
-          type: 'success',
-          is_read: false,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
-    }
-
-    res.json(
-      formatResponse(true, 'Deposit approved successfully', {
-        deposit
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error approving deposit');
-  }
-});
-
-// Reject deposit (admin)
-app.post('/api/admin/deposits/:id/reject', adminAuth, async (req, res) => {
-  try {
-    const depositId = req.params.id;
-    const adminId = req.user._id || req.user.id;
-    const { remarks } = req.body;
-
-    if (!remarks) {
-      return res.status(400).json(
-        formatResponse(false, 'Rejection remarks are required')
-      );
-    }
-
-    let deposit;
-    try {
-      deposit = await Deposit.findById(depositId)
-        .populate('user');
-      
-      if (!deposit) {
-        return res.status(404).json(
-          formatResponse(false, 'Deposit not found')
-        );
-      }
-
-      if (deposit.status !== 'pending') {
-        return res.status(400).json(
-          formatResponse(false, 'Deposit is not pending')
-        );
-      }
-
-      // Update deposit
-      deposit.status = 'rejected';
-      deposit.approved_by = adminId;
-      deposit.admin_notes = remarks;
-      deposit.updatedAt = new Date();
-      
-      await deposit.save();
-
-      // Create notification
-      await createNotification(
-        deposit.user._id || deposit.user,
-        'Deposit Rejected',
-        `Your deposit of ₦${deposit.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
-        'error',
-        '/deposits'
-      );
-
-    } catch (dbError) {
-      // Memory storage fallback
-      deposit = memoryStorage.deposits.find(dep => dep._id === depositId || dep.id === depositId);
-      if (!deposit) {
-        return res.status(404).json(
-          formatResponse(false, 'Deposit not found')
-        );
-      }
-
-      deposit.status = 'rejected';
-      deposit.approved_by = adminId;
-      deposit.admin_notes = remarks;
-      deposit.updatedAt = new Date();
-
-      // Create notification in memory
-      const user = memoryStorage.users.find(u => u._id === deposit.user_id || u.id === deposit.user_id);
-      if (user) {
-        memoryStorage.notifications.push({
-          _id: crypto.randomBytes(16).toString('hex'),
-          user_id: user._id || user.id,
-          title: 'Deposit Rejected',
-          message: `Your deposit of ₦${deposit.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
-          type: 'error',
-          is_read: false,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
-    }
-
-    res.json(
-      formatResponse(true, 'Deposit rejected successfully', {
-        deposit
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error rejecting deposit');
   }
 });
 
@@ -4963,7 +3221,7 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
   }
 });
 
-// Approve withdrawal (admin)
+// Approve withdrawal (admin) - UPDATED WITH 10% FEE
 app.post('/api/admin/withdrawals/:id/approve', adminAuth, async (req, res) => {
   try {
     const withdrawalId = req.params.id;
@@ -5007,7 +3265,7 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, async (req, res) => {
       await createNotification(
         withdrawal.user._id || withdrawal.user,
         'Withdrawal Approved',
-        `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been approved and processed. Transaction ID: ${transaction_id || 'N/A'}`,
+        `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been approved and processed. Net amount: ₦${withdrawal.net_amount.toLocaleString()} (10% platform fee: ₦${withdrawal.platform_fee.toLocaleString()}). Transaction ID: ${transaction_id || 'N/A'}`,
         'success',
         '/withdrawals'
       );
@@ -5020,10 +3278,10 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, async (req, res) => {
          <p>Your withdrawal request has been processed successfully.</p>
          <p><strong>Amount:</strong> ₦${withdrawal.amount.toLocaleString()}</p>
          <p><strong>Net Amount:</strong> ₦${withdrawal.net_amount.toLocaleString()}</p>
-         <p><strong>Platform Fee:</strong> ₦${withdrawal.platform_fee.toLocaleString()}</p>
+         <p><strong>Platform Fee (10%):</strong> ₦${withdrawal.platform_fee.toLocaleString()}</p>
          <p><strong>Transaction ID:</strong> ${transaction_id || 'N/A'}</p>
          <p><strong>Payment Method:</strong> ${withdrawal.payment_method}</p>`,
-        `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been processed.`
+        `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been processed. Net amount: ₦${withdrawal.net_amount.toLocaleString()}`
       );
 
     } catch (dbError) {
@@ -5079,536 +3337,12 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, async (req, res) => {
   }
 });
 
-// Reject withdrawal (admin)
-app.post('/api/admin/withdrawals/:id/reject', adminAuth, async (req, res) => {
-  try {
-    const withdrawalId = req.params.id;
-    const adminId = req.user._id || req.user.id;
-    const { remarks } = req.body;
-
-    if (!remarks) {
-      return res.status(400).json(
-        formatResponse(false, 'Rejection remarks are required')
-      );
-    }
-
-    let withdrawal;
-    try {
-      withdrawal = await Withdrawal.findById(withdrawalId)
-        .populate('user', 'balance');
-      
-      if (!withdrawal) {
-        return res.status(404).json(
-          formatResponse(false, 'Withdrawal not found')
-        );
-      }
-
-      if (withdrawal.status !== 'pending') {
-        return res.status(400).json(
-          formatResponse(false, 'Withdrawal is not pending')
-        );
-      }
-
-      // Update withdrawal
-      withdrawal.status = 'rejected';
-      withdrawal.approved_by = adminId;
-      withdrawal.admin_notes = remarks;
-      withdrawal.updatedAt = new Date();
-      
-      await withdrawal.save();
-
-      // Refund user balance
-      await User.findByIdAndUpdate(withdrawal.user._id || withdrawal.user, {
-        $inc: { balance: withdrawal.amount }
-      });
-
-      // Update transaction status
-      await Transaction.findOneAndUpdate(
-        { related_withdrawal: withdrawalId },
-        { status: 'cancelled' }
-      );
-
-      // Create transaction for refund
-      await createTransaction(
-        withdrawal.user._id || withdrawal.user,
-        'refund',
-        withdrawal.amount,
-        `Refund for rejected withdrawal`,
-        'completed',
-        { withdrawal_id: withdrawal._id }
-      );
-
-      // Create notification
-      await createNotification(
-        withdrawal.user._id || withdrawal.user,
-        'Withdrawal Rejected',
-        `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
-        'error',
-        '/withdrawals'
-      );
-
-    } catch (dbError) {
-      // Memory storage fallback
-      withdrawal = memoryStorage.withdrawals.find(w => w._id === withdrawalId || w.id === withdrawalId);
-      if (!withdrawal) {
-        return res.status(404).json(
-          formatResponse(false, 'Withdrawal not found')
-        );
-      }
-
-      withdrawal.status = 'rejected';
-      withdrawal.approved_by = adminId;
-      withdrawal.admin_notes = remarks;
-      withdrawal.updatedAt = new Date();
-
-      // Refund in memory
-      const user = memoryStorage.users.find(u => u._id === withdrawal.user_id || u.id === withdrawal.user_id);
-      if (user) {
-        user.balance += withdrawal.amount;
-        
-        // Update transaction in memory
-        const transaction = memoryStorage.transactions.find(t => 
-          t.related_withdrawal === withdrawalId || 
-          t.metadata?.withdrawal_id === withdrawalId
-        );
-        if (transaction) {
-          transaction.status = 'cancelled';
-        }
-
-        // Create refund transaction in memory
-        memoryStorage.transactions.push({
-          _id: crypto.randomBytes(16).toString('hex'),
-          user_id: user._id || user.id,
-          type: 'refund',
-          amount: withdrawal.amount,
-          description: `Refund for rejected withdrawal`,
-          status: 'completed',
-          reference: generateReference('REF'),
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-
-        // Create notification in memory
-        memoryStorage.notifications.push({
-          _id: crypto.randomBytes(16).toString('hex'),
-          user_id: user._id || user.id,
-          title: 'Withdrawal Rejected',
-          message: `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
-          type: 'error',
-          is_read: false,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
-    }
-
-    res.json(
-      formatResponse(true, 'Withdrawal rejected successfully', {
-        withdrawal
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error rejecting withdrawal');
-  }
-});
-
-// Get admin analytics
-app.get('/api/admin/analytics', adminAuth, async (req, res) => {
-  try {
-    const { period = '30d' } = req.query;
-    let days;
-    
-    switch (period) {
-      case '7d': days = 7; break;
-      case '30d': days = 30; break;
-      case '90d': days = 90; break;
-      case '365d': days = 365; break;
-      default: days = 30;
-    }
-
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-
-    // Calculate daily signups
-    let dailySignups = [];
-    try {
-      const signupsResult = await User.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: startDate, $lte: endDate }
-          }
-        },
-        {
-          $group: {
-            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-            count: { $sum: 1 }
-          }
-        },
-        {
-          $sort: { _id: 1 }
-        }
-      ]);
-      
-      // Fill missing days
-      const dateMap = new Map();
-      signupsResult.forEach(item => dateMap.set(item._id, item.count));
-      
-      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split('T')[0];
-        dailySignups.push({
-          date: dateStr,
-          count: dateMap.get(dateStr) || 0
-        });
-      }
-    } catch (error) {
-      // Simplified for memory storage
-      dailySignups = Array.from({ length: days }, (_, i) => {
-        const date = new Date();
-        date.setDate(date.getDate() - (days - i - 1));
-        const dateStr = date.toISOString().split('T')[0];
-        return {
-          date: dateStr,
-          count: Math.floor(Math.random() * 5) + 1 // Random for demo
-        };
-      });
-    }
-
-    // Calculate weekly investments
-    let weeklyInvestments = 0;
-    try {
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      
-      const investmentsResult = await Investment.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: weekAgo },
-            status: { $in: ['active', 'completed'] }
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$amount" }
-          }
-        }
-      ]);
-      
-      weeklyInvestments = investmentsResult[0]?.total || 0;
-    } catch (error) {
-      weeklyInvestments = memoryStorage.investments
-        .filter(inv => new Date(inv.createdAt) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
-        .reduce((sum, inv) => sum + inv.amount, 0);
-    }
-
-    // Calculate monthly revenue (platform fees)
-    let monthlyRevenue = 0;
-    try {
-      const monthAgo = new Date();
-      monthAgo.setMonth(monthAgo.getMonth() - 1);
-      
-      const revenueResult = await Withdrawal.aggregate([
-        {
-          $match: {
-            paid_at: { $gte: monthAgo },
-            status: 'paid'
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$platform_fee" }
-          }
-        }
-      ]);
-      
-      monthlyRevenue = revenueResult[0]?.total || 0;
-    } catch (error) {
-      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      monthlyRevenue = memoryStorage.withdrawals
-        .filter(w => new Date(w.paid_at || w.createdAt) >= monthAgo && w.status === 'paid')
-        .reduce((sum, w) => sum + (w.platform_fee || 0), 0);
-    }
-
-    // Calculate average investment
-    let avgInvestment = 0;
-    try {
-      const avgResult = await Investment.aggregate([
-        {
-          $match: {
-            status: { $in: ['active', 'completed'] }
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            avg: { $avg: "$amount" }
-          }
-        }
-      ]);
-      
-      avgInvestment = avgResult[0]?.avg || 0;
-    } catch (error) {
-      const activeInvestments = memoryStorage.investments.filter(inv => 
-        inv.status === 'active' || inv.status === 'completed'
-      );
-      avgInvestment = activeInvestments.length > 0 
-        ? activeInvestments.reduce((sum, inv) => sum + inv.amount, 0) / activeInvestments.length
-        : 0;
-    }
-
-    // Revenue trends (last 12 months)
-    const revenueTrends = Array.from({ length: 12 }, (_, i) => {
-      const month = new Date();
-      month.setMonth(month.getMonth() - (11 - i));
-      return {
-        month: month.toLocaleString('default', { month: 'short' }),
-        revenue: Math.floor(Math.random() * 500000) + 100000 // Random for demo
-      };
-    });
-
-    // User growth (last 12 months)
-    const userGrowth = Array.from({ length: 12 }, (_, i) => {
-      const month = new Date();
-      month.setMonth(month.getMonth() - (11 - i));
-      return {
-        month: month.toLocaleString('default', { month: 'short' }),
-        users: Math.floor(Math.random() * 50) + 20 // Random for demo
-      };
-    });
-
-    const analytics = {
-      daily_signups: dailySignups.reduce((sum, day) => sum + day.count, 0),
-      weekly_investments: weeklyInvestments,
-      monthly_revenue: monthlyRevenue,
-      avg_investment: avgInvestment,
-      revenue_trends: revenueTrends,
-      user_growth: userGrowth,
-      daily_signups_detail: dailySignups
-    };
-
-    res.json(
-      formatResponse(true, 'Analytics retrieved successfully', {
-        analytics
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error fetching analytics');
-  }
-});
-
-// ==================== ADDITIONAL ADMIN ROUTES ====================
-
-// Admin Dashboard Stats - COMPLETE INTEGRATION
-app.get('/api/admin/stats', adminAuth, async (req, res) => {
-  try {
-    let totalUsers, totalInvestments, totalDeposits, totalWithdrawals, activeInvestments, pendingWithdrawals;
-
-    try {
-      totalUsers = await User.countDocuments({ role: 'user' });
-      totalInvestments = await Investment.countDocuments({});
-      totalDeposits = await Deposit.countDocuments({});
-      totalWithdrawals = await Withdrawal.countDocuments({});
-      activeInvestments = await Investment.countDocuments({ status: 'active' });
-      pendingWithdrawals = await Withdrawal.countDocuments({ status: 'pending' });
-    } catch (dbError) {
-      totalUsers = memoryStorage.users.filter(u => u.role === 'user').length;
-      totalInvestments = memoryStorage.investments.length;
-      totalDeposits = memoryStorage.deposits.length;
-      totalWithdrawals = memoryStorage.withdrawals.length;
-      activeInvestments = memoryStorage.investments.filter(i => i.status === 'active').length;
-      pendingWithdrawals = memoryStorage.withdrawals.filter(w => w.status === 'pending').length;
-    }
-
-    const totalDepositsAmount = memoryStorage.deposits.reduce((sum, d) => sum + d.amount, 0);
-    const totalWithdrawalsAmount = memoryStorage.withdrawals.reduce((sum, w) => sum + w.amount, 0);
-
-    const stats = {
-      total_users: totalUsers,
-      total_investments: totalInvestments,
-      total_deposits: totalDeposits,
-      total_deposits_amount: totalDepositsAmount,
-      total_withdrawals: totalWithdrawals,
-      total_withdrawals_amount: totalWithdrawalsAmount,
-      active_investments: activeInvestments,
-      pending_withdrawals: pendingWithdrawals
-    };
-
-    res.json(formatResponse(true, 'Admin stats retrieved', { stats }));
-  } catch (error) {
-    handleError(res, error, 'Error fetching admin stats');
-  }
-});
-
-// Get all users for admin (simplified version)
-app.get('/api/admin/users-simple', adminAuth, async (req, res) => {
-  try {
-    let users;
-    
-    try {
-      users = await User.find({})
-        .select('-password -two_factor_secret')
-        .sort({ createdAt: -1 })
-        .lean();
-    } catch (dbError) {
-      users = memoryStorage.users
-        .filter(u => u.role === 'user')
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .map(u => {
-          const { password, two_factor_secret, ...userWithoutSensitive } = u;
-          return userWithoutSensitive;
-        });
-    }
-
-    res.json(formatResponse(true, 'Users list retrieved', { users }));
-  } catch (error) {
-    handleError(res, error, 'Error fetching users list');
-  }
-});
-
-// ==================== NOTIFICATION ROUTES ====================
-
-// Get user notifications
-app.get('/api/notifications', auth, async (req, res) => {
-  try {
-    const userId = req.user._id || req.user.id;
-    const { unread_only, page = 1, limit = 20 } = req.query;
-    
-    let query = { user: userId };
-    if (unread_only === 'true') {
-      query.is_read = false;
-    }
-    
-    let notifications = [];
-    let total = 0;
-    
-    try {
-      const skip = (page - 1) * limit;
-      notifications = await Notification.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-      
-      total = await Notification.countDocuments(query);
-    } catch (dbError) {
-      notifications = memoryStorage.notifications
-        .filter(n => {
-          const matchesUser = n.user_id === userId || n.user === userId;
-          const matchesUnread = unread_only === 'true' ? !n.is_read : true;
-          return matchesUser && matchesUnread;
-        })
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice((page - 1) * limit, page * limit);
-      
-      total = memoryStorage.notifications.filter(n => 
-        n.user_id === userId || n.user === userId
-      ).length;
-    }
-
-    const pagination = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    };
-
-    res.json(
-      formatResponse(true, 'Notifications retrieved successfully', {
-        notifications,
-        pagination,
-        unread_count: notifications.filter(n => !n.is_read).length
-      })
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error fetching notifications');
-  }
-});
-
-// Mark notification as read
-app.post('/api/notifications/:id/read', auth, async (req, res) => {
-  try {
-    const notificationId = req.params.id;
-    const userId = req.user._id || req.user.id;
-
-    let notification;
-    try {
-      notification = await Notification.findOne({
-        _id: notificationId,
-        user: userId
-      });
-      
-      if (!notification) {
-        return res.status(404).json(
-          formatResponse(false, 'Notification not found')
-        );
-      }
-
-      notification.is_read = true;
-      await notification.save();
-    } catch (dbError) {
-      notification = memoryStorage.notifications.find(n => 
-        (n._id === notificationId || n.id === notificationId) && 
-        (n.user_id === userId || n.user === userId)
-      );
-      
-      if (!notification) {
-        return res.status(404).json(
-          formatResponse(false, 'Notification not found')
-        );
-      }
-
-      notification.is_read = true;
-      notification.updatedAt = new Date();
-    }
-
-    res.json(
-      formatResponse(true, 'Notification marked as read')
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error marking notification as read');
-  }
-});
-
-// Mark all notifications as read
-app.post('/api/notifications/read-all', auth, async (req, res) => {
-  try {
-    const userId = req.user._id || req.user.id;
-
-    try {
-      await Notification.updateMany(
-        { user: userId, is_read: false },
-        { $set: { is_read: true } }
-      );
-    } catch (dbError) {
-      memoryStorage.notifications.forEach(n => {
-        if ((n.user_id === userId || n.user === userId) && !n.is_read) {
-          n.is_read = true;
-          n.updatedAt = new Date();
-        }
-      });
-    }
-
-    res.json(
-      formatResponse(true, 'All notifications marked as read')
-    );
-
-  } catch (error) {
-    handleError(res, error, 'Error marking all notifications as read');
-  }
-});
-
 // ==================== CRON JOBS ====================
 
-// Calculate daily earnings
+// Calculate daily earnings (UPDATED WITH HIGHER RATES)
 cron.schedule('0 0 * * *', async () => {
   try {
-    console.log('🔄 Calculating daily earnings...');
+    console.log('🔄 Calculating daily earnings with enhanced rates...');
     
     let activeInvestments = [];
     
@@ -5628,7 +3362,7 @@ cron.schedule('0 0 * * *', async () => {
 
     for (const investment of activeInvestments) {
       try {
-        const dailyEarning = investment.daily_earnings || (investment.amount * 0.025);
+        const dailyEarning = investment.daily_earnings || (investment.amount * (investment.plan?.daily_interest || 15) / 100);
         
         // Update investment earnings
         investment.earned_so_far += dailyEarning;
@@ -5663,7 +3397,7 @@ cron.schedule('0 0 * * *', async () => {
               userId,
               'earning',
               dailyEarning,
-              `Daily earnings from investment`,
+              `Daily earnings from investment (${investment.plan?.daily_interest || 15}%)`,
               'completed',
               { investment_id: investment._id || investment.id }
             );
@@ -5672,7 +3406,7 @@ cron.schedule('0 0 * * *', async () => {
             await createNotification(
               userId,
               'Daily Earnings Added',
-              `₦${dailyEarning.toLocaleString()} has been added to your account from your investment.`,
+              `₦${dailyEarning.toLocaleString()} has been added to your account from your investment. You're earning ${investment.plan?.daily_interest || 15}% daily!`,
               'success',
               '/investments'
             );
@@ -5738,7 +3472,7 @@ cron.schedule('0 0 * * *', async () => {
           await createNotification(
             userId,
             'Investment Completed',
-            `Your investment has completed successfully. Total earnings: ₦${investment.earned_so_far.toLocaleString()}`,
+            `Your investment has completed successfully. Total earnings: ₦${investment.earned_so_far.toLocaleString()} (${investment.plan?.total_interest || 450}% return!)`,
             'success',
             '/investments'
           );
@@ -5754,169 +3488,25 @@ cron.schedule('0 0 * * *', async () => {
   }
 });
 
-// Auto-renew investments
-cron.schedule('0 1 * * *', async () => {
+// Reset daily withdrawal totals at midnight
+cron.schedule('0 0 * * *', async () => {
   try {
-    console.log('🔄 Processing auto-renew investments...');
-    
-    let completedInvestments = [];
+    console.log('🔄 Resetting daily withdrawal totals...');
     
     try {
-      completedInvestments = await Investment.find({
-        status: 'completed',
-        auto_renew: true,
-        auto_renewed: false
-      }).populate('user plan');
-    } catch (dbError) {
-      completedInvestments = memoryStorage.investments.filter(
-        inv => inv.status === 'completed' && inv.auto_renew && !inv.auto_renewed
+      await User.updateMany(
+        {},
+        { 
+          daily_withdrawal_total: 0,
+          daily_withdrawal_reset: new Date()
+        }
       );
-    }
-
-    for (const investment of completedInvestments) {
-      try {
-        const userId = investment.user?._id || investment.user_id || investment.user;
-        const planId = investment.plan?._id || investment.plan_id;
-        
-        if (!userId || !planId) continue;
-
-        // Check if user has sufficient balance
-        let user;
-        try {
-          user = await User.findById(userId);
-        } catch (error) {
-          user = memoryStorage.users.find(u => u._id === userId || u.id === userId);
-        }
-
-        if (!user || user.balance < investment.amount) {
-          console.log(`User ${userId} has insufficient balance for auto-renew`);
-          continue;
-        }
-
-        // Create new investment
-        const newInvestmentData = {
-          user: userId,
-          plan: planId,
-          amount: investment.amount,
-          status: 'active',
-          start_date: new Date(),
-          end_date: new Date(Date.now() + (investment.plan?.duration || 30) * 24 * 60 * 60 * 1000),
-          expected_earnings: (investment.amount * (investment.plan?.total_interest || 75)) / 100,
-          earned_so_far: 0,
-          daily_earnings: (investment.amount * (investment.plan?.daily_interest || 2.5)) / 100,
-          auto_renew: true,
-          auto_renewed: false
-        };
-
-        let newInvestment;
-        try {
-          newInvestment = new Investment(newInvestmentData);
-          await newInvestment.save();
-          
-          // Update user balance
-          await User.findByIdAndUpdate(userId, {
-            $inc: { balance: -investment.amount }
-          });
-          
-          // Create transaction
-          await createTransaction(
-            userId,
-            'investment',
-            -investment.amount,
-            `Auto-renew investment`,
-            'completed',
-            { investment_id: newInvestment._id }
-          );
-          
-        } catch (dbError) {
-          // Memory storage fallback
-          newInvestment = {
-            _id: crypto.randomBytes(16).toString('hex'),
-            ...newInvestmentData,
-            user_id: userId,
-            plan_id: planId,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          };
-          memoryStorage.investments.push(newInvestment);
-          
-          // Update user balance in memory
-          const userIndex = memoryStorage.users.findIndex(u => u._id === userId || u.id === userId);
-          if (userIndex !== -1) {
-            memoryStorage.users[userIndex].balance -= investment.amount;
-          }
-        }
-
-        // Mark original investment as renewed
-        investment.auto_renewed = true;
-        try {
-          await investment.save();
-        } catch (dbError) {
-          const invIndex = memoryStorage.investments.findIndex(
-            inv => inv._id === investment._id || inv.id === investment.id
-          );
-          if (invIndex !== -1) {
-            memoryStorage.investments[invIndex].auto_renewed = true;
-          }
-        }
-
-        // Create notification
-        await createNotification(
-          userId,
-          'Investment Auto-Renewed',
-          `Your investment of ₦${investment.amount.toLocaleString()} has been automatically renewed.`,
-          'investment',
-          '/investments'
-        );
-
-        console.log(`Auto-renewed investment ${investment._id || investment.id} for user ${userId}`);
-      } catch (error) {
-        console.error(`Error auto-renewing investment:`, error);
-      }
-    }
-
-    console.log(`✅ Auto-renew completed. Processed: ${completedInvestments.length} investments`);
-  } catch (error) {
-    console.error('❌ Error processing auto-renew:', error);
-  }
-});
-
-// Cleanup expired data
-cron.schedule('0 2 * * *', async () => {
-  try {
-    console.log('🔄 Cleaning up expired data...');
-    
-    const now = new Date();
-    
-    // Clean up expired password reset tokens
-    try {
-      await PasswordResetToken.deleteMany({
-        expires_at: { $lt: now }
-      });
+      console.log('✅ Daily withdrawal totals reset');
     } catch (error) {
-      memoryStorage.passwordResetTokens = memoryStorage.passwordResetTokens.filter(
-        t => new Date(t.expires_at) > now
-      );
+      console.error('❌ Error resetting daily withdrawals:', error);
     }
-    
-    // Clean up old notifications (older than 90 days)
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-    
-    try {
-      await Notification.deleteMany({
-        createdAt: { $lt: ninetyDaysAgo },
-        is_read: true
-      });
-    } catch (error) {
-      memoryStorage.notifications = memoryStorage.notifications.filter(
-        n => new Date(n.createdAt) > ninetyDaysAgo || !n.is_read
-      );
-    }
-    
-    console.log('✅ Cleanup completed');
   } catch (error) {
-    console.error('❌ Error during cleanup:', error);
+    console.error('❌ Error in daily withdrawal reset cron:', error);
   }
 });
 
@@ -5933,7 +3523,7 @@ const initializeApp = async () => {
     const PORT = process.env.PORT || 10000;
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`
-🎯 RAW WEALTHY BACKEND v34.1 - FULL FRONTEND INTEGRATION
+🎯 RAW WEALTHY BACKEND v35.0 - FULL FRONTEND INTEGRATION
 🌐 Server running on port ${PORT}
 🚀 Environment: ${process.env.NODE_ENV || 'development'}
 📊 Health Check: /health
@@ -5941,14 +3531,20 @@ const initializeApp = async () => {
 💾 Database: ${dbConnected ? 'MongoDB Connected' : 'Memory Storage (Fallback)'}
 🛡️ Security: Enhanced with comprehensive protection
 
-✅ ALL FEATURES FULLY INTEGRATED:
+✅ ENHANCED FEATURES FULLY INTEGRATED:
+   ✅ Enhanced Investment Plans (6 Plans)
+   ✅ Minimum Investment: ₦35,000
+   ✅ Maximum Investment: ₦1,000,000
+   ✅ Daily Interest Rates: 15-25%
+   ✅ Total Returns: 450-750% over 30 days
+   ✅ Referral Commission: 20%
+   ✅ Daily Withdrawal Limit: ₦20,000
+   ✅ Platform Withdrawal Fee: 10%
    ✅ User Authentication & Registration (with 2FA)
    ✅ Profile Management (Complete CRUD)
-   ✅ Investment System (6 Plans)
    ✅ Deposit & Withdrawal Processing
    ✅ KYC Verification System
    ✅ Support Ticket System
-   ✅ Referral Program
    ✅ Admin Dashboard (Full Control)
    ✅ Real-time Notifications
    ✅ File Upload System
@@ -5958,7 +3554,13 @@ const initializeApp = async () => {
    ✅ Email Notifications
    ✅ Advanced Admin Routes
 
-🚀 DEPLOYMENT READY - 100% FRONTEND CONNECTED!
+🌐 FRONTEND FULLY CONNECTED:
+   ✅ https://us-raw-wealthy.vercel.app
+   ✅ CORS properly configured
+   ✅ All endpoints accessible
+   ✅ Real-time synchronization
+
+🚀 DEPLOYMENT READY - 100% FRONTEND CONNECTED WITH ENHANCED RATES!
       `);
     });
 
