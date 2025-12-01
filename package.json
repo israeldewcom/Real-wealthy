@@ -1,35 +1,26 @@
 {
-  "name": "real-wealthy",
-  "version": "33.0.0",
-  "description": "Raw Wealthy Investment Platform - Advanced Production Backend",
-  "type": "module",
+  "name": "raw-wealthy-backend",
+  "version": "34.1.0",
+  "description": "Raw Wealthy Investment Platform Backend - Complete Production Ready",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js",
-    "build": "echo '🚀 Raw Wealthy Backend v33.0 - Build successful!' && exit 0",
-    "dev": "node --watch server.js",
-    "test": "echo '✅ All tests passed!' && exit 0",
-    "lint": "echo '🔍 Code linting completed!' && exit 0",
-    "deploy": "echo '🚀 Deploying to Render...' && exit 0"
+    "dev": "nodemon server.js",
+    "build": "echo 'No build step required'",
+    "test": "echo \"Error: no test specified\" && exit 0",
+    "render-build": "npm install",
+    "seed": "node seed.js",
+    "lint": "eslint .",
+    "format": "prettier --write ."
   },
-  "keywords": [
-    "investment",
-    "trading",
-    "raw-materials",
-    "backend",
-    "nodejs",
-    "mongodb",
-    "production"
-  ],
-  "author": "Raw Wealthy Team",
-  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
-    "mongoose": "^8.0.3",
+    "mongoose": "^7.5.0",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
     "cors": "^2.8.5",
-    "helmet": "^7.1.0",
+    "helmet": "^7.0.0",
     "compression": "^1.7.4",
     "morgan": "^1.10.0",
     "express-rate-limit": "^7.1.5",
@@ -43,25 +34,37 @@
     "qrcode": "^1.5.3",
     "speakeasy": "^2.0.0",
     "ws": "^8.14.2",
-    "moment": "^2.29.4",
     "uuid": "^9.0.1",
-    "dotenv": "^16.3.1",
-    "mongodb": "^6.3.0"
+    "dotenv": "^16.3.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "eslint": "^8.53.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-node": "^11.1.0",
+    "prettier": "^3.0.3"
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
+  "keywords": [
+    "investment",
+    "raw-materials",
+    "finance",
+    "backend",
+    "api",
+    "mongodb",
+    "express"
+  ],
+  "author": "Raw Wealthy Team",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/raw-wealthy-backend"
+    "url": "https://github.com/raw-wealthy/backend.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/raw-wealthy-backend/issues"
+    "url": "https://github.com/raw-wealthy/backend/issues"
   },
-  "homepage": "https://rawwealthy.com",
-  "private": true
+  "homepage": "https://rawwealthy.com"
 }
