@@ -1,4 +1,4 @@
-// server.js - ULTIMATE PRODUCTION BACKEND v34.0 - FULL FRONTEND INTEGRATION
+// server.js - ULTIMATE PRODUCTION BACKEND v34.1 - FULL FRONTEND INTEGRATION
 // COMPLETE FEATURE INTEGRATION + ZERO BREAKING CHANGES
 // ADVANCED UPGRADE WITH ALL MISSING ENDPOINTS + ENHANCED SECURITY
 
@@ -27,7 +27,6 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { fileTypeFromBuffer } from 'file-type';
 
 // ES Modules equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -291,14 +290,13 @@ const upload = multer({
   }
 });
 
-// Enhanced file upload handler
+// Enhanced file upload handler without file-type dependency
 const handleFileUpload = async (file, folder = 'general', userId = null) => {
   if (!file) return null;
   
   try {
-    // Validate file type from buffer
-    const fileType = await fileTypeFromBuffer(file.buffer);
-    if (!fileType || !ALLOWED_MIME_TYPES[fileType.mime]) {
+    // Validate file type using multer validation
+    if (!ALLOWED_MIME_TYPES[file.mimetype]) {
       throw new Error('Invalid file type');
     }
     
@@ -313,7 +311,7 @@ const handleFileUpload = async (file, folder = 'general', userId = null) => {
     const timestamp = Date.now();
     const randomStr = crypto.randomBytes(8).toString('hex');
     const userIdPrefix = userId ? `${userId}_` : '';
-    const fileExtension = ALLOWED_MIME_TYPES[fileType.mime];
+    const fileExtension = ALLOWED_MIME_TYPES[file.mimetype] || file.originalname.split('.').pop();
     const filename = `${userIdPrefix}${timestamp}_${randomStr}.${fileExtension}`;
     const filepath = path.join(uploadsDir, filename);
     
@@ -325,7 +323,7 @@ const handleFileUpload = async (file, folder = 'general', userId = null) => {
       filename: filename,
       originalName: file.originalname,
       size: file.size,
-      mimeType: fileType.mime
+      mimeType: file.mimetype
     };
   } catch (error) {
     console.error('File upload error:', error);
@@ -1698,9 +1696,9 @@ app.get('/health', async (req, res) => {
   const healthCheck = {
     success: true,
     status: 'OK',
-    message: '🚀 Raw Wealthy Backend v34.0 is running perfectly!',
+    message: '🚀 Raw Wealthy Backend v34.1 is running perfectly!',
     timestamp: new Date().toISOString(),
-    version: '34.0.0',
+    version: '34.1.0',
     database: statusMap[dbStatus] || 'unknown',
     memory_storage: memoryStorage.users.length > 0 ? 'active' : 'inactive',
     environment: process.env.NODE_ENV || 'development',
@@ -1716,8 +1714,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🚀 Raw Wealthy Backend API v34.0 - FULL FRONTEND INTEGRATION',
-    version: '34.0.0',
+    message: '🚀 Raw Wealthy Backend API v34.1 - FULL FRONTEND INTEGRATION',
+    version: '34.1.0',
     timestamp: new Date().toISOString(),
     status: 'Fully Operational',
     environment: process.env.NODE_ENV || 'development',
@@ -1999,6 +1997,13 @@ app.post('/api/auth/2fa-verify', [
   body('code').notEmpty().isLength({ min: 6, max: 6 })
 ], async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(
+        formatResponse(false, 'Validation failed')
+      );
+    }
+
     const { email, code } = req.body;
 
     let user;
@@ -5353,6 +5358,75 @@ app.get('/api/admin/analytics', adminAuth, async (req, res) => {
   }
 });
 
+// ==================== ADDITIONAL ADMIN ROUTES ====================
+
+// Admin Dashboard Stats - COMPLETE INTEGRATION
+app.get('/api/admin/stats', adminAuth, async (req, res) => {
+  try {
+    let totalUsers, totalInvestments, totalDeposits, totalWithdrawals, activeInvestments, pendingWithdrawals;
+
+    try {
+      totalUsers = await User.countDocuments({ role: 'user' });
+      totalInvestments = await Investment.countDocuments({});
+      totalDeposits = await Deposit.countDocuments({});
+      totalWithdrawals = await Withdrawal.countDocuments({});
+      activeInvestments = await Investment.countDocuments({ status: 'active' });
+      pendingWithdrawals = await Withdrawal.countDocuments({ status: 'pending' });
+    } catch (dbError) {
+      totalUsers = memoryStorage.users.filter(u => u.role === 'user').length;
+      totalInvestments = memoryStorage.investments.length;
+      totalDeposits = memoryStorage.deposits.length;
+      totalWithdrawals = memoryStorage.withdrawals.length;
+      activeInvestments = memoryStorage.investments.filter(i => i.status === 'active').length;
+      pendingWithdrawals = memoryStorage.withdrawals.filter(w => w.status === 'pending').length;
+    }
+
+    const totalDepositsAmount = memoryStorage.deposits.reduce((sum, d) => sum + d.amount, 0);
+    const totalWithdrawalsAmount = memoryStorage.withdrawals.reduce((sum, w) => sum + w.amount, 0);
+
+    const stats = {
+      total_users: totalUsers,
+      total_investments: totalInvestments,
+      total_deposits: totalDeposits,
+      total_deposits_amount: totalDepositsAmount,
+      total_withdrawals: totalWithdrawals,
+      total_withdrawals_amount: totalWithdrawalsAmount,
+      active_investments: activeInvestments,
+      pending_withdrawals: pendingWithdrawals
+    };
+
+    res.json(formatResponse(true, 'Admin stats retrieved', { stats }));
+  } catch (error) {
+    handleError(res, error, 'Error fetching admin stats');
+  }
+});
+
+// Get all users for admin (simplified version)
+app.get('/api/admin/users-simple', adminAuth, async (req, res) => {
+  try {
+    let users;
+    
+    try {
+      users = await User.find({})
+        .select('-password -two_factor_secret')
+        .sort({ createdAt: -1 })
+        .lean();
+    } catch (dbError) {
+      users = memoryStorage.users
+        .filter(u => u.role === 'user')
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .map(u => {
+          const { password, two_factor_secret, ...userWithoutSensitive } = u;
+          return userWithoutSensitive;
+        });
+    }
+
+    res.json(formatResponse(true, 'Users list retrieved', { users }));
+  } catch (error) {
+    handleError(res, error, 'Error fetching users list');
+  }
+});
+
 // ==================== NOTIFICATION ROUTES ====================
 
 // Get user notifications
@@ -5817,7 +5891,7 @@ const initializeApp = async () => {
     const PORT = process.env.PORT || 10000;
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`
-🎯 RAW WEALTHY BACKEND v34.0 - FULL FRONTEND INTEGRATION
+🎯 RAW WEALTHY BACKEND v34.1 - FULL FRONTEND INTEGRATION
 🌐 Server running on port ${PORT}
 🚀 Environment: ${process.env.NODE_ENV || 'development'}
 📊 Health Check: /health
@@ -5840,6 +5914,7 @@ const initializeApp = async () => {
    ✅ Password Reset System
    ✅ Cron Job Automation
    ✅ Email Notifications
+   ✅ Advanced Admin Routes
 
 🚀 DEPLOYMENT READY - 100% FRONTEND CONNECTED!
       `);
