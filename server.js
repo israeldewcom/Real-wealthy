@@ -91,7 +91,26 @@ const connectDBWithRetry = async (retries = MAX_RETRIES) => {
     console.log('✅ MongoDB Connected Successfully!');
     console.log('🏠 Host:', mongoose.connection.host);
     console.log('📊 Database:', mongoose.connection.name);
-    
+    // Enhanced Connection Monitoring
+mongoose.connection.on('connecting', () => {
+  console.log('🔄 Mongoose is connecting to MongoDB...');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ Mongoose reconnected to MongoDB');
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('⚠️ Mongoose disconnected from MongoDB');
+  console.log('💡 Running in memory storage mode - DATA MAY BE LOST');
+});
+
+// Handle process termination
+process.on('SIGINT', async () => {
+  await mongoose.connection.close();
+  console.log('MongoDB connection closed due to app termination');
+  process.exit(0);
+});
     // Initialize database after successful connection
     await initializeDatabase();
     
