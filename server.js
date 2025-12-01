@@ -68,17 +68,20 @@ const connectDBWithRetry = async (retries = MAX_RETRIES) => {
     console.log(`🔄 Attempting MongoDB connection (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})...`);
     
     if (!process.env.MONGODB_URI) {
-      throw new Error('MONGODB_URI is not defined');
+      throw new Error('MONGODB_URI is not defined in environment variables');
     }
 
+    // Log the MongoDB URI (masked for security)
+    const uri = process.env.MONGODB_URI;
+    const maskedUri = uri.replace(/mongodb(\+srv)?:\/\/([^:]+):([^@]+)@/, 'mongodb$1://$2:****@');
+    console.log(`📊 Connecting to MongoDB: ${maskedUri}`);
+
+    // Updated connection options for Mongoose 6+
     const connectionOptions = {
-      serverSelectionTimeoutMS: 10000,
+      serverSelectionTimeoutMS: 30000,  // Increased from 10s to 30s
       socketTimeoutMS: 45000,
-      bufferCommands: false,
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      maxPoolSize: 20,
-      minPoolSize: 10,
+      maxPoolSize: 10,                  // Reduced for Render's free tier
+      minPoolSize: 2,
       retryWrites: true,
       w: 'majority'
     };
@@ -104,23 +107,14 @@ const connectDBWithRetry = async (retries = MAX_RETRIES) => {
     } else {
       console.error('💥 All MongoDB connection attempts failed');
       console.log('🔄 Continuing with in-memory data storage...');
+      console.log('💡 TROUBLESHOOTING TIPS:');
+      console.log('1. Check MONGODB_URI environment variable');
+      console.log('2. Verify MongoDB Atlas IP whitelist includes Render IP');
+      console.log('3. Check MongoDB user permissions');
       return false;
     }
   }
 };
-
-// Connection event handlers
-mongoose.connection.on('connected', () => {
-  console.log('✅ Mongoose connected to MongoDB');
-});
-
-mongoose.connection.on('error', (err) => {
-  console.error('❌ Mongoose connection error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ Mongoose disconnected from MongoDB');
-});
 
 // ==================== ENHANCED EXPRESS SETUP ====================
 const app = express();
