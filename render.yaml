@@ -1,26 +1,17 @@
 services:
   - type: web
-    name: raw-wealthy-backend
+    name: real-wealthy-1
     env: node
-    plan: free
-    region: ohio
     buildCommand: npm install
-    startCommand: npm run render-start
-    healthCheckPath: /health
+    startCommand: npm start
     envVars:
-      - key: NODE_ENV
-        value: production
+      - key: MONGODB_URI
+        value: mongodb+srv://israeldewa1_db_user:P%40ssw0rd%21123@rawwealthy.9cnu0jw.mongodb.net/rawwealthy?retryWrites=true&w=majority
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_PASSWORD
         generateValue: true
-      - key: MONGODB_URI
-        fromDatabase:
-          name: raw-wealthy-db
-          property: connectionString
-
-databases:
-  - name: raw-wealthy-db
-    plan: free
-    region: ohio
-    databaseName: raw-wealthy
+      - key: NODE_ENV
+        value: production
+      - key: CLIENT_URL
+        value: https://raw-wealthy-frontend.vercel.app
