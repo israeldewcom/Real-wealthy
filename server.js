@@ -343,19 +343,41 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
 }));
 
 // ==================== EMAIL CONFIGURATION ====================
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT),
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD
-  }
-});
+// ==================== EMAIL CONFIGURATION ====================
+let transporter = null;
+
+if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+  transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port: parseInt(process.env.EMAIL_PORT),
+    secure: parseInt(process.env.EMAIL_PORT) === 465,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD
+    }
+  });
+  
+  // Verify connection
+  transporter.verify(function(error, success) {
+    if (error) {
+      console.log('❌ Email configuration error:', error);
+    } else {
+      console.log('✅ Email server is ready to send messages');
+    }
+  });
+} else {
+  console.warn('⚠️ Email configuration incomplete. Email notifications will be logged but not sent.');
+}
 
 // Email utility functions
 const sendEmail = async (to, subject, html, text = '') => {
   try {
+    if (!transporter) {
+      console.log(`📧 Email would be sent (simulated): To: ${to}, Subject: ${subject}`);
+      console.log(`📧 Email content: ${text.substring(0, 100)}...`);
+      return true;
+    }
+    
     const mailOptions = {
       from: `"Raw Wealthy" <${process.env.EMAIL_USER}>`,
       to,
@@ -368,11 +390,11 @@ const sendEmail = async (to, subject, html, text = '') => {
     console.log(`✅ Email sent to ${to}`);
     return true;
   } catch (error) {
-    console.error('❌ Email sending error:', error);
+    console.error('❌ Email sending error:', error.message);
+    console.log(`📧 Email content (for manual sending):`, { to, subject, text });
     return false;
   }
 };
-
 // ==================== FALLBACK IN-MEMORY STORAGE ====================
 let memoryStorage = {
   users: [],
