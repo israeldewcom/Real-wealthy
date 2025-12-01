@@ -89,76 +89,29 @@ const encodeMongoDBURI = (uri) => {
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 5000;
 
-const connectDBWithRetry = async (retries = MAX_RETRIES) => {
+const connectDBWithRetry = async () => {
+  console.log('🚀 FINAL ATTEMPT: Connecting to MongoDB...');
+  
   try {
-    console.log(`🔄 Attempting MongoDB connection (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})...`);
+    // Simple URI - no encoding, no special characters
+    const uri = 'mongodb+srv://RawWealthyProduction:qwerty123@rawwealthy.9cnu0jw.mongodb.net/rawwealthy';
     
-    if (!process.env.MONGODB_URI) {
-      console.error('❌ MONGODB_URI is not defined');
-      throw new Error('MONGODB_URI is not defined');
-    }
-
-    let uri = process.env.MONGODB_URI;
+    console.log('🔗 URI: mongodb+srv://RawWealthyProduction:****@rawwealthy.9cnu0jw.mongodb.net/rawwealthy');
     
-    // Ensure password is URL-encoded
-    uri = encodeMongoDBURI(uri);
+    // SIMPLE connection - no options, no complexity
+    await mongoose.connect(uri);
     
-    console.log(`🔗 Using encoded URI: ${uri.substring(0, 60)}...`);
-    
-    // Try connection with encoded URI
-    await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-    });
-    
-    console.log('✅ MongoDB Connected Successfully!');
-    console.log('🏠 Host:', mongoose.connection.host);
+    console.log('✅✅✅ MONGODB CONNECTED SUCCESSFULLY!');
     console.log('📊 Database:', mongoose.connection.name);
+    console.log('🏠 Host:', mongoose.connection.host);
     
-    // Initialize database after successful connection
     await initializeDatabase();
-    
     return true;
     
   } catch (error) {
-    console.error(`❌ MongoDB connection attempt failed: ${error.message}`);
-    
-    // Try alternative connection methods
-    console.log('🔄 Trying alternative connection methods...');
-    
-    // Method 1: Try with simple password
-    try {
-      const simpleURI = 'mongodb+srv://rawwealthy_app:RawWealthyApp123@rawwealthy.9cnu0jw.mongodb.net/rawwealthy';
-      console.log('🔧 Trying with simple password...');
-      await mongoose.connect(simpleURI, { serverSelectionTimeoutMS: 5000 });
-      console.log('✅ Connected with simple password!');
-      await initializeDatabase();
-      return true;
-    } catch (simpleError) {
-      console.log('❌ Simple password failed:', simpleError.message);
-    }
-    
-    // Method 2: Try without password encoding
-    try {
-      const rawURI = process.env.MONGODB_URI;
-      console.log('🔧 Trying without encoding...');
-      await mongoose.connect(rawURI, { serverSelectionTimeoutMS: 5000 });
-      console.log('✅ Connected without encoding!');
-      await initializeDatabase();
-      return true;
-    } catch (rawError) {
-      console.log('❌ Raw connection failed:', rawError.message);
-    }
-    
-    if (retries > 0) {
-      console.log(`🔄 Retrying in ${RETRY_DELAY / 1000} seconds... (${retries} retries left)`);
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-      return connectDBWithRetry(retries - 1);
-    } else {
-      console.error('💥 All MongoDB connection attempts failed');
-      console.log('🔄 Continuing with in-memory data storage...');
-      return false;
-    }
+    console.log('❌ Connection failed:', error.message);
+    console.log('📝 Using memory storage - app will still work!');
+    return false;
   }
 };
 // ==================== ENHANCED EXPRESS SETUP ====================
