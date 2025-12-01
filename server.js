@@ -36,16 +36,12 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 // ==================== ENVIRONMENT VALIDATION ====================
+// ==================== ENVIRONMENT VALIDATION ====================
 const requiredEnvVars = [
   'JWT_SECRET',
   'MONGODB_URI',
   'ADMIN_PASSWORD',
-  'NODE_ENV',
-  'EMAIL_HOST',
-  'EMAIL_PORT',
-  'EMAIL_USER',
-  'EMAIL_PASSWORD',
-  'CLIENT_URL'
+  'NODE_ENV'
 ];
 
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
@@ -55,8 +51,14 @@ if (missingEnvVars.length > 0) {
   process.exit(1);
 }
 
-console.log('✅ Environment variables validated');
+// Set defaults for optional email variables
+process.env.EMAIL_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
+process.env.EMAIL_PORT = process.env.EMAIL_PORT || '587';
+process.env.EMAIL_USER = process.env.EMAIL_USER || '';
+process.env.EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || '';
+process.env.CLIENT_URL = process.env.CLIENT_URL || 'https://raw-wealthy-frontend.vercel.app';
 
+console.log('✅ Environment variables validated');
 // ==================== ENHANCED MONGODB CONNECTION ====================
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 5000;
