@@ -65,22 +65,48 @@ if (missingEnvVars.length > 0) {
 }
 
 console.log('✅ Environment variables validated (using defaults if needed)');
+// Function to encode MongoDB password
+const encodeMongoDBURI = (uri) => {
+  if (!uri || !uri.includes('mongodb')) return uri;
+  
+  try {
+    // Extract the password part and encode it
+    const match = uri.match(/mongodb(\+srv)?:\/\/([^:]+):([^@]+)@/);
+    if (match) {
+      const [fullMatch, protocol, username, password] = match;
+      const encodedPassword = encodeURIComponent(password);
+      const encodedURI = uri.replace(`${username}:${password}@`, `${username}:${encodedPassword}@`);
+      console.log('🔐 Password encoded for MongoDB URI');
+      return encodedURI;
+    }
+  } catch (error) {
+    console.error('Error encoding MongoDB URI:', error.message);
+  }
+  
+  return uri;
+};
 // ==================== ENHANCED MONGODB CONNECTION ====================
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 5000;
- const connectDBWithRetry = async (retries = MAX_RETRIES) => {
+
+const connectDBWithRetry = async (retries = MAX_RETRIES) => {
   try {
     console.log(`🔄 Attempting MongoDB connection (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})...`);
     
     if (!process.env.MONGODB_URI) {
-      console.log('⚠️ MONGODB_URI not found, using memory storage');
-      return false;
+      console.error('❌ MONGODB_URI is not defined');
+      throw new Error('MONGODB_URI is not defined');
     }
 
-    console.log(`📊 Using MongoDB URI: ${process.env.MONGODB_URI.substring(0, 50)}...`);
+    let uri = process.env.MONGODB_URI;
     
-    // Try direct connection first
-    await mongoose.connect(process.env.MONGODB_URI, {
+    // Ensure password is URL-encoded
+    uri = encodeMongoDBURI(uri);
+    
+    console.log(`🔗 Using encoded URI: ${uri.substring(0, 60)}...`);
+    
+    // Try connection with encoded URI
+    await mongoose.connect(uri, {
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
     });
@@ -97,22 +123,31 @@ const RETRY_DELAY = 5000;
   } catch (error) {
     console.error(`❌ MongoDB connection attempt failed: ${error.message}`);
     
-    if (error.message.includes('bad auth') || error.message.includes('authentication failed')) {
-      console.log('🔑 Authentication failed. Trying alternative connection...');
-      
-      // Try alternative connection string
-      try {
-        const altURI = 'mongodb+srv://israeldewa1_db_user:P@ssw0rd!123@rawwealthy.9cnu0jw.mongodb.net/rawwealthy';
-        console.log('🔄 Trying alternative connection...');
-        await mongoose.connect(altURI, {
-          serverSelectionTimeoutMS: 10000,
-        });
-        console.log('✅ Connected with alternative URI!');
-        await initializeDatabase();
-        return true;
-      } catch (altError) {
-        console.error('❌ Alternative connection also failed:', altError.message);
-      }
+    // Try alternative connection methods
+    console.log('🔄 Trying alternative connection methods...');
+    
+    // Method 1: Try with simple password
+    try {
+      const simpleURI = 'mongodb+srv://rawwealthy_app:RawWealthyApp123@rawwealthy.9cnu0jw.mongodb.net/rawwealthy';
+      console.log('🔧 Trying with simple password...');
+      await mongoose.connect(simpleURI, { serverSelectionTimeoutMS: 5000 });
+      console.log('✅ Connected with simple password!');
+      await initializeDatabase();
+      return true;
+    } catch (simpleError) {
+      console.log('❌ Simple password failed:', simpleError.message);
+    }
+    
+    // Method 2: Try without password encoding
+    try {
+      const rawURI = process.env.MONGODB_URI;
+      console.log('🔧 Trying without encoding...');
+      await mongoose.connect(rawURI, { serverSelectionTimeoutMS: 5000 });
+      console.log('✅ Connected without encoding!');
+      await initializeDatabase();
+      return true;
+    } catch (rawError) {
+      console.log('❌ Raw connection failed:', rawError.message);
     }
     
     if (retries > 0) {
