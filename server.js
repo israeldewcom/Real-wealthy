@@ -84,6 +84,7 @@ if (missingEnvVars.length > 0) {
 console.log('============================\n');
 
 // ==================== DYNAMIC CONFIGURATION ====================
+// ==================== DYNAMIC CONFIGURATION ====================
 const config = {
   // Server
   port: process.env.PORT || 10000,
@@ -97,9 +98,9 @@ const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30d',
   bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS) || 12,
   
-  // Client
-  clientURL: process.env.CLIENT_URL,
-  allowedOrigins: [],
+  // Client URLs - UPDATE THESE!
+  clientURL: process.env.CLIENT_URL || 'https://us-raw-wealthy.vercel.app',
+  adminURL: process.env.ADMIN_URL || 'https://us-raw-wealthy.vercel.app',
   
   // Email
   emailEnabled: process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD,
@@ -138,25 +139,155 @@ const config = {
 };
 
 // Build allowed origins dynamically
-config.allowedOrigins = [
-  config.clientURL,
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:3001',
-  'https://rawwealthy.com',
-  'https://www.rawwealthy.com',
-  'https://us-raw-wealthy.vercel.app/',
-  'https://real-wealthy-1.onrender.com'
-].filter(Boolean);
+// ==================== DYNAMIC CORS CONFIGURATION ====================
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      console.log('🌐 No origin header (direct API call)');
+      return callback(null, true);
+    }
+    
+    // List of ALL your allowed origins
+    const allowedOrigins = [
+      // Your production frontend
+      'https://us-raw-wealthy.vercel.app',
+      
+      // Your backend (for health checks)
+      'https://real-wealthy-1.onrender.com',
+      
+      // Common development origins
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://localhost:8080',
+      'http://127.0.0.1:8080',
+      
+      // Vercel preview deployments (wildcard pattern)
+      'https://*.vercel.app',
+      
+      // Render preview deployments
+      'https://*.onrender.com',
+      
+      // Your custom domains (future)
+      'https://rawwealthy.com',
+      'https://www.rawwealthy.com'
+    ];
+    
+    // Check if origin is explicitly allowed
+    const isExplicitlyAllowed = allowedOrigins.some(allowedOrigin => {
+      if (allowedOrigin.includes('*')) {
+        // Handle wildcard domains
+        const regex = new RegExp('^' + allowedOrigin.replace(/\*/g, '.*') + '$');
+        return regex.test(origin);
+      }
+      return allowedOrigin === origin;
+    });
+    
+    // Also allow any Vercel or Render deployment for flexibility
+    const isVercelDeployment = origin.includes('vercel.app');
+    const isRenderDeployment = origin.includes('onrender.com');
+    
+    if (isExplicitlyAllowed || isVercelDeployment || isRenderDeployment) {
+      console.log(`🌐 Allowed origin: ${origin}`);
+      callback(null, true);
+    } else {
+      console.log(`🚫 Blocked by CORS: ${origin}`);
+      callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
+    }
+  },
+  
+  // Allow credentials (cookies, authorization headers)
+  credentials: true,
+  
+  // Allowed HTTP methods
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  
+  // Allowed headers
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Access-Control-Allow-Headers',
+    'Access-Control-Request-Headers',
+    'Access-Control-Request-Method',
+    'X-API-Key',
+    'X-User-ID',
+    'X-Client-Version',
+    'Cache-Control',
+    'Pragma',
+    'Expires'
+  ],
+  
+  // Headers exposed to the browser
+  exposedHeaders: [
+    'Content-Length',
+    'Content-Type',
+    'Authorization',
+    'X-Request-ID',
+    'X-Response-Time',
+    'X-Powered-By',
+    'X-RateLimit-Limit',
+    'X-RateLimit-Remaining',
+    'X-RateLimit-Reset'
+  ],
+  
+  // Handle preflight requests
+  preflightContinue: false,
+  
+  // Success status for OPTIONS requests
+  optionsSuccessStatus: 204,
+  
+  // Max age for preflight cache (seconds)
+  maxAge: 86400, // 24 hours
+  
+  // Set CORS headers even for non-CORS requests
+  setHeaders: true
+};
 
-console.log('⚙️  Dynamic Configuration Loaded:');
-console.log(`- Port: ${config.port}`);
-console.log(`- Environment: ${config.nodeEnv}`);
-console.log(`- Client URL: ${config.clientURL}`);
-console.log(`- Email Enabled: ${config.emailEnabled}`);
-console.log(`- Allowed Origins: ${config.allowedOrigins.length}`);
-console.log(`- Upload Directory: ${config.uploadDir}`);
+// Apply CORS middleware
+app.use(cors(corsOptions));
 
+// Handle preflight requests for all routes
+app.options('*', cors(corsOptions));
+
+// ==================== ADDITIONAL SECURITY HEADERS ====================
+app.use((req, res, next) => {
+  // Set security headers for CORS
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', corsOptions.methods.join(', '));
+  res.header('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(', '));
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', corsOptions.maxAge.toString());
+  
+  // Additional security headers
+  res.header('X-Frame-Options', 'DENY');
+  res.header('X-Content-Type-Options', 'nosniff');
+  res.header('X-XSS-Protection', '1; mode=block');
+  res.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.header('Cross-Origin-Opener-Policy', 'same-origin');
+  res.header('Cross-Origin-Embedder-Policy', 'require-corp');
+  
+  next();
+});
+
+// ==================== PREFLIGHT REQUEST HANDLER ====================
+app.options('*', (req, res) => {
+  // Send CORS headers for preflight requests
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', corsOptions.methods.join(', '));
+  res.header('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(', '));
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', corsOptions.maxAge.toString());
+  
+  // End preflight request
+  res.status(204).end();
+});
 // ==================== ENHANCED EXPRESS SETUP ====================
 const app = express();
 
