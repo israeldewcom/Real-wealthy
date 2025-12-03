@@ -733,6 +733,19 @@ const Notification = mongoose.model('Notification', notificationSchema);
 
 // ==================== UTILITY FUNCTIONS ====================
 
+// ==================== API ROOT ENDPOINT ====================
+app.get('/api', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Raw Wealthy Backend API',
+    version: '35.0.0',
+    timestamp: new Date().toISOString(),
+    status: 'Operational',
+    environment: config.nodeEnv,
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    uptime: process.uptime()
+  });
+});
 const formatResponse = (success, message, data = null, pagination = null) => {
   const response = { 
     success, 
