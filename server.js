@@ -1010,7 +1010,7 @@ const createAdminUser = async () => {
     if (!admin) {
       admin = new User({
         full_name: 'Raw Wealthy Admin',
-        email: israeldewa1@gmail.com,
+        email: 'israeldewa1@gmail.com',
         phone: '09161806424',
         password: qwertyui,
         role: 'super_admin',
