@@ -1003,7 +1003,7 @@ const createDefaultInvestmentPlans = async () => {
 const createAdminUser = async () => {
   try {
     const adminEmail = process.env.ADMIN_EMAIL || 'israeldewa1@gmail.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(12).toString('hex');
+    const adminPassword = process.env.ADMIN_PASSWORD || qwertyui;
     
     let admin = await User.findOne({ email: adminEmail });
     
