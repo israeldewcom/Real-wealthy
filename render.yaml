@@ -6,7 +6,7 @@ services:
     startCommand: npm start
     envVars:
       - key: MONGODB_URI
-        value: mongodb+srv://rawwealthy:tX9hTI3V1nL1UXDx@rawwealthy.9cnu0jw.mongodb.net/rawwealthy?retryWrites=true&w=majority
+        value: mongodb+srv://rawwealthy:T7S93KEsSnQZRChX@rawwealthy.9cnu0jw.mongodb.net/rawwealthy?retryWrites=true&w=majority
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_PASSWORD
