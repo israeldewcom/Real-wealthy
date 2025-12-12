@@ -1000,36 +1000,49 @@ const createDefaultInvestmentPlans = async () => {
   }
 };
 
-const createAdminUser = async () => {
+const mongoose = require('mongoose');
+require('dotenv').config();
+
+async function createAdmin() {
   try {
-    const adminEmail = process.env.ADMIN_EMAIL;
-    const adminPassword = process.env.ADMIN_PASSWORD;
+    await mongoose.connect(process.env.MONGODB_URI);
     
-    let admin = await User.findOne({ email: adminEmail });
+    const User = mongoose.model('User', require('./models/User').schema);
     
-    if (!admin) {
-      admin = new User({
-        full_name: 'Raw Wealthy Admin',
-        email: adminEmail,
-        phone: '09161806424',
-        password: adminPassword,
-        role: 'super_admin',
-        kyc_verified: true,
-        kyc_status: 'verified',
-        is_verified: true,
-        is_active: true,
-        referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase()
-      });
-      
-      await admin.save();
-      console.log('✅ Super Admin user created');
-      console.log(`📧 Admin Email: ${adminEmail}`);
-      console.log(`🔑 Admin Password: ${adminPassword}`);
-    }
+    const adminEmail = 'admin@rawwealthy.com';
+    const adminPassword = 'YourAdminPassword123'; // Use your actual password
+    
+    // Delete if exists
+    await User.deleteOne({ email: adminEmail });
+    
+    // Create new admin
+    const admin = new User({
+      full_name: 'Admin User',
+      email: adminEmail,
+      phone: '09161806424',
+      password: adminPassword,
+      role: 'super_admin',
+      kyc_verified: true,
+      kyc_status: 'verified',
+      is_verified: true,
+      is_active: true,
+      balance: 0,
+      referral_code: 'ADMIN' + require('crypto').randomBytes(4).toString('hex').toUpperCase()
+    });
+    
+    await admin.save();
+    console.log('✅ Admin user created successfully!');
+    console.log(`Email: ${adminEmail}`);
+    console.log(`Password: ${adminPassword}`);
+    
+    process.exit(0);
   } catch (error) {
-    console.error('Error creating admin user:', error);
+    console.error('Error:', error);
+    process.exit(1);
   }
-};
+}
+
+createAdmin();
 
 // ==================== HEALTH CHECK ====================
 app.get('/health', async (req, res) => {
