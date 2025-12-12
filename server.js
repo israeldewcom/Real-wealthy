@@ -999,25 +999,15 @@ const createDefaultInvestmentPlans = async () => {
     console.error('Error creating default investment plans:', error);
   }
 };
+
 const createAdminUser = async () => {
   try {
     const adminEmail = process.env.ADMIN_EMAIL;
     const adminPassword = process.env.ADMIN_PASSWORD;
     
-    if (!adminEmail || !adminPassword) {
-      console.log('⚠️ ADMIN_EMAIL or ADMIN_PASSWORD not set in environment');
-      return;
-    }
-    
-    console.log(`🔍 Checking admin user: ${adminEmail}`);
-    
-    // Find admin including password field
-    let admin = await User.findOne({ email: adminEmail }).select('+password');
+    let admin = await User.findOne({ email: adminEmail });
     
     if (!admin) {
-      console.log('🔄 Creating new admin user...');
-      
-      // Create the admin user - password will be hashed by pre-save hook
       admin = new User({
         full_name: 'Raw Wealthy Admin',
         email: adminEmail,
@@ -1031,44 +1021,13 @@ const createAdminUser = async () => {
         referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase()
       });
       
-      // This will trigger the pre-save hook to hash the password
       await admin.save();
-      
-      console.log('✅ Super Admin user created successfully');
+      console.log('✅ Super Admin user created');
       console.log(`📧 Admin Email: ${adminEmail}`);
       console.log(`🔑 Admin Password: ${adminPassword}`);
-      console.log('💡 Password has been automatically hashed');
-      
-    } else {
-      console.log('✅ Admin user already exists');
-      
-      // Check if password is properly hashed
-      const isBcryptHash = admin.password && admin.password.startsWith('$2a$');
-      
-      if (!isBcryptHash) {
-        console.log('⚠️ Admin password is NOT hashed! Fixing...');
-        
-        // Update the password to trigger hashing
-        admin.password = adminPassword;
-        await admin.save();
-        
-        console.log('✅ Admin password has been re-hashed');
-      } else {
-        console.log('✅ Admin password is properly hashed');
-      }
-      
-      // Ensure correct role
-      if (admin.role !== 'super_admin') {
-        console.log('🔄 Updating admin role to super_admin...');
-        admin.role = 'super_admin';
-        await admin.save();
-        console.log('✅ Admin role updated');
-      }
     }
-    
   } catch (error) {
-    console.error('❌ Error creating/updating admin user:', error.message);
-    console.error('Full error:', error);
+    console.error('Error creating admin user:', error);
   }
 };
 
