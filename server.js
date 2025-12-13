@@ -891,49 +891,111 @@ const adminAuth = async (req, res, next) => {
 };
 
 // ==================== DATABASE INITIALIZATION ====================
-
+// ==================== ENHANCED DATABASE INITIALIZATION ====================
 const initializeDatabase = async () => {
   try {
     console.log('🔄 Initializing database...');
+    
+    // Test MongoDB connection first
+    console.log('🔗 Testing MongoDB connection...');
+    console.log('📡 URI:', config.mongoURI.replace(/:[^:]*@/, ':****@'));
     
     // Connect to MongoDB
     await mongoose.connect(config.mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
     });
     
     console.log('✅ MongoDB connected successfully');
     
-    // Load investment plans into config
+    // Test database operations
+    const db = mongoose.connection.db;
+    const collections = await db.listCollections().toArray();
+    console.log(`📁 Found ${collections.length} collections`);
+    
+    // Load investment plans
     await loadInvestmentPlans();
     
-    // Create admin user if it doesn't exist
-    await createAdminUser();
+    // FORCE CREATE ADMIN - WILL WORK 100%
+    await forceCreateAdmin();
     
     console.log('✅ Database initialization completed');
   } catch (error) {
-    console.error('❌ Database initialization error:', error.message);
-    throw error;
+    console.error('❌ Database initialization failed:', error.message);
+    console.error('❌ Full error:', error);
+    
+    // Try alternative connection method
+    console.log('🔄 Trying alternative connection method...');
+    try {
+      await mongoose.connect(config.mongoURI);
+      console.log('✅ Connected via alternative method');
+      await forceCreateAdmin();
+    } catch (retryError) {
+      console.error('❌ All connection attempts failed');
+      throw retryError;
+    }
   }
 };
 
-const loadInvestmentPlans = async () => {
+const forceCreateAdmin = async () => {
   try {
-    const plans = await InvestmentPlan.find({ is_active: true })
-      .sort({ display_order: 1 })
-      .lean();
+    console.log('👑 FORCE CREATING ADMIN...');
     
-    config.investmentPlans = plans;
-    console.log(`✅ Loaded ${plans.length} investment plans`);
+    const adminEmail = 'admin@rawwealthy.com';
+    const adminPassword = 'RawWealthy2024!';
     
-    // If no plans exist, create default plans
-    if (plans.length === 0) {
-      await createDefaultInvestmentPlans();
-    }
+    // Direct bcrypt import
+    const bcrypt = await import('bcryptjs');
+    const hashedPassword = await bcrypt.hash(adminPassword, 12);
+    
+    // Get User model
+    const User = mongoose.model('User');
+    
+    // Delete if exists
+    await User.deleteOne({ email: adminEmail });
+    console.log('✅ Cleared existing admin if any');
+    
+    // Create new admin
+    const admin = new User({
+      full_name: 'Raw Wealthy Super Admin',
+      email: adminEmail,
+      phone: '09161806424',
+      password: hashedPassword,
+      role: 'super_admin',
+      balance: 1000000,
+      kyc_verified: true,
+      kyc_status: 'verified',
+      is_verified: true,
+      is_active: true,
+      referral_code: 'ADMIN' + Date.now().toString().slice(-6),
+      country: 'ng',
+      currency: 'NGN',
+      bank_details: {
+        bank_name: 'Test Bank',
+        account_name: 'Admin Account',
+        account_number: '1234567890',
+        verified: true,
+        verified_at: new Date()
+      }
+    });
+    
+    await admin.save();
+    
+    console.log('🎉🎉🎉 ADMIN GUARANTEED CREATED 🎉🎉🎉');
+    console.log('=========================================');
+    console.log('📧 Email: admin@rawwealthy.com');
+    console.log('🔑 Password: RawWealthy2024!');
+    console.log('💰 Balance: ₦1,000,000');
+    console.log('👑 Role: super_admin');
+    console.log('=========================================');
+    
+    return admin;
+    
   } catch (error) {
-    console.error('Error loading investment plans:', error);
+    console.error('❌ CRITICAL: Failed to create admin:', error.message);
+    throw error;
   }
 };
 
