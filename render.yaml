@@ -6,7 +6,7 @@ services:
     startCommand: npm start
     envVars:
       - key: MONGODB_URI
-        value: 
+        value: mongodb+srv://shakebody830_db_user:Om8DH2JlRaHfGkrI@rawwealthy.g29rpm3.mongodb.net/raw_wealthy_prod?retryWrites=true&w=majority&appName=rawwealthy
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_PASSWORD
