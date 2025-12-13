@@ -891,111 +891,49 @@ const adminAuth = async (req, res, next) => {
 };
 
 // ==================== DATABASE INITIALIZATION ====================
-// ==================== ENHANCED DATABASE INITIALIZATION ====================
+
 const initializeDatabase = async () => {
   try {
     console.log('🔄 Initializing database...');
-    
-    // Test MongoDB connection first
-    console.log('🔗 Testing MongoDB connection...');
-    console.log('📡 URI:', config.mongoURI.replace(/:[^:]*@/, ':****@'));
     
     // Connect to MongoDB
     await mongoose.connect(config.mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000,
+      serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     });
     
     console.log('✅ MongoDB connected successfully');
     
-    // Test database operations
-    const db = mongoose.connection.db;
-    const collections = await db.listCollections().toArray();
-    console.log(`📁 Found ${collections.length} collections`);
-    
-    // Load investment plans
+    // Load investment plans into config
     await loadInvestmentPlans();
     
-    // FORCE CREATE ADMIN - WILL WORK 100%
-    await forceCreateAdmin();
+    // Create admin user if it doesn't exist
+    await createAdminUser();
     
     console.log('✅ Database initialization completed');
   } catch (error) {
-    console.error('❌ Database initialization failed:', error.message);
-    console.error('❌ Full error:', error);
-    
-    // Try alternative connection method
-    console.log('🔄 Trying alternative connection method...');
-    try {
-      await mongoose.connect(config.mongoURI);
-      console.log('✅ Connected via alternative method');
-      await forceCreateAdmin();
-    } catch (retryError) {
-      console.error('❌ All connection attempts failed');
-      throw retryError;
-    }
+    console.error('❌ Database initialization error:', error.message);
+    throw error;
   }
 };
 
-const forceCreateAdmin = async () => {
+const loadInvestmentPlans = async () => {
   try {
-    console.log('👑 FORCE CREATING ADMIN...');
+    const plans = await InvestmentPlan.find({ is_active: true })
+      .sort({ display_order: 1 })
+      .lean();
     
-    const adminEmail = 'admin@rawwealthy.com';
-    const adminPassword = 'RawWealthy2024!';
+    config.investmentPlans = plans;
+    console.log(`✅ Loaded ${plans.length} investment plans`);
     
-    // Direct bcrypt import
-    const bcrypt = await import('bcryptjs');
-    const hashedPassword = await bcrypt.hash(adminPassword, 12);
-    
-    // Get User model
-    const User = mongoose.model('User');
-    
-    // Delete if exists
-    await User.deleteOne({ email: adminEmail });
-    console.log('✅ Cleared existing admin if any');
-    
-    // Create new admin
-    const admin = new User({
-      full_name: 'Raw Wealthy Super Admin',
-      email: adminEmail,
-      phone: '09161806424',
-      password: hashedPassword,
-      role: 'super_admin',
-      balance: 1000000,
-      kyc_verified: true,
-      kyc_status: 'verified',
-      is_verified: true,
-      is_active: true,
-      referral_code: 'ADMIN' + Date.now().toString().slice(-6),
-      country: 'ng',
-      currency: 'NGN',
-      bank_details: {
-        bank_name: 'Test Bank',
-        account_name: 'Admin Account',
-        account_number: '1234567890',
-        verified: true,
-        verified_at: new Date()
-      }
-    });
-    
-    await admin.save();
-    
-    console.log('🎉🎉🎉 ADMIN GUARANTEED CREATED 🎉🎉🎉');
-    console.log('=========================================');
-    console.log('📧 Email: admin@rawwealthy.com');
-    console.log('🔑 Password: RawWealthy2024!');
-    console.log('💰 Balance: ₦1,000,000');
-    console.log('👑 Role: super_admin');
-    console.log('=========================================');
-    
-    return admin;
-    
+    // If no plans exist, create default plans
+    if (plans.length === 0) {
+      await createDefaultInvestmentPlans();
+    }
   } catch (error) {
-    console.error('❌ CRITICAL: Failed to create admin:', error.message);
-    throw error;
+    console.error('Error loading investment plans:', error);
   }
 };
 
@@ -1112,67 +1050,7 @@ app.get('/health', async (req, res) => {
   
   res.json(health);
 });
-// ==================== DIRECT LOGIN TEST ====================
-app.post('/api/test-login', async (req, res) => {
-  try {
-    const { email = 'admin@rawwealthy.com', password = 'RawWealthy2024!' } = req.body;
-    
-    console.log(`🔐 Testing login for: ${email}`);
-    
-    const User = mongoose.model('User');
-    const user = await User.findOne({ email }).select('+password');
-    
-    if (!user) {
-      return res.json({
-        success: false,
-        message: 'User not found',
-        suggestion: 'Admin may not be created yet'
-      });
-    }
-    
-    const bcrypt = await import('bcryptjs');
-    const validPassword = await bcrypt.compare(password, user.password);
-    
-    if (!validPassword) {
-      return res.json({
-        success: false,
-        message: 'Invalid password',
-        stored_hash: user.password.substring(0, 20) + '...',
-        input_password: password
-      });
-    }
-    
-    // Generate token
-    const jwt = await import('jsonwebtoken');
-    const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
-      config.jwtSecret,
-      { expiresIn: config.jwtExpiresIn }
-    );
-    
-    res.json({
-      success: true,
-      message: 'LOGIN SUCCESSFUL!',
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.full_name,
-        role: user.role,
-        balance: user.balance
-      },
-      token,
-      frontend_url: `${config.clientURL}/auth/callback?token=${token}`,
-      curl_command: `curl -H "Authorization: Bearer ${token}" ${config.clientURL}/api/profile`
-    });
-    
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Login test failed',
-      error: error.message
-    });
-  }
-});
+
 // ==================== ROOT ENDPOINT ====================
 app.get('/', (req, res) => {
   res.json({
@@ -1197,64 +1075,7 @@ app.get('/', (req, res) => {
     }
   });
 });
-// ==================== EMERGENCY RESET ====================
-app.post('/api/emergency-reset', async (req, res) => {
-  try {
-    const { secret = 'RESET123' } = req.body;
-    
-    if (secret !== 'RESET123') {
-      return res.status(403).json({ error: 'Invalid secret' });
-    }
-    
-    console.log('🚨 EMERGENCY RESET INITIATED');
-    
-    const db = mongoose.connection.db;
-    
-    // Drop all collections
-    const collections = await db.listCollections().toArray();
-    for (const collection of collections) {
-      await db.collection(collection.name).drop();
-      console.log(`✅ Dropped: ${collection.name}`);
-    }
-    
-    // Recreate admin
-    await forceCreateAdmin();
-    
-    // Create test investment plans
-    const InvestmentPlan = mongoose.model('InvestmentPlan');
-    const defaultPlans = [
-      {
-        name: 'Cocoa Beans',
-        description: 'Premium cocoa beans investment',
-        min_amount: 3500,
-        daily_interest: 10,
-        duration: 30,
-        risk_level: 'low',
-        raw_material: 'Cocoa',
-        is_active: true
-      }
-    ];
-    
-    await InvestmentPlan.deleteMany({});
-    await InvestmentPlan.insertMany(defaultPlans);
-    
-    res.json({
-      success: true,
-      message: 'DATABASE COMPLETELY RESET AND READY',
-      admin_credentials: {
-        email: 'admin@rawwealthy.com',
-        password: 'RawWealthy2024!'
-      },
-      test_user: {
-        email: 'test@rawwealthy.com',
-        password: 'Test123!'
-      }
-    });
-    
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+
 // ==================== AUTH ENDPOINTS ====================
 
 // Register
@@ -3228,3 +3049,4 @@ const startServer = async () => {
 startServer();
 
 export default app;
+
