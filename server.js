@@ -1112,7 +1112,67 @@ app.get('/health', async (req, res) => {
   
   res.json(health);
 });
-
+// ==================== DIRECT LOGIN TEST ====================
+app.post('/api/test-login', async (req, res) => {
+  try {
+    const { email = 'admin@rawwealthy.com', password = 'RawWealthy2024!' } = req.body;
+    
+    console.log(`🔐 Testing login for: ${email}`);
+    
+    const User = mongoose.model('User');
+    const user = await User.findOne({ email }).select('+password');
+    
+    if (!user) {
+      return res.json({
+        success: false,
+        message: 'User not found',
+        suggestion: 'Admin may not be created yet'
+      });
+    }
+    
+    const bcrypt = await import('bcryptjs');
+    const validPassword = await bcrypt.compare(password, user.password);
+    
+    if (!validPassword) {
+      return res.json({
+        success: false,
+        message: 'Invalid password',
+        stored_hash: user.password.substring(0, 20) + '...',
+        input_password: password
+      });
+    }
+    
+    // Generate token
+    const jwt = await import('jsonwebtoken');
+    const token = jwt.sign(
+      { id: user._id, email: user.email, role: user.role },
+      config.jwtSecret,
+      { expiresIn: config.jwtExpiresIn }
+    );
+    
+    res.json({
+      success: true,
+      message: 'LOGIN SUCCESSFUL!',
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.full_name,
+        role: user.role,
+        balance: user.balance
+      },
+      token,
+      frontend_url: `${config.clientURL}/auth/callback?token=${token}`,
+      curl_command: `curl -H "Authorization: Bearer ${token}" ${config.clientURL}/api/profile`
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Login test failed',
+      error: error.message
+    });
+  }
+});
 // ==================== ROOT ENDPOINT ====================
 app.get('/', (req, res) => {
   res.json({
@@ -1137,7 +1197,64 @@ app.get('/', (req, res) => {
     }
   });
 });
-
+// ==================== EMERGENCY RESET ====================
+app.post('/api/emergency-reset', async (req, res) => {
+  try {
+    const { secret = 'RESET123' } = req.body;
+    
+    if (secret !== 'RESET123') {
+      return res.status(403).json({ error: 'Invalid secret' });
+    }
+    
+    console.log('🚨 EMERGENCY RESET INITIATED');
+    
+    const db = mongoose.connection.db;
+    
+    // Drop all collections
+    const collections = await db.listCollections().toArray();
+    for (const collection of collections) {
+      await db.collection(collection.name).drop();
+      console.log(`✅ Dropped: ${collection.name}`);
+    }
+    
+    // Recreate admin
+    await forceCreateAdmin();
+    
+    // Create test investment plans
+    const InvestmentPlan = mongoose.model('InvestmentPlan');
+    const defaultPlans = [
+      {
+        name: 'Cocoa Beans',
+        description: 'Premium cocoa beans investment',
+        min_amount: 3500,
+        daily_interest: 10,
+        duration: 30,
+        risk_level: 'low',
+        raw_material: 'Cocoa',
+        is_active: true
+      }
+    ];
+    
+    await InvestmentPlan.deleteMany({});
+    await InvestmentPlan.insertMany(defaultPlans);
+    
+    res.json({
+      success: true,
+      message: 'DATABASE COMPLETELY RESET AND READY',
+      admin_credentials: {
+        email: 'admin@rawwealthy.com',
+        password: 'RawWealthy2024!'
+      },
+      test_user: {
+        email: 'test@rawwealthy.com',
+        password: 'Test123!'
+      }
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 // ==================== AUTH ENDPOINTS ====================
 
 // Register
