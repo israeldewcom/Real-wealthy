@@ -1077,7 +1077,57 @@ app.get('/', (req, res) => {
 });
 
 // ==================== AUTH ENDPOINTS ====================
-
+// Diagnostic endpoint
+app.get('/api/diagnose', async (req, res) => {
+  try {
+    // Check environment
+    const env = {
+      ADMIN_EMAIL: process.env.ADMIN_EMAIL ? 'SET' : 'NOT SET',
+      ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ? `SET (length: ${process.env.ADMIN_PASSWORD.length})` : 'NOT SET',
+      NODE_ENV: process.env.NODE_ENV,
+      MONGODB_URI: process.env.MONGODB_URI ? 'SET' : 'NOT SET'
+    };
+    
+    // Check users
+    const totalUsers = await User.countDocuments();
+    const adminUsers = await User.find({ 
+      $or: [
+        { email: 'admin@rawwealthy.com' },
+        { role: { $in: ['admin', 'super_admin'] } }
+      ] 
+    }).select('-password').lean();
+    
+    // Try to login with test
+    const testResult = { success: false, error: null };
+    if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+      const testAdmin = await User.findOne({ email: process.env.ADMIN_EMAIL }).select('+password');
+      if (testAdmin) {
+        try {
+          const match = await bcrypt.compare(process.env.ADMIN_PASSWORD, testAdmin.password);
+          testResult.success = match;
+          testResult.error = match ? null : 'Password mismatch';
+        } catch (err) {
+          testResult.error = `Bcrypt error: ${err.message}`;
+        }
+      } else {
+        testResult.error = 'Admin user not found';
+      }
+    }
+    
+    res.json({
+      environment: env,
+      database: {
+        totalUsers,
+        adminUsers
+      },
+      passwordTest: testResult,
+      serverTime: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 // Register
 app.post('/api/auth/register', [
   body('full_name').notEmpty().trim().isLength({ min: 2, max: 100 }),
