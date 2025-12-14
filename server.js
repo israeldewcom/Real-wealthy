@@ -1005,7 +1005,7 @@ const createAdminUser = async () => {
     console.log('🛠️ ADMIN CREATION PROCESS STARTING...');
     
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || '$2a$12$CsThiuit6/iVZmwwoIUUd.RfD8FFuW.fXXcsiwas4Am0Q8ynnzvdW';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';
     
     console.log(`📧 Admin Email: ${adminEmail}`);
     console.log(`🔑 Admin Password: ${adminPassword ? 'SET' : 'NOT SET'}`);
