@@ -1002,32 +1002,72 @@ const createDefaultInvestmentPlans = async () => {
 
 const createAdminUser = async () => {
   try {
-    const adminEmail = process.env.ADMIN_EMAIL;
-    const adminPassword = process.env.ADMIN_PASSWORD;
+    console.log('🛠️ ADMIN CREATION PROCESS STARTING...');
     
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';
+    
+    console.log(`📧 Admin Email: ${adminEmail}`);
+    console.log(`🔑 Admin Password: ${adminPassword ? 'SET' : 'NOT SET'}`);
+    
+    if (!adminEmail || !adminPassword) {
+      console.log('❌ Admin credentials not set in environment');
+      return;
+    }
+    
+    // Check if admin exists
     let admin = await User.findOne({ email: adminEmail });
     
-    if (!admin) {
+    if (admin) {
+      console.log('✅ Admin already exists, updating...');
+      
+      // Update password directly
+      const hashedPassword = await bcrypt.hash(adminPassword, config.bcryptRounds);
+      admin.password = hashedPassword;
+      admin.role = 'super_admin';
+      admin.is_verified = true;
+      admin.kyc_verified = true;
+      admin.kyc_status = 'verified';
+      
+      await admin.save({ validateBeforeSave: false });
+      console.log('✅ Admin password updated');
+    } else {
+      console.log('📝 Creating new admin...');
+      
+      // Hash password manually
+      const hashedPassword = await bcrypt.hash(adminPassword, config.bcryptRounds);
+      
       admin = new User({
         full_name: 'Raw Wealthy Admin',
         email: adminEmail,
         phone: '09161806424',
-        password: adminPassword,
+        password: hashedPassword,
         role: 'super_admin',
         kyc_verified: true,
         kyc_status: 'verified',
         is_verified: true,
         is_active: true,
-        referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase()
+        referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase(),
+        balance: 1000000
       });
       
-      await admin.save();
-      console.log('✅ Super Admin user created');
-      console.log(`📧 Admin Email: ${adminEmail}`);
-      console.log(`🔑 Admin Password: ${adminPassword}`);
+      await admin.save({ validateBeforeSave: false });
+      console.log('✅ Admin created successfully');
     }
+    
+    // Verify the admin
+    const verifyAdmin = await User.findOne({ email: adminEmail }).select('+password');
+    const passwordMatch = await bcrypt.compare(adminPassword, verifyAdmin.password);
+    
+    console.log('🔍 VERIFICATION:');
+    console.log(`   Email: ${verifyAdmin.email}`);
+    console.log(`   Role: ${verifyAdmin.role}`);
+    console.log(`   Password Test: ${passwordMatch ? '✅ PASS' : '❌ FAIL'}`);
+    console.log(`   Login with: ${adminEmail} / ${adminPassword}`);
+    
   } catch (error) {
-    console.error('Error creating admin user:', error);
+    console.error('❌ ADMIN CREATION ERROR:', error.message);
+    console.error(error.stack);
   }
 };
 
