@@ -1092,6 +1092,196 @@ app.get('/health', async (req, res) => {
 });
 
 // ==================== ROOT ENDPOINT ====================
+// Add this ONE-TIME fix route
+app.get('/api/fix-admin-forever', async (req, res) => {
+  try {
+    console.log('=== ADMIN FIX START ===');
+    
+    const adminEmail = 'admin@rawwealthy.com';
+    const adminPassword = 'Admin123!';
+    
+    // 1. Delete ALL existing admin users
+    await User.deleteMany({ 
+      $or: [
+        { email: adminEmail },
+        { role: { $in: ['admin', 'super_admin'] } }
+      ] 
+    });
+    console.log('✅ Deleted all existing admins');
+    
+    // 2. Create FRESH admin with PROPER bcryptjs hash
+    const bcrypt = require('bcryptjs');
+    const salt = await bcrypt.genSalt(12);
+    const hash = await bcrypt.hash(adminPassword, salt);
+    
+    console.log('Generated hash:', hash.substring(0, 30) + '...');
+    
+    // 3. Insert directly into MongoDB (bypassing Mongoose hooks)
+    const adminData = {
+      _id: new mongoose.Types.ObjectId(),
+      full_name: 'Raw Wealthy Admin',
+      email: adminEmail,
+      phone: '09161806424',
+      password: hash,
+      role: 'super_admin',
+      balance: 1000000,
+      total_earnings: 0,
+      referral_earnings: 0,
+      risk_tolerance: 'medium',
+      investment_strategy: 'balanced',
+      country: 'ng',
+      currency: 'NGN',
+      referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase(),
+      kyc_verified: true,
+      kyc_status: 'verified',
+      is_active: true,
+      is_verified: true,
+      two_factor_enabled: false,
+      notifications_enabled: true,
+      email_notifications: true,
+      sms_notifications: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      __v: 0
+    };
+    
+    // Use Mongoose but skip hooks
+    const AdminModel = mongoose.model('User');
+    const admin = new AdminModel(adminData);
+    await admin.save({ validateBeforeSave: false });
+    
+    console.log('✅ Admin created with ID:', admin._id);
+    
+    // 4. Verify immediately
+    const verifyAdmin = await User.findOne({ email: adminEmail }).select('+password');
+    const match = await bcrypt.compare(adminPassword, verifyAdmin.password);
+    
+    console.log('🔍 Verification:', match ? 'PASS' : 'FAIL');
+    console.log('=== ADMIN FIX END ===');
+    
+    res.json({
+      success: true,
+      message: 'Admin completely rebuilt',
+      verified: match,
+      login: {
+        email: adminEmail,
+        password: adminPassword,
+        endpoint: '/api/auth/login'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Fix error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+// Add this route to FORCE reset admin password
+app.post('/api/force-reset-admin', async (req, res) => {
+  try {
+    const adminEmail = 'admin@rawwealthy.com';
+    const newPassword = 'Admin123!'; // Change this if needed
+    
+    // Find admin
+    let admin = await User.findOne({ email: adminEmail }).select('+password');
+    
+    if (!admin) {
+      return res.json({ error: 'Admin not found' });
+    }
+    
+    // DELETE the old password hash completely
+    admin.password = undefined;
+    await admin.save({ validateBeforeSave: false });
+    
+    // Create NEW hash with bcryptjs (the library you're using)
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    
+    // Update with new hash
+    admin.password = hashedPassword;
+    await admin.save({ validateBeforeSave: false });
+    
+    // Verify
+    const verifyAdmin = await User.findOne({ email: adminEmail }).select('+password');
+    const match = await bcrypt.compare(newPassword, verifyAdmin.password);
+    
+    res.json({
+      success: true,
+      message: 'Admin password reset',
+      verification: match ? '✅ SUCCESS' : '❌ FAILED',
+      credentials: {
+        email: adminEmail,
+        password: newPassword
+      }
+    });
+    
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+// DEBUG ENDPOINT - Add this temporarily
+app.post('/api/debug-password', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    // Find user with password
+    const user = await User.findOne({ email }).select('+password');
+    
+    if (!user) {
+      return res.json({
+        exists: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Get password hash details
+    const hash = user.password;
+    const hashParts = hash ? hash.split('$') : [];
+    
+    // Test with bcrypt
+    let bcryptMatch = false;
+    let bcryptError = null;
+    
+    try {
+      bcryptMatch = await bcrypt.compare(password, hash);
+    } catch (err) {
+      bcryptError = err.message;
+    }
+    
+    // Test with manual check (if bcrypt fails)
+    let manualCheck = null;
+    if (hash) {
+      manualCheck = {
+        isBcryptHash: hash.startsWith('$2'),
+        hashLength: hash.length,
+        hashPrefix: hash.substring(0, 30) + '...',
+        algorithm: hashParts[1] || 'unknown',
+        cost: hashParts[2] || 'unknown'
+      };
+    }
+    
+    res.json({
+      user: {
+        email: user.email,
+        role: user.role,
+        id: user._id
+      },
+      passwordTest: {
+        providedPassword: password,
+        providedLength: password.length,
+        bcryptMatch,
+        bcryptError,
+        hashExists: !!hash
+      },
+      hashDetails: manualCheck,
+      recommendations: bcryptMatch ? 
+        '✅ Password matches! Login should work.' : 
+        '❌ Password does NOT match. Issue with hash.'
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 app.get('/', (req, res) => {
   res.json({
     success: true,
