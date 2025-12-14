@@ -12,7 +12,7 @@ services:
       - key: ADMIN_EMAIL
         value: admin@rawwealthy.com
       - key: ADMIN_PASSWORD
-        value: $2a$12$CsThiuit6/iVZmwwoIUUd.RfD8FFuW.fXXcsiwas4Am0Q8ynnzvdW
+        value: Admin123!
       - key: NODE_ENV
         value: production
       - key: CLIENT_URL
