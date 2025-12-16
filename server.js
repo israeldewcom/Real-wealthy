@@ -145,8 +145,8 @@ config.allowedOrigins = [
   'http://localhost:3001',
   'https://rawwealthy.com',
   'https://www.rawwealthy.com',
-  'https://uun-rawwealthy.vercel.app/',
-  'https://real-wealthy-1.onrender.com/'
+  'https://uun-rawwealthy.vercel.app',
+  'https://real-wealthy-1.onrender.com'
 ].filter(Boolean);
 
 console.log('⚙️  Dynamic Configuration Loaded:');
