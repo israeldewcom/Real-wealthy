@@ -1,4 +1,3 @@
-
 // server.js - RAW WEALTHY BACKEND v36.0 - ADVANCED PRODUCTION READY
 // COMPLETE ENHANCEMENT: Advanced Admin Dashboard + Full Data Analytics + Enhanced Notifications
 // AUTO-DEPLOYMENT READY WITH DYNAMIC CONFIGURATION
@@ -188,16 +187,7 @@ if (config.nodeEnv === 'production') {
 } else {
   app.use(morgan('dev'));
 }
-const uploadResult = await handleFileUpload(req.file, 'investment-proofs', userId);
-console.log('📁 UPLOAD DEBUG:', {
-  userId: userId,
-  fileSize: req.file.size,
-  fileName: uploadResult.filename,
-  fileUrl: uploadResult.url,
-  fullPath: path.join(__dirname, uploadResult.url),
-  exists: fs.existsSync(path.join(__dirname, uploadResult.url))
-});
-proofUrl = uploadResult.url;
+
 // ==================== DYNAMIC CORS CONFIGURATION ====================
 const corsOptions = {
   origin: function (origin, callback) {
