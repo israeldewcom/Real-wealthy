@@ -14,6 +14,8 @@ services:
       - key: ADMIN_PASSWORD
         value: Admin123456
       - key: NODE_ENV
+      - key: ADMIN_URL
+      - value: https://rawwealthyadmin.netlify.app/
         value: production
       - key: CLIENT_URL
         value: https://uun-rawwealthy.vercel.app/
