@@ -146,6 +146,7 @@ config.allowedOrigins = [
   'https://rawwealthy.com',
   'https://www.rawwealthy.com',
   'https://uun-rawwealthy.vercel.app',
+ ' https://rawwealthyadmin.netlify.app/',
   'https://real-wealthy-1.onrender.com'
 ].filter(Boolean);
 
@@ -158,7 +159,7 @@ console.log(`- Allowed Origins: ${config.allowedOrigins.length}`);
 console.log(`- Upload Directory: ${config.uploadDir}`);
 
 // ==================== ENHANCED EXPRESS SETUP ====================
-const app = express();
+const app = express(); 
 
 // Security Headers with dynamic CSP
 app.use(helmet({
