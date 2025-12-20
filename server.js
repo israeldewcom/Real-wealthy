@@ -145,8 +145,8 @@ config.allowedOrigins = [
   'http://localhost:3001',
   'https://rawwealthy.com',
   'https://www.rawwealthy.com',
-  'https://kn-rawwealthy.vercel.app/',
-  'https://kn-rawwealthy.vercel.app/',
+  'https://mn-rawwealthy.vercel.app/',
+  'https://mn-rawwealthy.vercel.app/',
   'https://real-wealthy-1.onrender.com'
 ].filter(Boolean);
 
