@@ -18,4 +18,4 @@ services:
       - value: https://rawwealthyadmin.netlify.app/
         value: production
       - key: CLIENT_URL
-        value: https://kn-rawwealthy.vercel.app/
+        value: https://mn-rawwealthy.vercel.app/
