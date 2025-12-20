@@ -145,7 +145,7 @@ config.allowedOrigins = [
   'http://localhost:3001',
   'https://rawwealthy.com',
   'https://www.rawwealthy.com',
-  'https://uun-rawwealthy.vercel.app',
+  'https://cozy-starship-cbc959.netlify.app/',
  ' https://rawwealthyadmin.netlify.app/',
   'https://real-wealthy-1.onrender.com'
 ].filter(Boolean);
