@@ -18,4 +18,4 @@ services:
       - value: https://rawwealthyadmin.netlify.app/
         value: production
       - key: CLIENT_URL
-        value: https://uun-rawwealthy.vercel.app/
+        value: https://cozy-starship-cbc959.netlify.app/
