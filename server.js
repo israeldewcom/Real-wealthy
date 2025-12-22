@@ -27,13 +27,22 @@ import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import axios from 'axios';
+// ==== CRITICAL FIX: SET ENVIRONMENT VARIABLES ====
+process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://shakebody830_db_user:Om8DH2JlRaHfGkrI@rawwealthy.g29rpm3.mongodb.net/raw_wealthy_prod?retryWrites=true&w=majority&appName=rawwealthy';
+process.env.CLIENT_URL = process.env.CLIENT_URL || 'https://mn-rawwealthy.vercel.app';
+process.env.JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
+process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
+console.log('✅ Environment variables set:');
+console.log(`   MONGODB_URI: ${process.env.MONGODB_URI ? 'Set' : 'Missing'}`);
+console.log(`   CLIENT_URL: ${process.env.CLIENT_URL}`);
+console.log(`   JWT_SECRET: ${process.env.JWT_SECRET ? 'Set' : 'Missing'}`);
+console.log(`   NODE_ENV: ${process.env.NODE_ENV}`);
+// ==== END CRITICAL FIX ====
 // ES Modules equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Enhanced environment configuration
-dotenv.config({ path: path.join(__dirname, '.env.production') });
 
 // ==================== ENVIRONMENT VALIDATION ====================
 const requiredEnvVars = [
