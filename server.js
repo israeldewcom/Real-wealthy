@@ -1,6 +1,7 @@
-// server.js - RAW WEALTHY BACKEND v37.0 - ADVANCED PRODUCTION READY
-// COMPLETE ENHANCEMENT: Advanced Admin Dashboard + Full Data Analytics + Enhanced Notifications + Image Management
-// AUTO-DEPLOYMENT READY WITH DYNAMIC CONFIGURATION
+
+// server.js - RAW WEALTHY BACKEND v38.0 - ULTIMATE PRODUCTION EDITION
+// COMPLETE ENHANCEMENT: Advanced Dashboard + Real-time Earnings + Enhanced Referrals + Full Analytics
+// AUTO-DEPLOYMENT READY WITH DYNAMIC CONFIGURATION + PERFORMANCE OPTIMIZATION
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -27,22 +28,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import axios from 'axios';
-// ==== CRITICAL FIX: SET ENVIRONMENT VARIABLES ====
-process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://shakebody830_db_user:Om8DH2JlRaHfGkrI@rawwealthy.g29rpm3.mongodb.net/raw_wealthy_prod?retryWrites=true&w=majority&appName=rawwealthy';
-process.env.CLIENT_URL = process.env.CLIENT_URL || 'https://mn-rawwealthy.vercel.app';
-process.env.JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
-process.env.NODE_ENV = process.env.NODE_ENV || 'production';
+import WebSocket from 'ws';
+import redis from 'redis';
+import { promisify } from 'util';
 
-console.log('✅ Environment variables set:');
-console.log(`   MONGODB_URI: ${process.env.MONGODB_URI ? 'Set' : 'Missing'}`);
-console.log(`   CLIENT_URL: ${process.env.CLIENT_URL}`);
-console.log(`   JWT_SECRET: ${process.env.JWT_SECRET ? 'Set' : 'Missing'}`);
-console.log(`   NODE_ENV: ${process.env.NODE_ENV}`);
-// ==== END CRITICAL FIX ====
 // ES Modules equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Enhanced environment configuration
+dotenv.config({ path: path.join(__dirname, '.env.production') });
 
 // ==================== ENVIRONMENT VALIDATION ====================
 const requiredEnvVars = [
@@ -54,7 +49,6 @@ const requiredEnvVars = [
 
 console.log('🔍 Environment Configuration:');
 console.log('============================');
-
 const missingEnvVars = requiredEnvVars.filter(envVar => {
   if (!process.env[envVar]) {
     console.error(`❌ Missing: ${envVar}`);
@@ -71,26 +65,22 @@ if (missingEnvVars.length > 0) {
   // Try to load from alternative sources
   console.log('🔄 Attempting to load from alternative sources...');
   
-  // Check for Render/Heroku style environment
   if (process.env.DATABASE_URL) {
     process.env.MONGODB_URI = process.env.DATABASE_URL;
     console.log('✅ Loaded MONGODB_URI from DATABASE_URL');
   }
   
-  // Generate JWT secret if missing
   if (!process.env.JWT_SECRET) {
     process.env.JWT_SECRET = crypto.randomBytes(64).toString('hex');
     console.log('✅ Generated JWT_SECRET automatically');
   }
   
-  // Set default client URL
   if (!process.env.CLIENT_URL) {
     process.env.CLIENT_URL = 'https://us-raw-wealthy.vercel.app';
     console.log('✅ Set default CLIENT_URL');
   }
 }
 
-// Add SERVER_URL for absolute image paths
 if (!process.env.SERVER_URL) {
   process.env.SERVER_URL = process.env.CLIENT_URL || `http://localhost:${process.env.PORT || 10000}`;
   console.log('✅ Set SERVER_URL:', process.env.SERVER_URL);
@@ -100,24 +90,15 @@ console.log('============================\n');
 
 // ==================== DYNAMIC CONFIGURATION ====================
 const config = {
-  // Server
   port: process.env.PORT || 10000,
   nodeEnv: process.env.NODE_ENV || 'production',
   serverURL: process.env.SERVER_URL,
-  
-  // Database
   mongoURI: process.env.MONGODB_URI || process.env.DATABASE_URL,
-  
-  // Security
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30d',
   bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS) || 12,
-  
-  // Client
   clientURL: process.env.CLIENT_URL,
   allowedOrigins: [],
-  
-  // Email
   emailEnabled: process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD,
   emailConfig: {
     host: process.env.EMAIL_HOST,
@@ -127,21 +108,15 @@ const config = {
     pass: process.env.EMAIL_PASSWORD,
     from: process.env.EMAIL_FROM || `"Raw Wealthy" <${process.env.EMAIL_USER}>`
   },
-  
-  // Business Logic
   minInvestment: parseInt(process.env.MIN_INVESTMENT) || 3500,
   minDeposit: parseInt(process.env.MIN_DEPOSIT) || 3500,
   minWithdrawal: parseInt(process.env.MIN_WITHDRAWAL) || 3500,
   platformFeePercent: parseFloat(process.env.PLATFORM_FEE_PERCENT) || 10,
   referralCommissionPercent: parseFloat(process.env.REFERRAL_COMMISSION_PERCENT) || 10,
   welcomeBonus: parseInt(process.env.WELCOME_BONUS) || 100,
-  
-  // Investment Plans (Will be loaded from database)
   investmentPlans: [],
-  
-  // Storage
   uploadDir: path.join(__dirname, 'uploads'),
-  maxFileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024, // 10MB
+  maxFileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024,
   allowedMimeTypes: {
     'image/jpeg': 'jpg',
     'image/jpg': 'jpg',
@@ -150,7 +125,8 @@ const config = {
     'image/webp': 'webp',
     'application/pdf': 'pdf',
     'image/svg+xml': 'svg'
-  }
+  },
+  redisUrl: process.env.REDIS_URL || 'redis://localhost:6379'
 };
 
 // Build allowed origins dynamically
@@ -162,11 +138,11 @@ config.allowedOrigins = [
   'http://localhost:3001',
   'https://rawwealthy.com',
   'https://www.rawwealthy.com',
-  'https://mn-rawwealthy.vercel.app/',
+  'https://uun-rawwealthy.vercel.app',
   'https://real-wealthy-1.onrender.com'
 ].filter(Boolean);
 
-console.log('⚙️  Dynamic Configuration Loaded:');
+console.log('⚙️ Dynamic Configuration Loaded:');
 console.log(`- Port: ${config.port}`);
 console.log(`- Environment: ${config.nodeEnv}`);
 console.log(`- Client URL: ${config.clientURL}`);
@@ -174,6 +150,76 @@ console.log(`- Server URL: ${config.serverURL}`);
 console.log(`- Email Enabled: ${config.emailEnabled}`);
 console.log(`- Allowed Origins: ${config.allowedOrigins.length}`);
 console.log(`- Upload Directory: ${config.uploadDir}`);
+
+// ==================== REDIS CACHE SETUP ====================
+let redisClient;
+if (config.redisUrl && config.redisUrl !== 'redis://localhost:6379') {
+  redisClient = redis.createClient({ url: config.redisUrl });
+  redisClient.on('error', (err) => console.log('❌ Redis Client Error:', err));
+  await redisClient.connect();
+  console.log('✅ Redis connected successfully');
+} else {
+  console.log('⚠️ Redis not configured, using memory cache');
+  const memoryCache = new Map();
+  redisClient = {
+    get: async (key) => memoryCache.get(key),
+    set: async (key, value, options) => {
+      memoryCache.set(key, value);
+      if (options && options.EX) {
+        setTimeout(() => memoryCache.delete(key), options.EX * 1000);
+      }
+    },
+    del: async (key) => memoryCache.delete(key),
+    exists: async (key) => memoryCache.has(key),
+    expire: async (key, seconds) => {
+      setTimeout(() => memoryCache.delete(key), seconds * 1000);
+      return 1;
+    }
+  };
+}
+
+// Cache utility functions
+const cache = {
+  get: async (key) => {
+    try {
+      const value = await redisClient.get(key);
+      return value ? JSON.parse(value) : null;
+    } catch (error) {
+      console.error('Cache get error:', error);
+      return null;
+    }
+  },
+  set: async (key, value, ttl = 300) => {
+    try {
+      await redisClient.set(key, JSON.stringify(value), { EX: ttl });
+      return true;
+    } catch (error) {
+      console.error('Cache set error:', error);
+      return false;
+    }
+  },
+  delete: async (key) => {
+    try {
+      await redisClient.del(key);
+      return true;
+    } catch (error) {
+      console.error('Cache delete error:', error);
+      return false;
+    }
+  },
+  clearPattern: async (pattern) => {
+    try {
+      const keys = await redisClient.keys(`${pattern}*`);
+      if (keys.length > 0) {
+        await redisClient.del(keys);
+      }
+      return true;
+    } catch (error) {
+      console.error('Cache clear pattern error:', error);
+      return false;
+    }
+  }
+};
 
 // ==================== ENHANCED EXPRESS SETUP ====================
 const app = express();
@@ -193,13 +239,11 @@ app.use(helmet({
   }
 }));
 
-// Security middleware
 app.use(xss());
 app.use(hpp());
 app.use(mongoSanitize());
 app.use(compression());
 
-// Enhanced logging
 if (config.nodeEnv === 'production') {
   app.use(morgan('combined'));
 } else {
@@ -209,13 +253,10 @@ if (config.nodeEnv === 'production') {
 // ==================== DYNAMIC CORS CONFIGURATION ====================
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
     if (config.allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      // Check if origin matches pattern (for preview deployments)
       const isPreviewDeployment = origin.includes('vercel.app') || origin.includes('onrender.com');
       if (isPreviewDeployment) {
         console.log(`🌐 Allowed preview deployment: ${origin}`);
@@ -235,14 +276,15 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // ==================== BODY PARSING ====================
-app.use(express.json({ 
+app.use(express.json({
   limit: '50mb',
   verify: (req, res, buf) => {
     req.rawBody = buf;
   }
 }));
-app.use(express.urlencoded({ 
-  extended: true, 
+
+app.use(express.urlencoded({
+  extended: true,
   limit: '50mb',
   parameterLimit: 100000
 }));
@@ -277,48 +319,41 @@ app.use('/api/withdrawals', rateLimiters.financial);
 app.use('/api/admin', rateLimiters.admin);
 app.use('/api/', rateLimiters.api);
 
-// ==================== ENHANCED FILE UPLOAD CONFIGURATION ====================
+// ==================== ENHANCED FILE UPLOAD ====================
 const storage = multer.memoryStorage();
-
 const fileFilter = (req, file, cb) => {
   if (!config.allowedMimeTypes[file.mimetype]) {
     return cb(new Error(`Invalid file type: ${file.mimetype}`), false);
   }
-  
   if (file.size > config.maxFileSize) {
     return cb(new Error(`File size exceeds ${config.maxFileSize / 1024 / 1024}MB limit`), false);
   }
-  
   cb(null, true);
 };
 
 const upload = multer({
   storage,
   fileFilter,
-  limits: { 
+  limits: {
     fileSize: config.maxFileSize,
     files: 10
   }
 });
 
-// Enhanced file upload handler with absolute URL
+// Enhanced file upload handler
 const handleFileUpload = async (file, folder = 'general', userId = null) => {
   if (!file) return null;
   
   try {
-    // Validate file type
     if (!config.allowedMimeTypes[file.mimetype]) {
       throw new Error('Invalid file type');
     }
     
     const uploadsDir = path.join(config.uploadDir, folder);
-    
-    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
-    // Generate secure filename
     const timestamp = Date.now();
     const randomStr = crypto.randomBytes(8).toString('hex');
     const userIdPrefix = userId ? `${userId}_` : '';
@@ -326,10 +361,8 @@ const handleFileUpload = async (file, folder = 'general', userId = null) => {
     const filename = `${userIdPrefix}${timestamp}_${randomStr}.${fileExtension}`;
     const filepath = path.join(uploadsDir, filename);
     
-    // Write file
     await fs.promises.writeFile(filepath, file.buffer);
     
-    // Return absolute URL for browser access
     return {
       url: `${config.serverURL}/uploads/${folder}/${filename}`,
       relativeUrl: `/uploads/${folder}/${filename}`,
@@ -346,7 +379,7 @@ const handleFileUpload = async (file, folder = 'general', userId = null) => {
   }
 };
 
-// Serve static files with proper caching
+// Serve static files
 if (!fs.existsSync(config.uploadDir)) {
   fs.mkdirSync(config.uploadDir, { recursive: true });
 }
@@ -360,9 +393,8 @@ app.use('/uploads', express.static(config.uploadDir, {
   }
 }));
 
-// ==================== DYNAMIC EMAIL CONFIGURATION ====================
+// ==================== EMAIL CONFIGURATION ====================
 let emailTransporter = null;
-
 if (config.emailEnabled) {
   try {
     emailTransporter = nodemailer.createTransport({
@@ -375,7 +407,6 @@ if (config.emailEnabled) {
       }
     });
     
-    // Verify connection
     emailTransporter.verify((error, success) => {
       if (error) {
         console.log('❌ Email configuration error:', error.message);
@@ -413,9 +444,9 @@ const sendEmail = async (to, subject, html, text = '') => {
   }
 };
 
-// ==================== DATABASE MODELS - ENHANCED ====================
+// ==================== ENHANCED DATABASE MODELS ====================
 
-// Enhanced User Model with complete fields
+// User Model with Enhanced Fields
 const userSchema = new mongoose.Schema({
   full_name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true },
@@ -425,6 +456,8 @@ const userSchema = new mongoose.Schema({
   balance: { type: Number, default: 0, min: 0 },
   total_earnings: { type: Number, default: 0, min: 0 },
   referral_earnings: { type: Number, default: 0, min: 0 },
+  daily_earnings: { type: Number, default: 0, min: 0 },
+  total_daily_earnings: { type: Number, default: 0, min: 0 },
   risk_tolerance: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
   investment_strategy: { type: String, enum: ['conservative', 'balanced', 'aggressive'], default: 'balanced' },
   country: { type: String, default: 'ng' },
@@ -464,16 +497,28 @@ const userSchema = new mongoose.Schema({
   email_notifications: { type: Boolean, default: true },
   sms_notifications: { type: Boolean, default: false },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
-  // Enhanced fields for dashboard
   total_deposits: { type: Number, default: 0 },
   total_withdrawals: { type: Number, default: 0 },
   total_investments: { type: Number, default: 0 },
   last_deposit_date: Date,
   last_withdrawal_date: Date,
-  last_investment_date: Date
-}, { 
+  last_investment_date: Date,
+  earnings_history: [{
+    date: Date,
+    amount: Number,
+    type: String,
+    investment_id: mongoose.Schema.Types.ObjectId,
+    description: String
+  }],
+  referral_history: [{
+    date: Date,
+    referred_user: mongoose.Schema.Types.ObjectId,
+    commission: Number,
+    status: String
+  }]
+}, {
   timestamps: true,
-  toJSON: { 
+  toJSON: {
     virtuals: true,
     transform: function(doc, ret) {
       delete ret.password;
@@ -499,31 +544,21 @@ userSchema.virtual('portfolio_value').get(function() {
   return this.balance + this.total_earnings + this.referral_earnings;
 });
 
-// Virtual for daily interest calculation
-userSchema.virtual('estimated_daily_interest').get(function() {
-  // This will be calculated dynamically based on active investments
-  return 0;
-});
-
 // Pre-save hooks
 userSchema.pre('save', async function(next) {
   if (this.isModified('password')) {
     this.password = await bcrypt.hash(this.password, config.bcryptRounds);
   }
-  
   if (!this.referral_code) {
     this.referral_code = crypto.randomBytes(6).toString('hex').toUpperCase();
   }
-  
   if (this.isModified('email') && !this.is_verified) {
     this.verification_token = crypto.randomBytes(32).toString('hex');
     this.verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
   }
-  
   if (this.isModified('bank_details')) {
     this.bank_details.last_updated = new Date();
   }
-  
   next();
 });
 
@@ -534,7 +569,7 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 
 userSchema.methods.generateAuthToken = function() {
   return jwt.sign(
-    { 
+    {
       id: this._id,
       email: this.email,
       role: this.role,
@@ -551,43 +586,13 @@ userSchema.methods.generatePasswordResetToken = function() {
     .createHash('sha256')
     .update(resetToken)
     .digest('hex');
-  this.password_reset_expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  this.password_reset_expires = new Date(Date.now() + 10 * 60 * 1000);
   return resetToken;
-};
-
-// Static method for dashboard calculations
-userSchema.statics.calculateDashboardStats = async function(userId) {
-  const user = await this.findById(userId);
-  if (!user) return null;
-  
-  const Investment = mongoose.model('Investment');
-  const activeInvestments = await Investment.find({
-    user: userId,
-    status: 'active'
-  }).populate('plan', 'daily_interest');
-  
-  let dailyInterest = 0;
-  let activeInvestmentValue = 0;
-  
-  activeInvestments.forEach(inv => {
-    activeInvestmentValue += inv.amount;
-    if (inv.plan && inv.plan.daily_interest) {
-      dailyInterest += (inv.amount * inv.plan.daily_interest) / 100;
-    }
-  });
-  
-  return {
-    daily_interest: dailyInterest,
-    active_investment_value: activeInvestmentValue,
-    portfolio_value: user.portfolio_value,
-    referral_earnings: user.referral_earnings || 0,
-    total_earnings: user.total_earnings || 0
-  };
 };
 
 const User = mongoose.model('User', userSchema);
 
-// Investment Plan Model - Enhanced
+// Investment Plan Model
 const investmentPlanSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
   description: { type: String, required: true },
@@ -612,8 +617,8 @@ const investmentPlanSchema = new mongoose.Schema({
   tags: [String],
   display_order: { type: Number, default: 0 },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 investmentPlanSchema.index({ is_active: 1, is_popular: 1, category: 1 });
@@ -621,7 +626,7 @@ investmentPlanSchema.index({ min_amount: 1 });
 
 const InvestmentPlan = mongoose.model('InvestmentPlan', investmentPlanSchema);
 
-// Investment Model - Enhanced with image tracking
+// Investment Model
 const investmentSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   plan: { type: mongoose.Schema.Types.ObjectId, ref: 'InvestmentPlan', required: true },
@@ -642,13 +647,18 @@ const investmentSchema = new mongoose.Schema({
   transaction_id: String,
   remarks: String,
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
-  // Enhanced fields for admin
   admin_notes: String,
   proof_verified_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   proof_verified_at: Date,
-  investment_image_url: String
-}, { 
-  timestamps: true 
+  investment_image_url: String,
+  earnings_history: [{
+    date: Date,
+    amount: Number,
+    type: String,
+    description: String
+  }]
+}, {
+  timestamps: true
 });
 
 investmentSchema.index({ user: 1, status: 1 });
@@ -657,7 +667,7 @@ investmentSchema.index({ createdAt: -1 });
 
 const Investment = mongoose.model('Investment', investmentSchema);
 
-// Deposit Model - Enhanced
+// Deposit Model
 const depositSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   amount: { type: Number, required: true, min: config.minDeposit },
@@ -679,12 +689,11 @@ const depositSchema = new mongoose.Schema({
     coin_type: String
   },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
-  // Enhanced fields
   deposit_image_url: String,
   proof_verified_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   proof_verified_at: Date
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 depositSchema.index({ user: 1, status: 1 });
@@ -693,7 +702,7 @@ depositSchema.index({ createdAt: -1 });
 
 const Deposit = mongoose.model('Deposit', depositSchema);
 
-// Withdrawal Model - Enhanced
+// Withdrawal Model
 const withdrawalSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   amount: { type: Number, required: true, min: config.minWithdrawal },
@@ -717,12 +726,11 @@ const withdrawalSchema = new mongoose.Schema({
   paid_at: Date,
   transaction_id: String,
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
-  // Enhanced fields
   payment_proof_url: String,
   proof_verified_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   proof_verified_at: Date
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 withdrawalSchema.index({ user: 1, status: 1 });
@@ -731,7 +739,7 @@ withdrawalSchema.index({ createdAt: -1 });
 
 const Withdrawal = mongoose.model('Withdrawal', withdrawalSchema);
 
-// Transaction Model - Enhanced for complete history
+// Transaction Model
 const transactionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   type: { type: String, enum: ['deposit', 'withdrawal', 'investment', 'earning', 'referral', 'bonus', 'fee', 'refund', 'transfer'], required: true },
@@ -745,11 +753,10 @@ const transactionSchema = new mongoose.Schema({
   related_deposit: { type: mongoose.Schema.Types.ObjectId, ref: 'Deposit' },
   related_withdrawal: { type: mongoose.Schema.Types.ObjectId, ref: 'Withdrawal' },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
-  // Enhanced fields for tracking
   payment_proof_url: String,
   admin_notes: String
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 transactionSchema.index({ user: 1, createdAt: -1 });
@@ -758,7 +765,7 @@ transactionSchema.index({ reference: 1 });
 
 const Transaction = mongoose.model('Transaction', transactionSchema);
 
-// KYC Submission Model - Enhanced
+// KYC Submission Model
 const kycSubmissionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
   id_type: { type: String, enum: ['national_id', 'passport', 'driver_license', 'voters_card'], required: true },
@@ -773,15 +780,15 @@ const kycSubmissionSchema = new mongoose.Schema({
   rejection_reason: String,
   notes: String,
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 kycSubmissionSchema.index({ status: 1, submitted_at: -1 });
 
 const KYCSubmission = mongoose.model('KYCSubmission', kycSubmissionSchema);
 
-// Support Ticket Model - Enhanced
+// Support Ticket Model
 const supportTicketSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   ticket_id: { type: String, unique: true, required: true },
@@ -802,15 +809,15 @@ const supportTicketSchema = new mongoose.Schema({
   is_read_by_user: { type: Boolean, default: false },
   is_read_by_admin: { type: Boolean, default: false },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 supportTicketSchema.index({ user: 1, status: 1, createdAt: -1 });
 
 const SupportTicket = mongoose.model('SupportTicket', supportTicketSchema);
 
-// Referral Model - Enhanced
+// Referral Model with Enhanced Tracking
 const referralSchema = new mongoose.Schema({
   referrer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   referred_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
@@ -821,28 +828,53 @@ const referralSchema = new mongoose.Schema({
   investment_amount: Number,
   earnings_paid: { type: Boolean, default: false },
   paid_at: Date,
-  metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
-}, { 
-  timestamps: true 
+  metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+  commission_history: [{
+    date: Date,
+    amount: Number,
+    from_investment: mongoose.Schema.Types.ObjectId,
+    status: String
+  }]
+}, {
+  timestamps: true
 });
 
 referralSchema.index({ referrer: 1, status: 1 });
 
 const Referral = mongoose.model('Referral', referralSchema);
 
-// Notification Model - Enhanced
+// Earnings Model for Detailed Tracking
+const earningsSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  investment: { type: mongoose.Schema.Types.ObjectId, ref: 'Investment' },
+  date: { type: Date, required: true },
+  amount: { type: Number, required: true },
+  type: { type: String, enum: ['daily_interest', 'investment_completion', 'referral', 'bonus'], required: true },
+  description: { type: String, required: true },
+  status: { type: String, enum: ['pending', 'credited', 'failed'], default: 'credited' },
+  metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
+}, {
+  timestamps: true
+});
+
+earningsSchema.index({ user: 1, date: -1 });
+earningsSchema.index({ investment: 1 });
+
+const Earnings = mongoose.model('Earnings', earningsSchema);
+
+// Notification Model
 const notificationSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   title: { type: String, required: true },
   message: { type: String, required: true },
-  type: { type: String, enum: ['info', 'success', 'warning', 'error', 'promotional', 'investment', 'withdrawal', 'deposit', 'kyc', 'referral', 'system'], default: 'info' },
+  type: { type: String, enum: ['info', 'success', 'warning', 'error', 'promotional', 'investment', 'withdrawal', 'deposit', 'kyc', 'referral', 'system', 'earning'], default: 'info' },
   is_read: { type: Boolean, default: false },
   is_email_sent: { type: Boolean, default: false },
   action_url: String,
   priority: { type: Number, default: 0, min: 0, max: 3 },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 notificationSchema.index({ user: 1, is_read: 1, createdAt: -1 });
@@ -853,71 +885,152 @@ const Notification = mongoose.model('Notification', notificationSchema);
 const adminAuditSchema = new mongoose.Schema({
   admin_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   action: { type: String, required: true },
-  target_type: { type: String, enum: ['user', 'investment', 'deposit', 'withdrawal', 'kyc', 'transaction', 'plan', 'system'] },
+  target_type: { type: String, enum: ['user', 'investment', 'deposit', 'withdrawal', 'kyc', 'transaction', 'plan', 'system', 'referral', 'earning'] },
   target_id: mongoose.Schema.Types.ObjectId,
   details: mongoose.Schema.Types.Mixed,
   ip_address: String,
   user_agent: String,
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
 adminAuditSchema.index({ admin_id: 1, createdAt: -1 });
 
 const AdminAudit = mongoose.model('AdminAudit', adminAuditSchema);
 
-// ==================== UTILITY FUNCTIONS ====================
+// ==================== ENHANCED UTILITY FUNCTIONS ====================
 
+// Format response utility
 const formatResponse = (success, message, data = null, pagination = null) => {
-  const response = { 
-    success, 
-    message, 
-    timestamp: new Date().toISOString() 
+  const response = {
+    success,
+    message,
+    timestamp: new Date().toISOString()
   };
-  
   if (data !== null) response.data = data;
   if (pagination !== null) response.pagination = pagination;
-  
   return response;
 };
 
+// Error handler
 const handleError = (res, error, defaultMessage = 'An error occurred') => {
   console.error('Error:', error);
-  
   if (error.name === 'ValidationError') {
     const messages = Object.values(error.errors).map(val => val.message);
     return res.status(400).json(formatResponse(false, 'Validation Error', { errors: messages }));
   }
-  
   if (error.code === 11000) {
     const field = Object.keys(error.keyValue)[0];
     return res.status(400).json(formatResponse(false, `${field} already exists`));
   }
-  
   if (error.name === 'JsonWebTokenError') {
     return res.status(401).json(formatResponse(false, 'Invalid token'));
   }
-  
   if (error.name === 'TokenExpiredError') {
     return res.status(401).json(formatResponse(false, 'Token expired'));
   }
-  
   const statusCode = error.statusCode || error.status || 500;
-  const message = config.nodeEnv === 'production' && statusCode === 500 
-    ? defaultMessage 
+  const message = config.nodeEnv === 'production' && statusCode === 500
+    ? defaultMessage
     : error.message;
-
   return res.status(statusCode).json(formatResponse(false, message));
 };
 
+// Generate reference
 const generateReference = (prefix = 'REF') => {
   const timestamp = Date.now();
   const random = crypto.randomBytes(4).toString('hex').toUpperCase();
   return `${prefix}${timestamp}${random}`;
 };
 
-// Enhanced createNotification with image support
+// Calculate daily earnings with advanced logic
+const calculateDailyEarnings = async (userId) => {
+  try {
+    const cacheKey = `daily_earnings_${userId}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) return cached;
+    
+    const activeInvestments = await Investment.find({
+      user: userId,
+      status: 'active',
+      end_date: { $gt: new Date() }
+    }).populate('plan', 'daily_interest name');
+    
+    let totalDailyEarnings = 0;
+    const breakdown = [];
+    
+    activeInvestments.forEach(inv => {
+      const dailyEarning = (inv.amount * (inv.plan?.daily_interest || 0)) / 100;
+      totalDailyEarnings += dailyEarning;
+      
+      breakdown.push({
+        investment_id: inv._id,
+        plan_name: inv.plan?.name,
+        amount: inv.amount,
+        daily_interest: inv.plan?.daily_interest,
+        daily_earning: dailyEarning
+      });
+    });
+    
+    // Update user's daily earnings
+    await User.findByIdAndUpdate(userId, {
+      daily_earnings: totalDailyEarnings
+    });
+    
+    const result = {
+      total_daily_earnings: totalDailyEarnings,
+      breakdown,
+      active_investments: activeInvestments.length,
+      timestamp: new Date()
+    };
+    
+    await cache.set(cacheKey, result, 300); // Cache for 5 minutes
+    return result;
+  } catch (error) {
+    console.error('Error calculating daily earnings:', error);
+    return { total_daily_earnings: 0, breakdown: [], active_investments: 0 };
+  }
+};
+
+// Calculate referral earnings
+const calculateReferralEarnings = async (userId) => {
+  try {
+    const cacheKey = `referral_earnings_${userId}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) return cached;
+    
+    const referrals = await Referral.find({ referrer: userId });
+    const totalEarnings = referrals.reduce((sum, ref) => sum + (ref.earnings || 0), 0);
+    const activeReferrals = referrals.filter(r => r.status === 'active').length;
+    
+    // Get referred users who have made investments
+    const referredUserIds = referrals.map(r => r.referred_user);
+    const investments = await Investment.find({
+      user: { $in: referredUserIds },
+      status: 'active'
+    });
+    
+    const totalInvestedByReferrals = investments.reduce((sum, inv) => sum + inv.amount, 0);
+    
+    const result = {
+      total_earnings: totalEarnings,
+      total_referrals: referrals.length,
+      active_referrals: activeReferrals,
+      pending_earnings: referrals.filter(r => !r.earnings_paid).reduce((sum, r) => sum + (r.earnings || 0), 0),
+      total_invested_by_referrals: totalInvestedByReferrals,
+      estimated_monthly_commission: totalInvestedByReferrals * (config.referralCommissionPercent / 100) / 12
+    };
+    
+    await cache.set(cacheKey, result, 300);
+    return result;
+  } catch (error) {
+    console.error('Error calculating referral earnings:', error);
+    return { total_earnings: 0, total_referrals: 0, active_referrals: 0 };
+  }
+};
+
+// Create notification
 const createNotification = async (userId, title, message, type = 'info', actionUrl = null, metadata = {}) => {
   try {
     const notification = new Notification({
@@ -931,14 +1044,15 @@ const createNotification = async (userId, title, message, type = 'info', actionU
         sentAt: new Date()
       }
     });
-    
     await notification.save();
     
-    // Send email notification if enabled
+    // Send email if enabled
     const user = await User.findById(userId);
     if (user && user.email_notifications && type !== 'system') {
-      const emailSubject = `Raw Wealthy - ${title}`;
-      const emailHtml = `
+      await sendEmail(
+        user.email,
+        `Raw Wealthy - ${title}`,
+        `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
             <h1 style="margin: 0;">Raw Wealthy</h1>
@@ -950,14 +1064,14 @@ const createNotification = async (userId, title, message, type = 'info', actionU
               <p style="color: #555; line-height: 1.6; margin-bottom: 20px;">${message}</p>
               ${actionUrl ? `
                 <div style="text-align: center; margin: 30px 0;">
-                  <a href="${config.clientURL}${actionUrl}" 
-                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                            color: white; 
-                            padding: 12px 30px; 
-                            text-decoration: none; 
-                            border-radius: 5px; 
-                            font-weight: bold;
-                            display: inline-block;">
+                  <a href="${config.clientURL}${actionUrl}"
+                    style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 12px 30px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    font-weight: bold;
+                    display: inline-block;">
                     View Details
                   </a>
                 </div>
@@ -969,11 +1083,9 @@ const createNotification = async (userId, title, message, type = 'info', actionU
             </div>
           </div>
         </div>
-      `;
-      
-      await sendEmail(user.email, emailSubject, emailHtml);
+        `
+      );
     }
-    
     return notification;
   } catch (error) {
     console.error('Error creating notification:', error);
@@ -981,7 +1093,7 @@ const createNotification = async (userId, title, message, type = 'info', actionU
   }
 };
 
-// Enhanced createTransaction with image tracking
+// Create transaction
 const createTransaction = async (userId, type, amount, description, status = 'completed', metadata = {}, proofUrl = null) => {
   try {
     const user = await User.findById(userId);
@@ -1002,25 +1114,11 @@ const createTransaction = async (userId, type, amount, description, status = 'co
         processedAt: new Date()
       }
     });
-    
     await transaction.save();
     
-    // Update user statistics based on transaction type
-    const updateFields = {};
-    if (type === 'deposit' && status === 'completed') {
-      updateFields.total_deposits = (user.total_deposits || 0) + amount;
-      updateFields.last_deposit_date = new Date();
-    } else if (type === 'withdrawal' && status === 'completed') {
-      updateFields.total_withdrawals = (user.total_withdrawals || 0) + Math.abs(amount);
-      updateFields.last_withdrawal_date = new Date();
-    } else if (type === 'investment' && status === 'completed') {
-      updateFields.total_investments = (user.total_investments || 0) + Math.abs(amount);
-      updateFields.last_investment_date = new Date();
-    }
-    
-    if (Object.keys(updateFields).length > 0) {
-      await User.findByIdAndUpdate(userId, updateFields);
-    }
+    // Clear user cache
+    await cache.delete(`user_${userId}`);
+    await cache.clearPattern(`dashboard_${userId}`);
     
     return transaction;
   } catch (error) {
@@ -1029,76 +1127,113 @@ const createTransaction = async (userId, type, amount, description, status = 'co
   }
 };
 
-// Enhanced calculateUserStats with image tracking
-const calculateUserStats = async (userId) => {
+// Create earnings record
+const createEarningsRecord = async (userId, amount, type, description, investmentId = null) => {
   try {
-    const [
-      totalInvestments,
-      activeInvestments,
-      totalDeposits,
-      totalWithdrawals,
-      totalReferrals,
-      recentInvestments,
-      recentDeposits,
-      recentWithdrawals
-    ] = await Promise.all([
-      Investment.countDocuments({ user: userId }),
-      Investment.countDocuments({ user: userId, status: 'active' }),
-      Deposit.countDocuments({ user: userId, status: 'approved' }),
-      Withdrawal.countDocuments({ user: userId, status: 'paid' }),
-      Referral.countDocuments({ referrer: userId }),
-      Investment.find({ user: userId })
-        .populate('plan', 'name')
-        .sort({ createdAt: -1 })
-        .limit(5)
-        .lean(),
-      Deposit.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(5)
-        .lean(),
-      Withdrawal.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(5)
-        .lean()
-    ]);
-
-    // Calculate daily interest from active investments
-    const activeInv = await Investment.find({ 
-      user: userId, 
-      status: 'active' 
-    }).populate('plan', 'daily_interest');
+    const earnings = new Earnings({
+      user: userId,
+      investment: investmentId,
+      date: new Date(),
+      amount,
+      type,
+      description,
+      status: 'credited'
+    });
+    await earnings.save();
     
-    let dailyInterest = 0;
-    let activeInvestmentValue = 0;
-    
-    activeInv.forEach(inv => {
-      activeInvestmentValue += inv.amount;
-      if (inv.plan && inv.plan.daily_interest) {
-        dailyInterest += (inv.amount * inv.plan.daily_interest) / 100;
+    // Update user total earnings
+    await User.findByIdAndUpdate(userId, {
+      $inc: { total_earnings: amount },
+      $push: {
+        earnings_history: {
+          date: new Date(),
+          amount,
+          type,
+          investment_id: investmentId,
+          description
+        }
       }
     });
-
-    return {
-      total_investments: totalInvestments,
-      active_investments: activeInvestments,
-      total_deposits: totalDeposits,
-      total_withdrawals: totalWithdrawals,
-      total_referrals: totalReferrals,
-      daily_interest: dailyInterest,
-      active_investment_value: activeInvestmentValue,
-      recent_activity: {
-        investments: recentInvestments,
-        deposits: recentDeposits,
-        withdrawals: recentWithdrawals
-      }
-    };
+    
+    return earnings;
   } catch (error) {
-    console.error('Error calculating user stats:', error);
+    console.error('Error creating earnings record:', error);
     return null;
   }
 };
 
-// Admin audit log function
+// Create referral commission
+const createReferralCommission = async (referrerId, referredUserId, amount, investmentId = null) => {
+  try {
+    const referral = await Referral.findOne({
+      referrer: referrerId,
+      referred_user: referredUserId
+    });
+    
+    if (!referral) return null;
+    
+    const commission = (amount * config.referralCommissionPercent) / 100;
+    
+    referral.earnings += commission;
+    referral.status = 'active';
+    referral.investment_amount = amount;
+    
+    referral.commission_history.push({
+      date: new Date(),
+      amount: commission,
+      from_investment: investmentId,
+      status: 'pending'
+    });
+    
+    await referral.save();
+    
+    // Update referrer's earnings
+    await User.findByIdAndUpdate(referrerId, {
+      $inc: { referral_earnings: commission },
+      $push: {
+        referral_history: {
+          date: new Date(),
+          referred_user: referredUserId,
+          commission,
+          status: 'pending'
+        }
+      }
+    });
+    
+    // Create earnings record for referrer
+    await createEarningsRecord(
+      referrerId,
+      commission,
+      'referral',
+      `Referral commission from investment`,
+      investmentId
+    );
+    
+    // Create transaction for referrer
+    await createTransaction(
+      referrerId,
+      'referral',
+      commission,
+      `Referral commission from ${referredUserId}`
+    );
+    
+    // Notify referrer
+    await createNotification(
+      referrerId,
+      'Referral Commission Earned',
+      `You earned ₦${commission.toLocaleString()} referral commission from your referral's investment.`,
+      'referral',
+      '/referrals'
+    );
+    
+    return commission;
+  } catch (error) {
+    console.error('Error creating referral commission:', error);
+    return null;
+  }
+};
+
+// Admin audit log
 const createAdminAudit = async (adminId, action, targetType, targetId, details = {}, ip = '', userAgent = '') => {
   try {
     const audit = new AdminAudit({
@@ -1113,7 +1248,6 @@ const createAdminAudit = async (adminId, action, targetType, targetId, details =
         timestamp: new Date()
       }
     });
-    
     await audit.save();
     return audit;
   } catch (error) {
@@ -1123,31 +1257,23 @@ const createAdminAudit = async (adminId, action, targetType, targetId, details =
 };
 
 // ==================== AUTH MIDDLEWARE ====================
-
 const auth = async (req, res, next) => {
   try {
     let token = req.header('Authorization');
-    
     if (!token) {
       return res.status(401).json(formatResponse(false, 'No token, authorization denied'));
     }
-    
     if (token.startsWith('Bearer ')) {
       token = token.slice(7, token.length);
     }
-    
     const decoded = jwt.verify(token, config.jwtSecret);
-    
     const user = await User.findById(decoded.id);
-    
     if (!user) {
       return res.status(401).json(formatResponse(false, 'Token is not valid'));
     }
-    
     if (!user.is_active) {
       return res.status(401).json(formatResponse(false, 'Account is deactivated. Please contact support.'));
     }
-    
     req.user = user;
     req.userId = user._id;
     next();
@@ -1157,7 +1283,6 @@ const auth = async (req, res, next) => {
     } else if (error.name === 'TokenExpiredError') {
       return res.status(401).json(formatResponse(false, 'Token expired'));
     }
-    
     console.error('Auth middleware error:', error);
     res.status(500).json(formatResponse(false, 'Server error during authentication'));
   }
@@ -1177,12 +1302,9 @@ const adminAuth = async (req, res, next) => {
 };
 
 // ==================== DATABASE INITIALIZATION ====================
-
 const initializeDatabase = async () => {
   try {
     console.log('🔄 Initializing database...');
-    
-    // Connect to MongoDB
     await mongoose.connect(config.mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
@@ -1191,18 +1313,10 @@ const initializeDatabase = async () => {
       maxPoolSize: 10,
       retryWrites: true
     });
-    
     console.log('✅ MongoDB connected successfully');
-    
-    // Load investment plans into config
     await loadInvestmentPlans();
-    
-    // Create admin user if it doesn't exist
     await createAdminUser();
-    
-    // Create indexes if they don't exist
     await createDatabaseIndexes();
-    
     console.log('✅ Database initialization completed');
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);
@@ -1215,11 +1329,8 @@ const loadInvestmentPlans = async () => {
     const plans = await InvestmentPlan.find({ is_active: true })
       .sort({ display_order: 1 })
       .lean();
-    
     config.investmentPlans = plans;
     console.log(`✅ Loaded ${plans.length} investment plans`);
-    
-    // If no plans exist, create default plans
     if (plans.length === 0) {
       await createDefaultInvestmentPlans();
     }
@@ -1281,7 +1392,7 @@ const createDefaultInvestmentPlans = async () => {
       display_order: 3
     }
   ];
-
+  
   try {
     await InvestmentPlan.insertMany(defaultPlans);
     config.investmentPlans = defaultPlans;
@@ -1294,18 +1405,13 @@ const createDefaultInvestmentPlans = async () => {
 const createAdminUser = async () => {
   try {
     console.log('🚀 NUCLEAR ADMIN FIX STARTING...');
-    
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
-    
     console.log(`🔑 Using: ${adminEmail} / ${adminPassword}`);
     
-    // Check if admin already exists
     const existingAdmin = await User.findOne({ email: adminEmail });
     if (existingAdmin) {
       console.log('✅ Admin already exists');
-      
-      // Update admin password if it's the default
       if (adminPassword === 'Admin123456') {
         const salt = await bcrypt.genSalt(12);
         const hash = await bcrypt.hash(adminPassword, salt);
@@ -1313,17 +1419,13 @@ const createAdminUser = async () => {
         await existingAdmin.save();
         console.log('✅ Admin password updated');
       }
-      
       return;
     }
     
-    // 1. Generate FRESH hash
     const salt = await bcrypt.genSalt(12);
     const hash = await bcrypt.hash(adminPassword, salt);
-    
     console.log('📝 Generated fresh hash');
     
-    // 2. Create admin WITHOUT Mongoose hooks
     const adminData = {
       _id: new mongoose.Types.ObjectId(),
       full_name: 'Raw Wealthy Admin',
@@ -1351,13 +1453,10 @@ const createAdminUser = async () => {
       updatedAt: new Date()
     };
     
-    // Insert directly
     await mongoose.connection.collection('users').insertOne(adminData);
     console.log('✅ Admin created in database');
     
-    // 3. Verify IMMEDIATELY
     const verifyUser = await mongoose.connection.collection('users').findOne({ email: adminEmail });
-    
     const match = await bcrypt.compare(adminPassword, verifyUser.password);
     console.log('🔑 Password match test:', match ? '✅ PASS' : '❌ FAIL');
     
@@ -1369,9 +1468,7 @@ const createAdminUser = async () => {
     } else {
       console.error('❌ PASSWORD MISMATCH DETECTED!');
     }
-    
     console.log('🚀 NUCLEAR ADMIN FIX COMPLETE');
-    
   } catch (error) {
     console.error('❌ NUCLEAR FIX ERROR:', error.message);
     console.error(error.stack);
@@ -1380,10 +1477,10 @@ const createAdminUser = async () => {
 
 const createDatabaseIndexes = async () => {
   try {
-    // Create additional indexes for performance
     await Transaction.collection.createIndex({ createdAt: -1 });
     await User.collection.createIndex({ 'bank_details.verified': 1 });
     await Investment.collection.createIndex({ status: 1, end_date: 1 });
+    await Earnings.collection.createIndex({ user: 1, date: -1 });
     console.log('✅ Database indexes created');
   } catch (error) {
     console.error('Error creating indexes:', error);
@@ -1396,9 +1493,10 @@ app.get('/health', async (req, res) => {
     success: true,
     status: 'OK',
     timestamp: new Date().toISOString(),
-    version: '37.0.0',
+    version: '38.0.0',
     environment: config.nodeEnv,
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    redis: redisClient ? 'connected' : 'not configured',
     uptime: process.uptime(),
     memory: {
       rss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
@@ -1409,10 +1507,10 @@ app.get('/health', async (req, res) => {
       users: await User.countDocuments({}),
       investments: await Investment.countDocuments({}),
       deposits: await Deposit.countDocuments({}),
-      withdrawals: await Withdrawal.countDocuments({})
+      withdrawals: await Withdrawal.countDocuments({}),
+      earnings: await Earnings.countDocuments({})
     }
   };
-  
   res.json(health);
 });
 
@@ -1420,14 +1518,15 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🚀 Raw Wealthy Backend API v37.0 - Enhanced Edition',
-    version: '37.0.0',
+    message: '🚀 Raw Wealthy Backend API v38.0 - Ultimate Edition',
+    version: '38.0.0',
     timestamp: new Date().toISOString(),
     status: 'Operational',
     environment: config.nodeEnv,
     endpoints: {
       auth: '/api/auth/*',
       profile: '/api/profile',
+      earnings: '/api/earnings/*',
       investments: '/api/investments/*',
       deposits: '/api/deposits/*',
       withdrawals: '/api/withdrawals/*',
@@ -1458,20 +1557,18 @@ app.post('/api/auth/register', [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed', { 
+      return res.status(400).json(formatResponse(false, 'Validation failed', {
         errors: errors.array().map(err => ({ field: err.param, message: err.msg }))
       }));
     }
-
+    
     const { full_name, email, phone, password, referral_code, risk_tolerance = 'medium', investment_strategy = 'balanced' } = req.body;
-
-    // Check if user exists
+    
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(400).json(formatResponse(false, 'User already exists with this email'));
     }
-
-    // Handle referral
+    
     let referredBy = null;
     if (referral_code) {
       referredBy = await User.findOne({ referral_code: referral_code.toUpperCase() });
@@ -1479,8 +1576,7 @@ app.post('/api/auth/register', [
         return res.status(400).json(formatResponse(false, 'Invalid referral code'));
       }
     }
-
-    // Create user
+    
     const user = new User({
       full_name: full_name.trim(),
       email: email.toLowerCase(),
@@ -1491,14 +1587,13 @@ app.post('/api/auth/register', [
       investment_strategy,
       referred_by: referredBy ? referredBy._id : null
     });
-
+    
     await user.save();
-
-    // Handle referral
+    
     if (referredBy) {
       referredBy.referral_count += 1;
       await referredBy.save();
-
+      
       const referral = new Referral({
         referrer: referredBy._id,
         referred_user: user._id,
@@ -1507,7 +1602,6 @@ app.post('/api/auth/register', [
       });
       await referral.save();
       
-      // Create notification for referrer
       await createNotification(
         referredBy._id,
         'New Referral!',
@@ -1516,11 +1610,9 @@ app.post('/api/auth/register', [
         '/referrals'
       );
     }
-
-    // Generate token
+    
     const token = user.generateAuthToken();
-
-    // Create welcome notification
+    
     await createNotification(
       user._id,
       'Welcome to Raw Wealthy!',
@@ -1528,8 +1620,7 @@ app.post('/api/auth/register', [
       'success',
       '/dashboard'
     );
-
-    // Create welcome bonus transaction
+    
     await createTransaction(
       user._id,
       'bonus',
@@ -1537,28 +1628,26 @@ app.post('/api/auth/register', [
       'Welcome bonus for new account',
       'completed'
     );
-
-    // Send welcome email
+    
     await sendEmail(
       user.email,
       'Welcome to Raw Wealthy!',
       `<h2>Welcome ${user.full_name}!</h2>
-       <p>Your account has been successfully created. Your welcome bonus of ₦${config.welcomeBonus} has been credited to your account.</p>
-       <p>Start investing today and grow your wealth with us!</p>
-       <p><strong>Account Details:</strong></p>
-       <ul>
-         <li>Email: ${user.email}</li>
-         <li>Balance: ₦${user.balance.toLocaleString()}</li>
-         <li>Referral Code: ${user.referral_code}</li>
-       </ul>
-       <p><a href="${config.clientURL}/dashboard">Go to Dashboard</a></p>`
+      <p>Your account has been successfully created. Your welcome bonus of ₦${config.welcomeBonus} has been credited to your account.</p>
+      <p>Start investing today and grow your wealth with us!</p>
+      <p><strong>Account Details:</strong></p>
+      <ul>
+        <li>Email: ${user.email}</li>
+        <li>Balance: ₦${user.balance.toLocaleString()}</li>
+        <li>Referral Code: ${user.referral_code}</li>
+      </ul>
+      <p><a href="${config.clientURL}/dashboard">Go to Dashboard</a></p>`
     );
-
+    
     res.status(201).json(formatResponse(true, 'User registered successfully', {
       user: user.toObject(),
       token
     }));
-
   } catch (error) {
     handleError(res, error, 'Registration failed');
   }
@@ -1574,23 +1663,19 @@ app.post('/api/auth/login', [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const { email, password } = req.body;
-
-    // Find user with password
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
     
     if (!user) {
       return res.status(400).json(formatResponse(false, 'Invalid credentials'));
     }
-
-    // Check if account is locked
+    
     if (user.lock_until && user.lock_until > new Date()) {
       const lockTime = Math.ceil((user.lock_until - new Date()) / 1000 / 60);
       return res.status(423).json(formatResponse(false, `Account is locked. Try again in ${lockTime} minutes.`));
     }
-
-    // Check password
+    
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       user.login_attempts += 1;
@@ -1600,22 +1685,19 @@ app.post('/api/auth/login', [
       await user.save();
       return res.status(400).json(formatResponse(false, 'Invalid credentials'));
     }
-
-    // Reset login attempts
+    
     user.login_attempts = 0;
     user.lock_until = undefined;
     user.last_login = new Date();
     user.last_active = new Date();
     await user.save();
-
-    // Generate token
+    
     const token = user.generateAuthToken();
-
+    
     res.json(formatResponse(true, 'Login successful', {
       user: user.toObject(),
       token
     }));
-
   } catch (error) {
     handleError(res, error, 'Login failed');
   }
@@ -1630,37 +1712,34 @@ app.post('/api/auth/forgot-password', [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const { email } = req.body;
-
     const user = await User.findOne({ email: email.toLowerCase() });
+    
     if (!user) {
       return res.status(404).json(formatResponse(false, 'No user found with this email'));
     }
-
-    // Generate reset token
+    
     const resetToken = user.generatePasswordResetToken();
     await user.save();
-
-    // Create reset URL
+    
     const resetUrl = `${config.clientURL}/reset-password/${resetToken}`;
-
-    // Send email
+    
     const emailResult = await sendEmail(
       user.email,
       'Password Reset Request',
       `<h2>Password Reset Request</h2>
-       <p>You requested a password reset for your Raw Wealthy account.</p>
-       <p>Click the link below to reset your password:</p>
-       <p><a href="${resetUrl}">${resetUrl}</a></p>
-       <p>This link will expire in 10 minutes.</p>
-       <p>If you didn't request this, please ignore this email.</p>`
+      <p>You requested a password reset for your Raw Wealthy account.</p>
+      <p>Click the link below to reset your password:</p>
+      <p><a href="${resetUrl}">${resetUrl}</a></p>
+      <p>This link will expire in 10 minutes.</p>
+      <p>If you didn't request this, please ignore this email.</p>`
     );
-
+    
     if (!emailResult.success) {
       return res.status(500).json(formatResponse(false, 'Failed to send reset email'));
     }
-
+    
     res.json(formatResponse(true, 'Password reset email sent successfully'));
   } catch (error) {
     handleError(res, error, 'Error processing forgot password request');
@@ -1676,48 +1755,44 @@ app.post('/api/auth/reset-password/:token', [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const { token } = req.params;
     const { password } = req.body;
-
-    // Hash token
+    
     const hashedToken = crypto
       .createHash('sha256')
       .update(token)
       .digest('hex');
-
+    
     const user = await User.findOne({
       password_reset_token: hashedToken,
       password_reset_expires: { $gt: Date.now() }
     });
-
+    
     if (!user) {
       return res.status(400).json(formatResponse(false, 'Invalid or expired token'));
     }
-
-    // Update password
+    
     user.password = password;
     user.password_reset_token = undefined;
     user.password_reset_expires = undefined;
     await user.save();
-
-    // Send confirmation email
+    
     await sendEmail(
       user.email,
       'Password Reset Successful',
       `<h2>Password Reset Successful</h2>
-       <p>Your password has been successfully reset.</p>
-       <p>If you did not perform this action, please contact our support team immediately.</p>`
+      <p>Your password has been successfully reset.</p>
+      <p>If you did not perform this action, please contact our support team immediately.</p>`
     );
-
-    // Create notification
+    
     await createNotification(
       user._id,
       'Password Changed',
       'Your password has been successfully reset.',
       'system'
     );
-
+    
     res.json(formatResponse(true, 'Password reset successful'));
   } catch (error) {
     handleError(res, error, 'Error resetting password');
@@ -1730,68 +1805,19 @@ app.post('/api/auth/reset-password/:token', [
 app.get('/api/profile', auth, async (req, res) => {
   try {
     const userId = req.user._id;
+    const cacheKey = `profile_${userId}`;
+    const cached = await cache.get(cacheKey);
     
-    // Get COMPLETE user data with all related information
-    const [user, investments, transactions, notifications, kyc, deposits, withdrawals, referrals, supportTickets] = await Promise.all([
+    if (cached && config.nodeEnv === 'production') {
+      return res.json(formatResponse(true, 'Profile retrieved successfully (cached)', cached));
+    }
+    
+    const [user, earnings, referralStats] = await Promise.all([
       User.findById(userId).lean(),
-      Investment.find({ user: userId })
-        .populate('plan', 'name daily_interest duration total_interest')
-        .sort({ createdAt: -1 })
-        .lean(),
-      Transaction.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(50)
-        .lean(),
-      Notification.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean(),
-      KYCSubmission.findOne({ user: userId }).lean(),
-      Deposit.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(20)
-        .lean(),
-      Withdrawal.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(20)
-        .lean(),
-      Referral.find({ referrer: userId })
-        .populate('referred_user', 'full_name email createdAt balance')
-        .sort({ createdAt: -1 })
-        .lean(),
-      SupportTicket.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(5)
-        .lean()
+      calculateDailyEarnings(userId),
+      calculateReferralEarnings(userId)
     ]);
-
-    // Calculate COMPREHENSIVE stats
-    const activeInvestments = investments.filter(inv => inv.status === 'active');
-    const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
     
-    // Calculate daily interest from active investments
-    const dailyInterest = activeInvestments.reduce((sum, inv) => {
-      if (inv.plan && inv.plan.daily_interest) {
-        return sum + (inv.amount * inv.plan.daily_interest / 100);
-      }
-      return sum;
-    }, 0);
-    
-    // Calculate total earnings
-    const totalEarnings = investments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
-    
-    // Calculate referral earnings
-    const referralEarnings = referrals.reduce((sum, ref) => sum + (ref.earnings || 0), 0);
-    
-    // Calculate total deposits and withdrawals
-    const totalDepositsAmount = deposits
-      .filter(d => d.status === 'approved')
-      .reduce((sum, dep) => sum + dep.amount, 0);
-    
-    const totalWithdrawalsAmount = withdrawals
-      .filter(w => w.status === 'paid')
-      .reduce((sum, wdl) => sum + wdl.amount, 0);
-
     const profileData = {
       user: {
         ...user,
@@ -1799,88 +1825,22 @@ app.get('/api/profile', auth, async (req, res) => {
         wallet_address: user.wallet_address || null,
         paypal_email: user.paypal_email || null
       },
-      
-      // Enhanced dashboard stats with all calculations
+      earnings,
+      referral_stats: referralStats,
       dashboard_stats: {
-        // Financial stats
-        active_investment_value: totalActiveValue,
-        total_earnings: totalEarnings,
-        daily_interest: dailyInterest,
-        referral_earnings: referralEarnings,
-        total_deposits_amount: totalDepositsAmount,
-        total_withdrawals_amount: totalWithdrawalsAmount,
-        
-        // Count stats
-        total_investments: investments.length,
-        active_investments_count: activeInvestments.length,
-        total_deposits: deposits.filter(d => d.status === 'approved').length,
-        total_withdrawals: withdrawals.filter(w => w.status === 'paid').length,
-        referral_count: user.referral_count || 0,
-        unread_notifications: notifications.filter(n => !n.is_read).length,
-        
-        // Balance stats
+        active_investment_value: earnings.total_daily_earnings * 100, // Estimate
+        total_earnings: user.total_earnings || 0,
+        daily_interest: earnings.total_daily_earnings,
+        referral_earnings: user.referral_earnings || 0,
         available_balance: user.balance || 0,
-        portfolio_value: (user.balance || 0) + totalEarnings + referralEarnings,
-        
-        // Status stats
+        portfolio_value: (user.balance || 0) + (user.total_earnings || 0) + (user.referral_earnings || 0),
         kyc_status: user.kyc_status || 'not_submitted',
-        kyc_verified: user.kyc_verified || false,
-        account_status: user.is_active ? 'active' : 'inactive'
-      },
-      
-      // All historical data with images
-      investment_history: investments.map(inv => ({
-        ...inv,
-        has_proof: !!inv.payment_proof_url,
-        proof_url: inv.payment_proof_url || null
-      })),
-      
-      transaction_history: transactions.map(txn => ({
-        ...txn,
-        has_proof: !!txn.payment_proof_url,
-        proof_url: txn.payment_proof_url || null
-      })),
-      
-      deposit_history: deposits.map(dep => ({
-        ...dep,
-        has_proof: !!dep.payment_proof_url,
-        proof_url: dep.payment_proof_url || null
-      })),
-      
-      withdrawal_history: withdrawals.map(wdl => ({
-        ...wdl,
-        has_proof: !!wdl.payment_proof_url,
-        proof_url: wdl.payment_proof_url || null
-      })),
-      
-      // Other data
-      referral_history: referrals,
-      kyc_submission: kyc,
-      notifications: notifications,
-      support_tickets: supportTickets,
-      
-      // Calculations for display
-      calculations: {
-        daily_interest_breakdown: activeInvestments.map(inv => ({
-          plan: inv.plan?.name,
-          amount: inv.amount,
-          daily_rate: inv.plan?.daily_interest || 0,
-          daily_earning: (inv.amount * (inv.plan?.daily_interest || 0) / 100),
-          remaining_days: Math.max(0, Math.ceil((new Date(inv.end_date) - new Date()) / (1000 * 60 * 60 * 24)))
-        })),
-        upcoming_payouts: activeInvestments.filter(inv => {
-          const daysLeft = Math.ceil((new Date(inv.end_date) - new Date()) / (1000 * 60 * 60 * 24));
-          return daysLeft <= 7;
-        }).map(inv => ({
-          plan: inv.plan?.name,
-          amount: inv.amount,
-          end_date: inv.end_date,
-          days_left: Math.ceil((new Date(inv.end_date) - new Date()) / (1000 * 60 * 60 * 24)),
-          expected_payout: inv.expected_earnings
-        }))
+        kyc_verified: user.kyc_verified || false
       }
     };
-
+    
+    await cache.set(cacheKey, profileData, 60); // Cache for 1 minute
+    
     res.json(formatResponse(true, 'Profile retrieved successfully', profileData));
   } catch (error) {
     handleError(res, error, 'Error fetching profile');
@@ -1902,11 +1862,10 @@ app.put('/api/profile', auth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const userId = req.user._id;
     const updateData = req.body;
-
-    // Update allowed fields
+    
     const allowedUpdates = ['full_name', 'phone', 'country', 'risk_tolerance', 'investment_strategy', 'notifications_enabled', 'email_notifications', 'sms_notifications'];
     const updateFields = {};
     
@@ -1915,17 +1874,17 @@ app.put('/api/profile', auth, [
         updateFields[field] = updateData[field];
       }
     });
-
+    
     const user = await User.findByIdAndUpdate(
       userId,
       updateFields,
       { new: true, runValidators: true }
     );
-
+    
     if (!user) {
       return res.status(404).json(formatResponse(false, 'User not found'));
     }
-
+    
     await createNotification(
       userId,
       'Profile Updated',
@@ -1933,7 +1892,10 @@ app.put('/api/profile', auth, [
       'info',
       '/profile'
     );
-
+    
+    // Clear cache
+    await cache.delete(`profile_${userId}`);
+    
     res.json(formatResponse(true, 'Profile updated successfully', { user }));
   } catch (error) {
     handleError(res, error, 'Error updating profile');
@@ -1952,15 +1914,15 @@ app.put('/api/profile/bank', auth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const userId = req.user._id;
     const { bank_name, account_name, account_number, bank_code } = req.body;
-
+    
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json(formatResponse(false, 'User not found'));
     }
-
+    
     user.bank_details = {
       bank_name,
       account_name,
@@ -1969,10 +1931,9 @@ app.put('/api/profile/bank', auth, [
       verified: false,
       last_updated: new Date()
     };
-
+    
     await user.save();
-
-    // Create notification for user
+    
     await createNotification(
       userId,
       'Bank Details Updated',
@@ -1980,8 +1941,8 @@ app.put('/api/profile/bank', auth, [
       'info',
       '/profile'
     );
-
-    // Notify admin about bank details update
+    
+    // Notify admin
     const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } });
     for (const admin of admins) {
       await createNotification(
@@ -1992,7 +1953,10 @@ app.put('/api/profile/bank', auth, [
         `/admin/users/${userId}`
       );
     }
-
+    
+    // Clear cache
+    await cache.delete(`profile_${userId}`);
+    
     res.json(formatResponse(true, 'Bank details updated successfully', {
       bank_details: user.bank_details
     }));
@@ -2001,38 +1965,130 @@ app.put('/api/profile/bank', auth, [
   }
 });
 
-// Update wallet address
-app.put('/api/profile/wallet', auth, [
-  body('wallet_address').notEmpty().trim()
-], async (req, res) => {
+// ==================== EARNINGS ENDPOINTS ====================
+
+// Get daily earnings
+app.get('/api/earnings/daily', auth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed'));
-    }
-
     const userId = req.user._id;
-    const { wallet_address } = req.body;
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json(formatResponse(false, 'User not found'));
-    }
-
-    user.wallet_address = wallet_address;
-    await user.save();
-
-    await createNotification(
-      userId,
-      'Wallet Address Updated',
-      'Your crypto wallet address has been updated successfully.',
-      'info',
-      '/profile'
-    );
-
-    res.json(formatResponse(true, 'Wallet address updated successfully'));
+    const earnings = await calculateDailyEarnings(userId);
+    
+    res.json(formatResponse(true, 'Daily earnings calculated successfully', earnings));
   } catch (error) {
-    handleError(res, error, 'Error updating wallet address');
+    handleError(res, error, 'Error calculating daily earnings');
+  }
+});
+
+// Get earnings history
+app.get('/api/earnings/history', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { page = 1, limit = 20, type, start_date, end_date } = req.query;
+    
+    const query = { user: userId };
+    if (type) query.type = type;
+    if (start_date || end_date) {
+      query.date = {};
+      if (start_date) query.date.$gte = new Date(start_date);
+      if (end_date) query.date.$lte = new Date(end_date);
+    }
+    
+    const skip = (page - 1) * limit;
+    const [earnings, total] = await Promise.all([
+      Earnings.find(query)
+        .populate('investment', 'plan')
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Earnings.countDocuments(query)
+    ]);
+    
+    // Calculate summary
+    const summary = {
+      total_earnings: earnings.reduce((sum, e) => sum + e.amount, 0),
+      daily_earnings: earnings.filter(e => e.type === 'daily_interest').reduce((sum, e) => sum + e.amount, 0),
+      referral_earnings: earnings.filter(e => e.type === 'referral').reduce((sum, e) => sum + e.amount, 0),
+      by_type: earnings.reduce((acc, e) => {
+        acc[e.type] = (acc[e.type] || 0) + 1;
+        return acc;
+      }, {})
+    };
+    
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+    
+    res.json(formatResponse(true, 'Earnings history retrieved successfully', {
+      earnings,
+      summary,
+      pagination
+    }));
+  } catch (error) {
+    handleError(res, error, 'Error fetching earnings history');
+  }
+});
+
+// Get earnings summary
+app.get('/api/earnings/summary', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const cacheKey = `earnings_summary_${userId}`;
+    const cached = await cache.get(cacheKey);
+    
+    if (cached) {
+      return res.json(formatResponse(true, 'Earnings summary retrieved successfully (cached)', cached));
+    }
+    
+    const [dailyEarnings, referralStats, recentEarnings] = await Promise.all([
+      calculateDailyEarnings(userId),
+      calculateReferralEarnings(userId),
+      Earnings.find({ user: userId })
+        .sort({ date: -1 })
+        .limit(10)
+        .lean()
+    ]);
+    
+    const user = await User.findById(userId);
+    
+    // Calculate monthly earnings
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const monthlyEarnings = await Earnings.aggregate([
+      {
+        $match: {
+          user: new mongoose.Types.ObjectId(userId),
+          date: { $gte: thirtyDaysAgo },
+          type: { $in: ['daily_interest', 'investment_completion'] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$amount' }
+        }
+      }
+    ]);
+    
+    const summary = {
+      total_earnings: user.total_earnings || 0,
+      referral_earnings: user.referral_earnings || 0,
+      daily_earnings: dailyEarnings.total_daily_earnings,
+      monthly_earnings: monthlyEarnings[0]?.total || 0,
+      referral_stats: referralStats,
+      estimated_monthly_income: dailyEarnings.total_daily_earnings * 30,
+      recent_earnings: recentEarnings
+    };
+    
+    await cache.set(cacheKey, summary, 300); // Cache for 5 minutes
+    
+    res.json(formatResponse(true, 'Earnings summary retrieved successfully', summary));
+  } catch (error) {
+    handleError(res, error, 'Error fetching earnings summary');
   }
 });
 
@@ -2041,11 +2097,17 @@ app.put('/api/profile/wallet', auth, [
 // Get all investment plans
 app.get('/api/plans', async (req, res) => {
   try {
+    const cacheKey = 'investment_plans';
+    const cached = await cache.get(cacheKey);
+    
+    if (cached) {
+      return res.json(formatResponse(true, 'Plans retrieved successfully (cached)', { plans: cached }));
+    }
+    
     const plans = await InvestmentPlan.find({ is_active: true })
       .sort({ display_order: 1, min_amount: 1 })
       .lean();
     
-    // Calculate ROI and other metrics for display
     const enhancedPlans = plans.map(plan => ({
       ...plan,
       roi_percentage: plan.total_interest,
@@ -2054,6 +2116,8 @@ app.get('/api/plans', async (req, res) => {
       is_popular: plan.is_popular || false,
       features: plan.features || ['Secure Investment', 'Daily Payouts', '24/7 Support']
     }));
+    
+    await cache.set(cacheKey, enhancedPlans, 600); // Cache for 10 minutes
     
     res.json(formatResponse(true, 'Plans retrieved successfully', { plans: enhancedPlans }));
   } catch (error) {
@@ -2065,12 +2129,10 @@ app.get('/api/plans', async (req, res) => {
 app.get('/api/plans/:id', async (req, res) => {
   try {
     const plan = await InvestmentPlan.findById(req.params.id);
-    
     if (!plan) {
       return res.status(404).json(formatResponse(false, 'Investment plan not found'));
     }
     
-    // Calculate additional metrics
     const enhancedPlan = {
       ...plan.toObject(),
       roi_percentage: plan.total_interest,
@@ -2088,17 +2150,23 @@ app.get('/api/plans/:id', async (req, res) => {
 
 // ==================== ENHANCED INVESTMENT ENDPOINTS ====================
 
-// Get user investments with images
+// Get user investments
 app.get('/api/investments', auth, async (req, res) => {
   try {
     const userId = req.user._id;
     const { status, page = 1, limit = 10 } = req.query;
     
+    const cacheKey = `investments_${userId}_${status}_${page}_${limit}`;
+    const cached = await cache.get(cacheKey);
+    
+    if (cached) {
+      return res.json(formatResponse(true, 'Investments retrieved successfully (cached)', cached));
+    }
+    
     const query = { user: userId };
     if (status) query.status = status;
     
     const skip = (page - 1) * limit;
-    
     const [investments, total] = await Promise.all([
       Investment.find(query)
         .populate('plan', 'name daily_interest duration total_interest')
@@ -2108,16 +2176,15 @@ app.get('/api/investments', auth, async (req, res) => {
         .lean(),
       Investment.countDocuments(query)
     ]);
-
-    // Enhance investments with calculations and image tracking
+    
     const enhancedInvestments = investments.map(inv => {
       const remainingDays = Math.max(0, Math.ceil((new Date(inv.end_date) - new Date()) / (1000 * 60 * 60 * 24)));
       const totalDays = Math.ceil((new Date(inv.end_date) - new Date(inv.start_date)) / (1000 * 60 * 60 * 24));
       const daysPassed = totalDays - remainingDays;
-      const progressPercentage = inv.status === 'active' ? 
-        Math.min(100, (daysPassed / totalDays) * 100) : 
+      const progressPercentage = inv.status === 'active' ?
+        Math.min(100, (daysPassed / totalDays) * 100) :
         (inv.status === 'completed' ? 100 : 0);
-
+      
       return {
         ...inv,
         remaining_days: remainingDays,
@@ -2133,20 +2200,20 @@ app.get('/api/investments', auth, async (req, res) => {
         can_withdraw_earnings: inv.status === 'active' && (inv.earned_so_far || 0) > 0
       };
     });
-
+    
     const activeInvestments = enhancedInvestments.filter(inv => inv.status === 'active');
     const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
     const totalEarnings = activeInvestments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
     const dailyEarnings = activeInvestments.reduce((sum, inv) => sum + inv.daily_earning, 0);
-
+    
     const pagination = {
       page: parseInt(page),
       limit: parseInt(limit),
       total,
       pages: Math.ceil(total / limit)
     };
-
-    res.json(formatResponse(true, 'Investments retrieved successfully', {
+    
+    const response = {
       investments: enhancedInvestments,
       stats: {
         total_active_value: totalActiveValue,
@@ -2157,13 +2224,17 @@ app.get('/api/investments', auth, async (req, res) => {
         pending_count: enhancedInvestments.filter(inv => inv.status === 'pending').length
       },
       pagination
-    }));
+    };
+    
+    await cache.set(cacheKey, response, 60); // Cache for 1 minute
+    
+    res.json(formatResponse(true, 'Investments retrieved successfully', response));
   } catch (error) {
     handleError(res, error, 'Error fetching investments');
   }
 });
 
-// Create investment with image upload
+// Create investment
 app.post('/api/investments', auth, upload.single('payment_proof'), [
   body('plan_id').notEmpty(),
   body('amount').isFloat({ min: config.minInvestment }),
@@ -2175,37 +2246,34 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const { plan_id, amount, auto_renew = false, remarks } = req.body;
     const userId = req.user._id;
     
-    // Check plan
     const plan = await InvestmentPlan.findById(plan_id);
     if (!plan) {
       return res.status(404).json(formatResponse(false, 'Investment plan not found'));
     }
-
+    
     const investmentAmount = parseFloat(amount);
-
-    // Validate amount
+    
     if (investmentAmount < plan.min_amount) {
-      return res.status(400).json(formatResponse(false, 
+      return res.status(400).json(formatResponse(false,
         `Minimum investment for ${plan.name} is ₦${plan.min_amount.toLocaleString()}`));
     }
-
+    
     if (plan.max_amount && investmentAmount > plan.max_amount) {
       return res.status(400).json(formatResponse(false,
         `Maximum investment for ${plan.name} is ₦${plan.max_amount.toLocaleString()}`));
     }
-
-    // Check balance
+    
     if (investmentAmount > req.user.balance) {
       return res.status(400).json(formatResponse(false, 'Insufficient balance for this investment'));
     }
-
-    // Handle file upload
+    
     let proofUrl = null;
     let uploadResult = null;
+    
     if (req.file) {
       try {
         uploadResult = await handleFileUpload(req.file, 'investment-proofs', userId);
@@ -2214,13 +2282,11 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
         return res.status(400).json(formatResponse(false, `File upload failed: ${uploadError.message}`));
       }
     }
-
-    // Calculate expected earnings
+    
     const expectedEarnings = (investmentAmount * plan.total_interest) / 100;
     const dailyEarnings = (investmentAmount * plan.daily_interest) / 100;
     const endDate = new Date(Date.now() + plan.duration * 24 * 60 * 60 * 1000);
-
-    // Create investment
+    
     const investment = new Investment({
       user: userId,
       plan: plan_id,
@@ -2244,22 +2310,22 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
         } : null
       }
     });
-
+    
     await investment.save();
-
+    
     // Update user balance
-    await User.findByIdAndUpdate(userId, { 
+    await User.findByIdAndUpdate(userId, {
       $inc: { balance: -investmentAmount }
     });
-
+    
     // Update plan statistics
     await InvestmentPlan.findByIdAndUpdate(plan_id, {
-      $inc: { 
+      $inc: {
         investment_count: 1,
         total_invested: investmentAmount
       }
     });
-
+    
     // Create transaction
     await createTransaction(
       userId,
@@ -2267,7 +2333,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
       -investmentAmount,
       `Investment in ${plan.name} plan`,
       proofUrl ? 'pending' : 'completed',
-      { 
+      {
         investment_id: investment._id,
         plan_name: plan.name,
         plan_duration: plan.duration,
@@ -2275,7 +2341,18 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
       },
       proofUrl
     );
-
+    
+    // Handle referral commission
+    const user = await User.findById(userId);
+    if (user.referred_by) {
+      await createReferralCommission(
+        user.referred_by,
+        userId,
+        investmentAmount,
+        investment._id
+      );
+    }
+    
     // Create notification
     await createNotification(
       userId,
@@ -2285,7 +2362,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
       '/investments',
       { amount: investmentAmount, plan_name: plan.name }
     );
-
+    
     // Notify admin if payment proof uploaded
     if (proofUrl) {
       const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } });
@@ -2296,17 +2373,22 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
           `User ${req.user.full_name} has created a new investment of ₦${investmentAmount.toLocaleString()} requiring approval.`,
           'system',
           `/admin/investments/${investment._id}`,
-          { 
+          {
             user_id: userId,
             user_name: req.user.full_name,
             amount: investmentAmount,
-            proof_url: proofUrl 
+            proof_url: proofUrl
           }
         );
       }
     }
-
-    res.status(201).json(formatResponse(true, 'Investment created successfully!', { 
+    
+    // Clear cache
+    await cache.clearPattern(`investments_${userId}`);
+    await cache.delete(`profile_${userId}`);
+    await cache.delete(`earnings_summary_${userId}`);
+    
+    res.status(201).json(formatResponse(true, 'Investment created successfully!', {
       investment: {
         ...investment.toObject(),
         plan_name: plan.name,
@@ -2326,7 +2408,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
   }
 });
 
-// Get specific investment with details
+// Get specific investment
 app.get('/api/investments/:id', auth, async (req, res) => {
   try {
     const investment = await Investment.findById(req.params.id)
@@ -2338,12 +2420,10 @@ app.get('/api/investments/:id', auth, async (req, res) => {
       return res.status(404).json(formatResponse(false, 'Investment not found'));
     }
     
-    // Check ownership
     if (investment.user.toString() !== req.user._id.toString() && req.user.role === 'user') {
       return res.status(403).json(formatResponse(false, 'Access denied'));
     }
     
-    // Calculate additional details
     const remainingDays = Math.max(0, Math.ceil((new Date(investment.end_date) - new Date()) / (1000 * 60 * 60 * 24)));
     const totalDays = Math.ceil((new Date(investment.end_date) - new Date(investment.start_date)) / (1000 * 60 * 60 * 24));
     const daysPassed = totalDays - remainingDays;
@@ -2357,16 +2437,16 @@ app.get('/api/investments/:id', auth, async (req, res) => {
       progress_percentage: Math.round(progressPercentage),
       daily_earning: (investment.amount * (investment.plan?.daily_interest || 0)) / 100,
       remaining_earnings: investment.expected_earnings - (investment.earned_so_far || 0),
-      next_payout_date: investment.last_earning_date ? 
-        new Date(investment.last_earning_date.getTime() + 24 * 60 * 60 * 1000) : 
+      next_payout_date: investment.last_earning_date ?
+        new Date(investment.last_earning_date.getTime() + 24 * 60 * 60 * 1000) :
         new Date(),
       has_proof: !!investment.payment_proof_url,
       proof_url: investment.payment_proof_url || null,
       can_withdraw: investment.status === 'active' && (investment.earned_so_far || 0) > 0
     };
     
-    res.json(formatResponse(true, 'Investment retrieved successfully', { 
-      investment: enhancedInvestment 
+    res.json(formatResponse(true, 'Investment retrieved successfully', {
+      investment: enhancedInvestment
     }));
   } catch (error) {
     handleError(res, error, 'Error fetching investment');
@@ -2375,7 +2455,7 @@ app.get('/api/investments/:id', auth, async (req, res) => {
 
 // ==================== ENHANCED DEPOSIT ENDPOINTS ====================
 
-// Get user deposits with images
+// Get user deposits
 app.get('/api/deposits', auth, async (req, res) => {
   try {
     const userId = req.user._id;
@@ -2385,7 +2465,6 @@ app.get('/api/deposits', auth, async (req, res) => {
     if (status) query.status = status;
     
     const skip = (page - 1) * limit;
-    
     const [deposits, total] = await Promise.all([
       Deposit.find(query)
         .sort({ createdAt: -1 })
@@ -2394,29 +2473,27 @@ app.get('/api/deposits', auth, async (req, res) => {
         .lean(),
       Deposit.countDocuments(query)
     ]);
-
-    // Enhance deposits with image tracking
+    
     const enhancedDeposits = deposits.map(dep => ({
       ...dep,
       has_proof: !!dep.payment_proof_url,
       proof_url: dep.payment_proof_url || null,
       formatted_amount: `₦${dep.amount.toLocaleString()}`,
-      status_color: dep.status === 'approved' ? 'success' : 
-                    dep.status === 'pending' ? 'warning' : 
+      status_color: dep.status === 'approved' ? 'success' :
+                    dep.status === 'pending' ? 'warning' :
                     dep.status === 'rejected' ? 'error' : 'default'
     }));
-
-    // Calculate stats
+    
     const totalDeposits = enhancedDeposits.filter(d => d.status === 'approved').reduce((sum, d) => sum + d.amount, 0);
     const pendingDeposits = enhancedDeposits.filter(d => d.status === 'pending').reduce((sum, d) => sum + d.amount, 0);
-
+    
     const pagination = {
       page: parseInt(page),
       limit: parseInt(limit),
       total,
       pages: Math.ceil(total / limit)
     };
-
+    
     res.json(formatResponse(true, 'Deposits retrieved successfully', {
       deposits: enhancedDeposits,
       stats: {
@@ -2433,7 +2510,7 @@ app.get('/api/deposits', auth, async (req, res) => {
   }
 });
 
-// Create deposit with image upload
+// Create deposit
 app.post('/api/deposits', auth, upload.single('payment_proof'), [
   body('amount').isFloat({ min: config.minDeposit }),
   body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal', 'card']),
@@ -2444,14 +2521,14 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const { amount, payment_method, remarks } = req.body;
     const userId = req.user._id;
     const depositAmount = parseFloat(amount);
-
-    // Handle file upload
+    
     let proofUrl = null;
     let uploadResult = null;
+    
     if (req.file) {
       try {
         uploadResult = await handleFileUpload(req.file, 'deposit-proofs', userId);
@@ -2460,8 +2537,7 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
         return res.status(400).json(formatResponse(false, `File upload failed: ${uploadError.message}`));
       }
     }
-
-    // Create deposit with enhanced fields
+    
     const deposit = new Deposit({
       user: userId,
       amount: depositAmount,
@@ -2481,10 +2557,9 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
         user_agent: req.headers['user-agent']
       }
     });
-
+    
     await deposit.save();
-
-    // Create notification
+    
     await createNotification(
       userId,
       'Deposit Request Submitted',
@@ -2493,8 +2568,7 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
       '/deposits',
       { amount: depositAmount, payment_method, has_proof: !!proofUrl }
     );
-
-    // Notify admin with image details
+    
     const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } });
     for (const admin of admins) {
       await createNotification(
@@ -2503,17 +2577,17 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
         `User ${req.user.full_name} has submitted a deposit request of ₦${depositAmount.toLocaleString()}.${proofUrl ? ' Payment proof attached.' : ''}`,
         'system',
         `/admin/deposits/${deposit._id}`,
-        { 
+        {
           user_id: userId,
           user_name: req.user.full_name,
           amount: depositAmount,
           payment_method,
-          proof_url: proofUrl 
+          proof_url: proofUrl
         }
       );
     }
-
-    res.status(201).json(formatResponse(true, 'Deposit request submitted successfully!', { 
+    
+    res.status(201).json(formatResponse(true, 'Deposit request submitted successfully!', {
       deposit: {
         ...deposit.toObject(),
         formatted_amount: `₦${depositAmount.toLocaleString()}`,
@@ -2530,7 +2604,7 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
 
 // ==================== ENHANCED WITHDRAWAL ENDPOINTS ====================
 
-// Get user withdrawals with images
+// Get user withdrawals
 app.get('/api/withdrawals', auth, async (req, res) => {
   try {
     const userId = req.user._id;
@@ -2540,7 +2614,6 @@ app.get('/api/withdrawals', auth, async (req, res) => {
     if (status) query.status = status;
     
     const skip = (page - 1) * limit;
-    
     const [withdrawals, total] = await Promise.all([
       Withdrawal.find(query)
         .sort({ createdAt: -1 })
@@ -2549,8 +2622,7 @@ app.get('/api/withdrawals', auth, async (req, res) => {
         .lean(),
       Withdrawal.countDocuments(query)
     ]);
-
-    // Enhance withdrawals with calculations
+    
     const enhancedWithdrawals = withdrawals.map(wdl => ({
       ...wdl,
       has_proof: !!wdl.payment_proof_url,
@@ -2558,25 +2630,24 @@ app.get('/api/withdrawals', auth, async (req, res) => {
       formatted_amount: `₦${wdl.amount.toLocaleString()}`,
       formatted_net_amount: `₦${wdl.net_amount.toLocaleString()}`,
       formatted_fee: `₦${wdl.platform_fee.toLocaleString()}`,
-      status_color: wdl.status === 'paid' ? 'success' : 
-                   wdl.status === 'pending' ? 'warning' : 
+      status_color: wdl.status === 'paid' ? 'success' :
+                   wdl.status === 'pending' ? 'warning' :
                    wdl.status === 'rejected' ? 'error' : 'default',
-      processing_time: wdl.status === 'paid' && wdl.paid_at ? 
+      processing_time: wdl.status === 'paid' && wdl.paid_at ?
         Math.ceil((new Date(wdl.paid_at) - new Date(wdl.createdAt)) / (1000 * 60 * 60)) : null
     }));
-
-    // Calculate stats
+    
     const totalWithdrawals = enhancedWithdrawals.filter(w => w.status === 'paid').reduce((sum, w) => sum + w.amount, 0);
     const pendingWithdrawals = enhancedWithdrawals.filter(w => w.status === 'pending').reduce((sum, w) => sum + w.amount, 0);
     const totalFees = enhancedWithdrawals.filter(w => w.status === 'paid').reduce((sum, w) => sum + w.platform_fee, 0);
-
+    
     const pagination = {
       page: parseInt(page),
       limit: parseInt(limit),
       total,
       pages: Math.ceil(total / limit)
     };
-
+    
     res.json(formatResponse(true, 'Withdrawals retrieved successfully', {
       withdrawals: enhancedWithdrawals,
       stats: {
@@ -2605,27 +2676,23 @@ app.post('/api/withdrawals', auth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const { amount, payment_method, remarks } = req.body;
     const userId = req.user._id;
     const withdrawalAmount = parseFloat(amount);
-
-    // Check minimum withdrawal
+    
     if (withdrawalAmount < config.minWithdrawal) {
-      return res.status(400).json(formatResponse(false, 
+      return res.status(400).json(formatResponse(false,
         `Minimum withdrawal is ₦${config.minWithdrawal.toLocaleString()}`));
     }
-
-    // Check user balance
+    
     if (withdrawalAmount > req.user.balance) {
       return res.status(400).json(formatResponse(false, 'Insufficient balance for withdrawal'));
     }
-
-    // Calculate platform fee
+    
     const platformFee = withdrawalAmount * (config.platformFeePercent / 100);
     const netAmount = withdrawalAmount - platformFee;
-
-    // Validate payment method specific details
+    
     let paymentDetails = {};
     if (payment_method === 'bank_transfer') {
       if (!req.user.bank_details || !req.user.bank_details.account_number) {
@@ -2649,8 +2716,7 @@ app.post('/api/withdrawals', auth, [
       }
       paymentDetails = { paypal_email: req.user.paypal_email };
     }
-
-    // Create withdrawal
+    
     const withdrawal = new Withdrawal({
       user: userId,
       amount: withdrawalAmount,
@@ -2666,45 +2732,41 @@ app.post('/api/withdrawals', auth, [
         user_agent: req.headers['user-agent']
       }
     });
-
+    
     await withdrawal.save();
-
-    // Update user balance (temporarily hold the amount)
-    await User.findByIdAndUpdate(userId, { 
+    
+    await User.findByIdAndUpdate(userId, {
       $inc: { balance: -withdrawalAmount }
     });
-
-    // Create transaction
+    
     await createTransaction(
       userId,
       'withdrawal',
       -withdrawalAmount,
       `Withdrawal request via ${payment_method}`,
       'pending',
-      { 
+      {
         withdrawal_id: withdrawal._id,
         payment_method,
         platform_fee: platformFee,
-        net_amount: netAmount 
+        net_amount: netAmount
       }
     );
-
-    // Create notification
+    
     await createNotification(
       userId,
       'Withdrawal Request Submitted',
       `Your withdrawal request of ₦${withdrawalAmount.toLocaleString()} has been submitted and is pending approval.`,
       'withdrawal',
       '/withdrawals',
-      { 
+      {
         amount: withdrawalAmount,
         net_amount: netAmount,
         fee: platformFee,
-        payment_method 
+        payment_method
       }
     );
-
-    // Notify admin with all details
+    
     const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } });
     for (const admin of admins) {
       await createNotification(
@@ -2713,7 +2775,7 @@ app.post('/api/withdrawals', auth, [
         `User ${req.user.full_name} has requested a withdrawal of ₦${withdrawalAmount.toLocaleString()} via ${payment_method}.`,
         'system',
         `/admin/withdrawals/${withdrawal._id}`,
-        { 
+        {
           user_id: userId,
           user_name: req.user.full_name,
           amount: withdrawalAmount,
@@ -2724,8 +2786,8 @@ app.post('/api/withdrawals', auth, [
         }
       );
     }
-
-    res.status(201).json(formatResponse(true, 'Withdrawal request submitted successfully!', { 
+    
+    res.status(201).json(formatResponse(true, 'Withdrawal request submitted successfully!', {
       withdrawal: {
         ...withdrawal.toObject(),
         formatted_amount: `₦${withdrawalAmount.toLocaleString()}`,
@@ -2741,17 +2803,90 @@ app.post('/api/withdrawals', auth, [
   }
 });
 
+// ==================== ENHANCED REFERRAL ENDPOINTS ====================
+
+// Get referral stats
+app.get('/api/referrals/stats', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const referralStats = await calculateReferralEarnings(userId);
+    
+    const user = await User.findById(userId);
+    
+    const referrals = await Referral.find({ referrer: userId })
+      .populate('referred_user', 'full_name email createdAt balance total_earnings')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+    
+    const response = {
+      ...referralStats,
+      referral_code: user.referral_code,
+      referral_link: `${config.clientURL}/register?ref=${user.referral_code}`,
+      recent_referrals: referrals
+    };
+    
+    res.json(formatResponse(true, 'Referral stats retrieved successfully', response));
+  } catch (error) {
+    handleError(res, error, 'Error fetching referral stats');
+  }
+});
+
+// Get referral details
+app.get('/api/referrals/details', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { page = 1, limit = 20 } = req.query;
+    
+    const skip = (page - 1) * limit;
+    const [referrals, total] = await Promise.all([
+      Referral.find({ referrer: userId })
+        .populate('referred_user', 'full_name email phone createdAt balance total_earnings total_investments last_investment_date')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Referral.countDocuments({ referrer: userId })
+    ]);
+    
+    const enhancedReferrals = referrals.map(ref => ({
+      ...ref,
+      referred_user: ref.referred_user ? {
+        ...ref.referred_user,
+        total_invested: await Investment.aggregate([
+          { $match: { user: ref.referred_user._id } },
+          { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]).then(result => result[0]?.total || 0)
+      } : null,
+      potential_commission: ref.referred_user?.total_investments ? 
+        (ref.referred_user.total_investments * config.referralCommissionPercent / 100) : 0
+    }));
+    
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+    
+    res.json(formatResponse(true, 'Referral details retrieved successfully', {
+      referrals: enhancedReferrals,
+      pagination
+    }));
+  } catch (error) {
+    handleError(res, error, 'Error fetching referral details');
+  }
+});
+
 // ==================== ENHANCED TRANSACTION ENDPOINTS ====================
 
-// Get user transactions with images
+// Get user transactions
 app.get('/api/transactions', auth, async (req, res) => {
   try {
     const userId = req.user._id;
     const { type, status, start_date, end_date, page = 1, limit = 20 } = req.query;
     
     const query = { user: userId };
-    
-    // Apply filters
     if (type) query.type = type;
     if (status) query.status = status;
     if (start_date || end_date) {
@@ -2761,7 +2896,6 @@ app.get('/api/transactions', auth, async (req, res) => {
     }
     
     const skip = (page - 1) * limit;
-    
     const [transactions, total] = await Promise.all([
       Transaction.find(query)
         .sort({ createdAt: -1 })
@@ -2770,8 +2904,7 @@ app.get('/api/transactions', auth, async (req, res) => {
         .lean(),
       Transaction.countDocuments(query)
     ]);
-
-    // Enhance transactions with image tracking
+    
     const enhancedTransactions = transactions.map(txn => {
       const isPositive = txn.amount > 0;
       const typeColor = isPositive ? 'success' : 'error';
@@ -2793,8 +2926,7 @@ app.get('/api/transactions', auth, async (req, res) => {
         })
       };
     });
-
-    // Calculate summary
+    
     const summary = {
       total_income: transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0),
       total_expenses: transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0),
@@ -2804,14 +2936,14 @@ app.get('/api/transactions', auth, async (req, res) => {
         return acc;
       }, {})
     };
-
+    
     const pagination = {
       page: parseInt(page),
       limit: parseInt(limit),
       total,
       pages: Math.ceil(total / limit)
     };
-
+    
     res.json(formatResponse(true, 'Transactions retrieved successfully', {
       transactions: enhancedTransactions,
       summary,
@@ -2824,7 +2956,7 @@ app.get('/api/transactions', auth, async (req, res) => {
 
 // ==================== ENHANCED KYC ENDPOINTS ====================
 
-// Submit KYC with multiple images
+// Submit KYC
 app.post('/api/kyc', auth, upload.fields([
   { name: 'id_front', maxCount: 1 },
   { name: 'id_back', maxCount: 1 },
@@ -2839,17 +2971,15 @@ app.post('/api/kyc', auth, upload.fields([
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const { id_type, id_number } = req.body;
     const userId = req.user._id;
     const files = req.files;
-
-    // Check required files
+    
     if (!files || !files.id_front || !files.selfie_with_id) {
       return res.status(400).json(formatResponse(false, 'ID front and selfie with ID are required'));
     }
-
-    // Upload files
+    
     let idFrontUrl, idBackUrl, selfieWithIdUrl, addressProofUrl;
     const uploadResults = {};
     
@@ -2872,11 +3002,9 @@ app.post('/api/kyc', auth, upload.fields([
     } catch (uploadError) {
       return res.status(400).json(formatResponse(false, `File upload failed: ${uploadError.message}`));
     }
-
-    // Check for existing KYC submission
+    
     let kycSubmission = await KYCSubmission.findOne({ user: userId });
-
-    // Create or update KYC submission with enhanced fields
+    
     const kycData = {
       user: userId,
       id_type,
@@ -2892,7 +3020,7 @@ app.post('/api/kyc', auth, upload.fields([
         ip_address: req.ip
       }
     };
-
+    
     if (kycSubmission) {
       kycSubmission = await KYCSubmission.findByIdAndUpdate(
         kycSubmission._id,
@@ -2903,14 +3031,12 @@ app.post('/api/kyc', auth, upload.fields([
       kycSubmission = new KYCSubmission(kycData);
       await kycSubmission.save();
     }
-
-    // Update user KYC status
+    
     await User.findByIdAndUpdate(userId, {
       kyc_status: 'pending',
       kyc_submitted_at: new Date()
     });
-
-    // Create notification
+    
     await createNotification(
       userId,
       'KYC Submitted',
@@ -2919,8 +3045,7 @@ app.post('/api/kyc', auth, upload.fields([
       '/kyc',
       { id_type, has_address_proof: !!addressProofUrl }
     );
-
-    // Notify admin with image details
+    
     const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } });
     for (const admin of admins) {
       await createNotification(
@@ -2929,7 +3054,7 @@ app.post('/api/kyc', auth, upload.fields([
         `User ${req.user.full_name} has submitted KYC documents for verification. ID Type: ${id_type}`,
         'system',
         `/admin/kyc/${kycSubmission._id}`,
-        { 
+        {
           user_id: userId,
           user_name: req.user.full_name,
           id_type,
@@ -2940,7 +3065,7 @@ app.post('/api/kyc', auth, upload.fields([
         }
       );
     }
-
+    
     res.status(201).json(formatResponse(true, 'KYC submitted successfully!', {
       kyc: kycSubmission,
       uploads: uploadResults,
@@ -2951,14 +3076,13 @@ app.post('/api/kyc', auth, upload.fields([
   }
 });
 
-// Get KYC status with images
+// Get KYC status
 app.get('/api/kyc/status', auth, async (req, res) => {
   try {
     const userId = req.user._id;
-    
     const kycSubmission = await KYCSubmission.findOne({ user: userId });
     const user = await User.findById(userId);
-
+    
     const responseData = {
       kyc_status: user.kyc_status,
       kyc_verified: user.kyc_verified,
@@ -2971,14 +3095,13 @@ app.get('/api/kyc/status', auth, async (req, res) => {
         submitted_at: kycSubmission.createdAt,
         reviewed_at: kycSubmission.reviewed_at,
         rejection_reason: kycSubmission.rejection_reason,
-        // Include image URLs
         id_front_url: kycSubmission.id_front_url,
         id_back_url: kycSubmission.id_back_url,
         selfie_with_id_url: kycSubmission.selfie_with_id_url,
         address_proof_url: kycSubmission.address_proof_url
       } : null
     };
-
+    
     res.json(formatResponse(true, 'KYC status retrieved', responseData));
   } catch (error) {
     handleError(res, error, 'Error fetching KYC status');
@@ -2987,7 +3110,7 @@ app.get('/api/kyc/status', auth, async (req, res) => {
 
 // ==================== ENHANCED SUPPORT ENDPOINTS ====================
 
-// Submit support ticket with attachments
+// Submit support ticket
 app.post('/api/support', auth, upload.array('attachments', 5), [
   body('subject').notEmpty().trim().isLength({ min: 5, max: 200 }),
   body('message').notEmpty().trim().isLength({ min: 10, max: 5000 }),
@@ -2999,12 +3122,11 @@ app.post('/api/support', auth, upload.array('attachments', 5), [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const { subject, message, category = 'general', priority = 'medium' } = req.body;
     const userId = req.user._id;
     const files = req.files || [];
-
-    // Handle file uploads
+    
     const attachments = [];
     for (const file of files) {
       try {
@@ -3020,11 +3142,9 @@ app.post('/api/support', auth, upload.array('attachments', 5), [
         console.error('Error uploading attachment:', uploadError);
       }
     }
-
-    // Generate unique ticket ID
+    
     const ticketId = `TKT${Date.now()}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-
-    // Create support ticket with enhanced fields
+    
     const supportTicket = new SupportTicket({
       user: userId,
       ticket_id: ticketId,
@@ -3040,10 +3160,9 @@ app.post('/api/support', auth, upload.array('attachments', 5), [
         attachments_count: attachments.length
       }
     });
-
+    
     await supportTicket.save();
-
-    // Create notification
+    
     await createNotification(
       userId,
       'Support Ticket Created',
@@ -3052,8 +3171,7 @@ app.post('/api/support', auth, upload.array('attachments', 5), [
       `/support/ticket/${ticketId}`,
       { ticket_id: ticketId, category, priority, attachments_count: attachments.length }
     );
-
-    // Notify admin with attachment details
+    
     const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } });
     for (const admin of admins) {
       await createNotification(
@@ -3062,7 +3180,7 @@ app.post('/api/support', auth, upload.array('attachments', 5), [
         `User ${req.user.full_name} has submitted a new support ticket: ${subject} (${category}, ${priority} priority)`,
         'system',
         `/admin/support/${ticketId}`,
-        { 
+        {
           user_id: userId,
           user_name: req.user.full_name,
           ticket_id: ticketId,
@@ -3074,7 +3192,7 @@ app.post('/api/support', auth, upload.array('attachments', 5), [
         }
       );
     }
-
+    
     res.status(201).json(formatResponse(true, 'Support ticket created successfully!', {
       ticket: {
         ...supportTicket.toObject(),
@@ -3089,7 +3207,7 @@ app.post('/api/support', auth, upload.array('attachments', 5), [
   }
 });
 
-// Get user support tickets with details
+// Get user support tickets
 app.get('/api/support/tickets', auth, async (req, res) => {
   try {
     const userId = req.user._id;
@@ -3099,7 +3217,6 @@ app.get('/api/support/tickets', auth, async (req, res) => {
     if (status) query.status = status;
     
     const skip = (page - 1) * limit;
-    
     const [tickets, total] = await Promise.all([
       SupportTicket.find(query)
         .sort({ createdAt: -1 })
@@ -3108,8 +3225,7 @@ app.get('/api/support/tickets', auth, async (req, res) => {
         .lean(),
       SupportTicket.countDocuments(query)
     ]);
-
-    // Enhance tickets with status indicators
+    
     const enhancedTickets = tickets.map(ticket => {
       const statusColors = {
         'open': 'warning',
@@ -3117,7 +3233,6 @@ app.get('/api/support/tickets', auth, async (req, res) => {
         'resolved': 'success',
         'closed': 'default'
       };
-      
       const priorityColors = {
         'low': 'success',
         'medium': 'warning',
@@ -3135,14 +3250,14 @@ app.get('/api/support/tickets', auth, async (req, res) => {
         days_open: Math.ceil((new Date() - new Date(ticket.createdAt)) / (1000 * 60 * 60 * 24))
       };
     });
-
+    
     const pagination = {
       page: parseInt(page),
       limit: parseInt(limit),
       total,
       pages: Math.ceil(total / limit)
     };
-
+    
     res.json(formatResponse(true, 'Support tickets retrieved successfully', {
       tickets: enhancedTickets,
       stats: {
@@ -3158,69 +3273,21 @@ app.get('/api/support/tickets', auth, async (req, res) => {
   }
 });
 
-// ==================== ENHANCED REFERRAL ENDPOINTS ====================
-
-// Get referral stats with complete data
-app.get('/api/referrals/stats', auth, async (req, res) => {
-  try {
-    const userId = req.user._id;
-    
-    const referrals = await Referral.find({ referrer: userId })
-      .populate('referred_user', 'full_name email createdAt balance total_earnings')
-      .sort({ createdAt: -1 })
-      .lean();
-    
-    const totalReferrals = referrals.length;
-    const activeReferrals = referrals.filter(r => r.status === 'active').length;
-    const totalEarnings = referrals.reduce((sum, r) => sum + (r.earnings || 0), 0);
-    const pendingEarnings = referrals
-      .filter(r => r.status === 'pending' && !r.earnings_paid)
-      .reduce((sum, r) => sum + (r.earnings || 0), 0);
-    
-    // Calculate recent referrals (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentReferrals = referrals.filter(r => new Date(r.createdAt) > thirtyDaysAgo);
-
-    // Calculate estimated monthly earnings
-    const estimatedMonthlyEarnings = (totalEarnings / (referrals.length || 1)) * (activeReferrals || 1);
-
-    res.json(formatResponse(true, 'Referral stats retrieved successfully', {
-      stats: {
-        total_referrals: totalReferrals,
-        active_referrals: activeReferrals,
-        total_earnings: totalEarnings,
-        pending_earnings: pendingEarnings,
-        referral_code: req.user.referral_code,
-        referral_link: `${config.clientURL}/register?ref=${req.user.referral_code}`,
-        recent_referrals: recentReferrals.length,
-        estimated_monthly_earnings: estimatedMonthlyEarnings,
-        commission_rate: `${config.referralCommissionPercent}%`
-      },
-      referrals: referrals.slice(0, 10),
-      recent_activity: recentReferrals.slice(0, 5)
-    }));
-  } catch (error) {
-    handleError(res, error, 'Error fetching referral stats');
-  }
-});
-
 // ==================== ENHANCED UPLOAD ENDPOINT ====================
 
-// File upload with advanced features
+// File upload
 app.post('/api/upload', auth, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json(formatResponse(false, 'No file uploaded'));
     }
-
+    
     const userId = req.user._id;
     const folder = req.body.folder || 'general';
     const purpose = req.body.purpose || 'general';
-
+    
     const uploadResult = await handleFileUpload(req.file, folder, userId);
-
-    // Log upload activity
+    
     await createTransaction(
       userId,
       'system',
@@ -3235,7 +3302,7 @@ app.post('/api/upload', auth, upload.single('file'), async (req, res) => {
         mime_type: uploadResult.mimeType
       }
     );
-
+    
     res.json(formatResponse(true, 'File uploaded successfully', {
       fileUrl: uploadResult.url,
       fileName: uploadResult.filename,
@@ -3258,11 +3325,11 @@ app.post('/api/upload/multiple', auth, upload.array('files', 10), async (req, re
     if (!req.files || req.files.length === 0) {
       return res.status(400).json(formatResponse(false, 'No files uploaded'));
     }
-
+    
     const userId = req.user._id;
     const folder = req.body.folder || 'general';
     const uploadResults = [];
-
+    
     for (const file of req.files) {
       try {
         const uploadResult = await handleFileUpload(file, folder, userId);
@@ -3271,7 +3338,7 @@ app.post('/api/upload/multiple', auth, upload.array('files', 10), async (req, re
         console.error('Error uploading file:', uploadError);
       }
     }
-
+    
     res.json(formatResponse(true, 'Files uploaded successfully', {
       files: uploadResults,
       total: uploadResults.length,
@@ -3285,10 +3352,16 @@ app.post('/api/upload/multiple', auth, upload.array('files', 10), async (req, re
 
 // ==================== ENHANCED ADMIN ENDPOINTS ====================
 
-// Advanced Admin Dashboard Stats with images
+// Advanced Admin Dashboard
 app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
   try {
-    // Get comprehensive statistics
+    const cacheKey = 'admin_dashboard';
+    const cached = await cache.get(cacheKey);
+    
+    if (cached && config.nodeEnv === 'production') {
+      return res.json(formatResponse(true, 'Admin dashboard stats retrieved successfully (cached)', cached));
+    }
+    
     const [
       totalUsers,
       newUsersToday,
@@ -3305,17 +3378,14 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
       pendingWithdrawals,
       pendingKYC,
       recentTransactions,
-      recentUsers,
-      topPlans,
-      adminAudits,
-      systemStats
+      recentUsers
     ] = await Promise.all([
       User.countDocuments({}),
-      User.countDocuments({ 
-        createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } 
+      User.countDocuments({
+        createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
       }),
-      User.countDocuments({ 
-        createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } 
+      User.countDocuments({
+        createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
       }),
       Investment.countDocuments({}),
       Investment.countDocuments({ status: 'active' }),
@@ -3345,103 +3415,14 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         .select('full_name email phone createdAt last_login')
         .sort({ createdAt: -1 })
         .limit(10)
-        .lean(),
-      InvestmentPlan.find({ is_active: true })
-        .sort({ investment_count: -1 })
-        .limit(5)
-        .lean(),
-      AdminAudit.find({})
-        .populate('admin_id', 'full_name email')
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean(),
-      // System statistics
-      Investment.aggregate([
-        { $match: { status: 'active' } },
-        { $group: { 
-          _id: null, 
-          totalActiveValue: { $sum: '$amount' },
-          totalDailyEarnings: { $sum: '$daily_earnings' }
-        } }
-      ])
+        .lean()
     ]);
-
+    
     const totalEarnings = earningsResult[0]?.total || 0;
     const platformEarnings = platformFeesResult[0]?.total || 0;
     const referralEarnings = referralEarningsResult[0]?.total || 0;
-    const systemStatsData = systemStats[0] || { totalActiveValue: 0, totalDailyEarnings: 0 };
-
-    // Calculate total platform revenue
     const totalRevenue = platformEarnings;
-
-    // Get daily/weekly/monthly stats
-    const today = new Date();
-    const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-
-    const [weeklyStats, monthlyStats, userGrowth] = await Promise.all([
-      // Weekly stats
-      Promise.all([
-        Deposit.aggregate([
-          { $match: { 
-            status: 'approved',
-            createdAt: { $gte: startOfWeek }
-          }},
-          { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
-        ]),
-        Withdrawal.aggregate([
-          { $match: { 
-            status: 'paid',
-            createdAt: { $gte: startOfWeek }
-          }},
-          { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
-        ]),
-        Investment.aggregate([
-          { $match: { 
-            createdAt: { $gte: startOfWeek }
-          }},
-          { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
-        ])
-      ]),
-      // Monthly stats
-      Promise.all([
-        Deposit.aggregate([
-          { $match: { 
-            status: 'approved',
-            createdAt: { $gte: startOfMonth }
-          }},
-          { $group: { _id: null, total: { $sum: '$amount' } } }
-        ]),
-        Withdrawal.aggregate([
-          { $match: { 
-            status: 'paid',
-            createdAt: { $gte: startOfMonth }
-          }},
-          { $group: { _id: null, total: { $sum: '$amount' } } }
-        ])
-      ]),
-      // User growth (last 6 months)
-      User.aggregate([
-        {
-          $group: {
-            _id: {
-              year: { $year: '$createdAt' },
-              month: { $month: '$createdAt' }
-            },
-            count: { $sum: 1 }
-          }
-        },
-        { $sort: { '_id.year': -1, '_id.month': -1 } },
-        { $limit: 6 }
-      ])
-    ]);
-
-    const weeklyDeposits = weeklyStats[0][0] || { total: 0, count: 0 };
-    const weeklyWithdrawals = weeklyStats[1][0] || { total: 0, count: 0 };
-    const weeklyInvestments = weeklyStats[2][0] || { total: 0, count: 0 };
-    const monthlyDeposits = monthlyStats[0][0]?.total || 0;
-    const monthlyWithdrawals = monthlyStats[1][0]?.total || 0;
-
+    
     const stats = {
       overview: {
         total_users: totalUsers,
@@ -3453,9 +3434,7 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         total_withdrawals: totalWithdrawals,
         total_earnings: totalEarnings,
         platform_revenue: totalRevenue,
-        referral_earnings: referralEarnings,
-        total_active_value: systemStatsData.totalActiveValue,
-        total_daily_earnings: systemStatsData.totalDailyEarnings
+        referral_earnings: referralEarnings
       },
       pending_actions: {
         pending_investments: pendingInvestments,
@@ -3464,34 +3443,14 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         pending_kyc: pendingKYC,
         total_pending: pendingInvestments + pendingDeposits + pendingWithdrawals + pendingKYC
       },
-      period_stats: {
-        weekly: {
-          deposits: weeklyDeposits.total,
-          deposits_count: weeklyDeposits.count,
-          withdrawals: weeklyWithdrawals.total,
-          withdrawals_count: weeklyWithdrawals.count,
-          investments: weeklyInvestments.total,
-          investments_count: weeklyInvestments.count
-        },
-        monthly: {
-          deposits: monthlyDeposits,
-          withdrawals: monthlyWithdrawals
-        }
-      },
-      user_growth: userGrowth,
-      top_performers: {
-        investment_plans: topPlans
-      },
       recent_activity: {
-        transactions: recentTransactions.map(txn => ({
-          ...txn,
-          has_proof: !!txn.payment_proof_url
-        })),
-        users: recentUsers,
-        admin_actions: adminAudits
+        transactions: recentTransactions,
+        users: recentUsers
       }
     };
-
+    
+    await cache.set(cacheKey, stats, 60); // Cache for 1 minute
+    
     res.json(formatResponse(true, 'Admin dashboard stats retrieved successfully', {
       stats,
       quick_links: {
@@ -3500,8 +3459,7 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         pending_withdrawals: '/api/admin/pending-withdrawals',
         pending_kyc: '/api/admin/pending-kyc',
         all_users: '/api/admin/users',
-        all_transactions: '/api/admin/transactions',
-        system_settings: '/api/admin/settings'
+        all_transactions: '/api/admin/transactions'
       }
     }));
   } catch (error) {
@@ -3509,240 +3467,48 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
   }
 });
 
-// Admin view user dashboard endpoint
-app.get('/api/admin/users/:id/dashboard', adminAuth, async (req, res) => {
-  try {
-    const userId = req.params.id;
-    
-    // Get comprehensive user data
-    const [user, investments, transactions, deposits, withdrawals, kyc, referrals, supportTickets] = await Promise.all([
-      User.findById(userId)
-        .select('-password -two_factor_secret -verification_token -password_reset_token')
-        .populate('referred_by', 'full_name email referral_code')
-        .lean(),
-      Investment.find({ user: userId })
-        .populate('plan', 'name daily_interest duration total_interest')
-        .sort({ createdAt: -1 })
-        .lean(),
-      Transaction.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(50)
-        .lean(),
-      Deposit.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(20)
-        .lean(),
-      Withdrawal.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(20)
-        .lean(),
-      KYCSubmission.findOne({ user: userId }).lean(),
-      Referral.find({ referrer: userId })
-        .populate('referred_user', 'full_name email createdAt balance')
-        .sort({ createdAt: -1 })
-        .lean(),
-      SupportTicket.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean()
-    ]);
-    
-    if (!user) {
-      return res.status(404).json(formatResponse(false, 'User not found'));
-    }
-    
-    // Calculate detailed stats
-    const activeInvestments = investments.filter(inv => inv.status === 'active');
-    const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
-    const totalEarned = investments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
-    const totalDeposited = deposits
-      .filter(d => d.status === 'approved')
-      .reduce((sum, d) => sum + d.amount, 0);
-    const totalWithdrawn = withdrawals
-      .filter(w => w.status === 'paid')
-      .reduce((sum, w) => sum + w.amount, 0);
-    
-    // Calculate daily interest
-    const dailyInterest = activeInvestments.reduce((sum, inv) => {
-      if (inv.plan && inv.plan.daily_interest) {
-        return sum + (inv.amount * inv.plan.daily_interest / 100);
-      }
-      return sum;
-    }, 0);
-    
-    // Calculate referral earnings
-    const referralEarnings = referrals.reduce((sum, ref) => sum + (ref.earnings || 0), 0);
-    
-    // Calculate investment performance
-    const investmentPerformance = investments.map(inv => ({
-      id: inv._id,
-      plan: inv.plan?.name,
-      amount: inv.amount,
-      status: inv.status,
-      start_date: inv.start_date,
-      end_date: inv.end_date,
-      earned_so_far: inv.earned_so_far || 0,
-      expected_earnings: inv.expected_earnings || 0,
-      has_proof: !!inv.payment_proof_url,
-      proof_url: inv.payment_proof_url
-    }));
-    
-    // Create audit log for admin viewing
-    await createAdminAudit(
-      req.user._id,
-      'VIEW_USER_DASHBOARD',
-      'user',
-      userId,
-      { viewed_at: new Date() },
-      req.ip,
-      req.headers['user-agent']
-    );
-    
-    res.json(formatResponse(true, 'User dashboard data retrieved', {
-      user: {
-        ...user,
-        bank_details: user.bank_details || null,
-        wallet_address: user.wallet_address || null,
-        paypal_email: user.paypal_email || null
-      },
-      dashboard_stats: {
-        // Financial Overview
-        current_balance: user.balance || 0,
-        total_earnings: user.total_earnings || 0,
-        referral_earnings: user.referral_earnings || 0,
-        daily_interest: dailyInterest,
-        active_investment_value: totalActiveValue,
-        portfolio_value: (user.balance || 0) + totalEarned + referralEarnings,
-        
-        // Transaction Totals
-        total_deposits: totalDeposited,
-        total_withdrawals: totalWithdrawn,
-        total_invested: investments.reduce((sum, inv) => sum + inv.amount, 0),
-        total_earned: totalEarned,
-        
-        // Counts
-        total_investments: investments.length,
-        active_investments: activeInvestments.length,
-        total_deposit_count: deposits.length,
-        total_withdrawal_count: withdrawals.length,
-        referral_count: referrals.length,
-        
-        // Status
-        kyc_status: user.kyc_status,
-        kyc_verified: user.kyc_verified,
-        account_status: user.is_active ? 'active' : 'inactive',
-        last_login: user.last_login,
-        member_since: user.createdAt
-      },
-      
-      // Detailed Data with Images
-      investments: {
-        all: investmentPerformance,
-        active: investmentPerformance.filter(inv => inv.status === 'active'),
-        pending: investmentPerformance.filter(inv => inv.status === 'pending'),
-        completed: investmentPerformance.filter(inv => inv.status === 'completed'),
-        count: investments.length
-      },
-      
-      transactions: transactions.map(txn => ({
-        ...txn,
-        has_proof: !!txn.payment_proof_url,
-        proof_url: txn.payment_proof_url
-      })),
-      
-      deposits: deposits.map(dep => ({
-        ...dep,
-        has_proof: !!dep.payment_proof_url,
-        proof_url: dep.payment_proof_url
-      })),
-      
-      withdrawals: withdrawals.map(wdl => ({
-        ...wdl,
-        has_proof: !!wdl.payment_proof_url,
-        proof_url: wdl.payment_proof_url
-      })),
-      
-      // Additional Data
-      kyc_submission: kyc,
-      referrals: referrals,
-      support_tickets: supportTickets,
-      
-      // Calculations for Insights
-      insights: {
-        average_investment: investments.length > 0 ? 
-          investments.reduce((sum, inv) => sum + inv.amount, 0) / investments.length : 0,
-        success_rate: investments.length > 0 ? 
-          (investments.filter(inv => inv.status === 'completed' || inv.status === 'active').length / investments.length * 100) : 0,
-        monthly_earnings_estimate: dailyInterest * 30,
-        referral_network_value: referrals.reduce((sum, ref) => {
-          const referredUser = ref.referred_user;
-          return sum + ((referredUser?.balance || 0) + (referredUser?.total_earnings || 0));
-        }, 0)
-      }
-    }));
-    
-  } catch (error) {
-    handleError(res, error, 'Error fetching user dashboard');
-  }
-});
-
-// Get all users with advanced filtering and images
+// Get all users
 app.get('/api/admin/users', adminAuth, async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 20, 
-      status, 
-      role, 
-      kyc_status, 
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      role,
+      kyc_status,
       search,
       sort_by = 'createdAt',
       sort_order = 'desc',
       min_balance,
       max_balance,
       start_date,
-      end_date,
-      has_bank_details,
-      has_investments
+      end_date
     } = req.query;
     
     const query = {};
-    
-    // Apply filters
     if (status === 'active') query.is_active = true;
     if (status === 'inactive') query.is_active = false;
     if (role) query.role = role;
     if (kyc_status) query.kyc_status = kyc_status;
     
-    // Balance range filter
     if (min_balance || max_balance) {
       query.balance = {};
       if (min_balance) query.balance.$gte = parseFloat(min_balance);
       if (max_balance) query.balance.$lte = parseFloat(max_balance);
     }
     
-    // Date range filter
     if (start_date || end_date) {
       query.createdAt = {};
       if (start_date) query.createdAt.$gte = new Date(start_date);
       if (end_date) query.createdAt.$lte = new Date(end_date);
     }
     
-    // Bank details filter
-    if (has_bank_details === 'true') {
-      query['bank_details.account_number'] = { $exists: true, $ne: '' };
-    } else if (has_bank_details === 'false') {
-      query['bank_details.account_number'] = { $exists: false };
-    }
-    
-    // Search
     if (search) {
       query.$or = [
         { full_name: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
-        { referral_code: { $regex: search, $options: 'i' } },
-        { 'bank_details.account_number': { $regex: search, $options: 'i' } }
+        { referral_code: { $regex: search, $options: 'i' } }
       ];
     }
     
@@ -3758,37 +3524,12 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
         .lean(),
       User.countDocuments(query)
     ]);
-
-    // Get additional stats for each user
+    
     const enhancedUsers = await Promise.all(users.map(async (user) => {
-      const [investments, deposits, withdrawals, referrals, activeInvestments] = await Promise.all([
+      const [investments, deposits, withdrawals] = await Promise.all([
         Investment.countDocuments({ user: user._id }),
         Deposit.countDocuments({ user: user._id, status: 'approved' }),
-        Withdrawal.countDocuments({ user: user._id, status: 'paid' }),
-        Referral.countDocuments({ referrer: user._id }),
-        Investment.find({ user: user._id, status: 'active' })
-          .populate('plan', 'daily_interest')
-          .lean()
-      ]);
-      
-      // Calculate daily interest
-      let dailyInterest = 0;
-      activeInvestments.forEach(inv => {
-        if (inv.plan && inv.plan.daily_interest) {
-          dailyInterest += (inv.amount * inv.plan.daily_interest) / 100;
-        }
-      });
-      
-      // Calculate total invested
-      const totalInvested = await Investment.aggregate([
-        { $match: { user: user._id } },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
-      ]);
-      
-      // Calculate total earned
-      const totalEarned = await Investment.aggregate([
-        { $match: { user: user._id } },
-        { $group: { _id: null, total: { $sum: '$earned_so_far' } } }
+        Withdrawal.countDocuments({ user: user._id, status: 'paid' })
       ]);
       
       return {
@@ -3797,69 +3538,41 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
           total_investments: investments,
           total_deposits: deposits,
           total_withdrawals: withdrawals,
-          total_referrals: referrals,
-          total_invested: totalInvested[0]?.total || 0,
-          total_earned: totalEarned[0]?.total || 0,
-          daily_interest: dailyInterest,
-          portfolio_value: user.balance + (totalEarned[0]?.total || 0) + (user.referral_earnings || 0),
-          has_bank_details: !!(user.bank_details && user.bank_details.account_number),
-          bank_verified: !!(user.bank_details && user.bank_details.verified),
-          kyc_complete: user.kyc_status === 'verified'
+          total_referrals: user.referral_count || 0,
+          portfolio_value: user.balance + (user.total_earnings || 0) + (user.referral_earnings || 0)
         }
       };
     }));
-
-    // Create audit log
-    await createAdminAudit(
-      req.user._id,
-      'VIEW_ALL_USERS',
-      'system',
-      null,
-      { 
-        page,
-        limit,
-        filters: {
-          status,
-          role,
-          kyc_status,
-          search,
-          min_balance,
-          max_balance,
-          start_date,
-          end_date
-        }
-      },
-      req.ip,
-      req.headers['user-agent']
-    );
-
+    
     const pagination = {
       page: parseInt(page),
       limit: parseInt(limit),
       total,
       pages: Math.ceil(total / limit)
     };
-
+    
+    await createAdminAudit(
+      req.user._id,
+      'VIEW_ALL_USERS',
+      'system',
+      null,
+      {
+        page,
+        limit,
+        filters: { status, role, kyc_status, search, min_balance, max_balance, start_date, end_date }
+      },
+      req.ip,
+      req.headers['user-agent']
+    );
+    
     res.json(formatResponse(true, 'Users retrieved successfully', {
       users: enhancedUsers,
       pagination,
-      filters: {
-        status,
-        role,
-        kyc_status,
-        search,
-        min_balance,
-        max_balance,
-        start_date,
-        end_date,
-        has_bank_details
-      },
       summary: {
         total_users: total,
         active_users: enhancedUsers.filter(u => u.is_active).length,
         verified_users: enhancedUsers.filter(u => u.kyc_verified).length,
-        total_balance: enhancedUsers.reduce((sum, u) => sum + u.balance, 0),
-        total_portfolio_value: enhancedUsers.reduce((sum, u) => sum + u.stats.portfolio_value, 0)
+        total_balance: enhancedUsers.reduce((sum, u) => sum + u.balance, 0)
       }
     }));
   } catch (error) {
@@ -3867,34 +3580,16 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
   }
 });
 
-// Get detailed user information by ID with images
+// Get user details
 app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
   try {
     const userId = req.params.id;
     
-    const user = await User.findById(userId)
-      .select('-password -two_factor_secret -verification_token -password_reset_token')
-      .populate('referred_by', 'full_name email referral_code')
-      .lean();
-    
-    if (!user) {
-      return res.status(404).json(formatResponse(false, 'User not found'));
-    }
-    
-    // Get comprehensive user data with images
-    const [
-      investments,
-      deposits,
-      withdrawals,
-      transactions,
-      referrals,
-      kyc,
-      supportTickets,
-      userReferrals,
-      totalInvested,
-      totalEarned,
-      activeInvestments
-    ] = await Promise.all([
+    const [user, investments, deposits, withdrawals, transactions, kyc, referrals] = await Promise.all([
+      User.findById(userId)
+        .select('-password -two_factor_secret -verification_token -password_reset_token')
+        .populate('referred_by', 'full_name email referral_code')
+        .lean(),
       Investment.find({ user: userId })
         .populate('plan', 'name daily_interest')
         .sort({ createdAt: -1 })
@@ -3912,63 +3607,30 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(50)
         .lean(),
-      Referral.find({ referred_user: userId })
-        .populate('referrer', 'full_name email')
-        .lean(),
       KYCSubmission.findOne({ user: userId }).lean(),
-      SupportTicket.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean(),
       Referral.find({ referrer: userId })
-        .populate('referred_user', 'full_name email createdAt balance total_earnings')
+        .populate('referred_user', 'full_name email createdAt balance')
         .sort({ createdAt: -1 })
-        .lean(),
-      Investment.aggregate([
-        { $match: { user: new mongoose.Types.ObjectId(userId) } },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
-      ]),
-      Investment.aggregate([
-        { $match: { 
-          user: new mongoose.Types.ObjectId(userId),
-          status: 'active'
-        }},
-        { $group: { _id: null, total: { $sum: '$earned_so_far' } } }
-      ]),
-      Investment.find({ user: userId, status: 'active' })
-        .populate('plan', 'name daily_interest')
         .lean()
     ]);
     
-    const totalInvestedAmount = totalInvested[0]?.total || 0;
-    const totalEarnedAmount = totalEarned[0]?.total || 0;
+    if (!user) {
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
     
-    // Calculate daily interest
+    const activeInvestments = investments.filter(inv => inv.status === 'active');
+    const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
+    const totalEarned = investments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
+    
     let dailyInterest = 0;
     activeInvestments.forEach(inv => {
       if (inv.plan && inv.plan.daily_interest) {
-        dailyInterest += (inv.amount * inv.plan.daily_interest) / 100;
+        dailyInterest += (inv.amount * inv.plan.daily_interest / 100);
       }
     });
     
-    // Calculate user statistics with images
-    const userStats = {
-      total_investments: investments.length,
-      active_investments: investments.filter(i => i.status === 'active').length,
-      total_deposits: deposits.filter(d => d.status === 'approved').length,
-      total_withdrawals: withdrawals.filter(w => w.status === 'paid').length,
-      total_transactions: transactions.length,
-      total_referrals: userReferrals.length,
-      total_invested: totalInvestedAmount,
-      total_earned: totalEarnedAmount,
-      daily_interest: dailyInterest,
-      portfolio_value: user.balance + totalEarnedAmount + (user.referral_earnings || 0),
-      average_investment: investments.length > 0 ? totalInvestedAmount / investments.length : 0,
-      success_rate: investments.length > 0 ? 
-        (investments.filter(inv => inv.status === 'completed' || inv.status === 'active').length / investments.length * 100) : 0
-    };
+    const referralEarnings = referrals.reduce((sum, ref) => sum + (ref.earnings || 0), 0);
     
-    // Create audit log
     await createAdminAudit(
       req.user._id,
       'VIEW_USER_DETAILS',
@@ -3986,77 +3648,32 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
         wallet_address: user.wallet_address || null,
         paypal_email: user.paypal_email || null
       },
-      statistics: userStats,
-      investments: {
-        count: investments.length,
-        recent: investments.slice(0, 10).map(inv => ({
-          ...inv,
-          has_proof: !!inv.payment_proof_url,
-          proof_url: inv.payment_proof_url
-        }))
-      },
-      deposits: {
-        count: deposits.length,
-        recent: deposits.slice(0, 10).map(dep => ({
-          ...dep,
-          has_proof: !!dep.payment_proof_url,
-          proof_url: dep.payment_proof_url
-        }))
-      },
-      withdrawals: {
-        count: withdrawals.length,
-        recent: withdrawals.slice(0, 10).map(wdl => ({
-          ...wdl,
-          has_proof: !!wdl.payment_proof_url,
-          proof_url: wdl.payment_proof_url
-        }))
-      },
-      transactions: {
-        count: transactions.length,
-        recent: transactions.slice(0, 20).map(txn => ({
-          ...txn,
-          has_proof: !!txn.payment_proof_url,
-          proof_url: txn.payment_proof_url
-        }))
-      },
-      referrals: {
-        referred_by: referrals[0]?.referrer || null,
-        referral_code: user.referral_code,
-        referred_users: userReferrals
-      },
-      kyc_submission: kyc ? {
-        ...kyc,
-        has_id_front: !!kyc.id_front_url,
-        has_selfie: !!kyc.selfie_with_id_url,
-        has_address_proof: !!kyc.address_proof_url
-      } : null,
-      support_tickets: supportTickets,
-      financial_summary: {
-        current_balance: user.balance,
-        total_earnings: user.total_earnings || 0,
-        referral_earnings: user.referral_earnings || 0,
-        total_invested: totalInvestedAmount,
-        total_earned: totalEarnedAmount,
-        net_profit: totalEarnedAmount - totalInvestedAmount,
+      statistics: {
+        total_investments: investments.length,
+        active_investments: activeInvestments.length,
+        total_deposits: deposits.filter(d => d.status === 'approved').length,
+        total_withdrawals: withdrawals.filter(w => w.status === 'paid').length,
+        total_transactions: transactions.length,
+        total_referrals: referrals.length,
+        total_invested: investments.reduce((sum, inv) => sum + inv.amount, 0),
+        total_earned: totalEarned,
         daily_interest: dailyInterest,
-        monthly_interest_estimate: dailyInterest * 30
+        referral_earnings: referralEarnings,
+        portfolio_value: user.balance + totalEarned + referralEarnings
       },
-      images: {
-        profile_image: user.profile_image,
-        kyc_images: kyc ? {
-          id_front: kyc.id_front_url,
-          id_back: kyc.id_back_url,
-          selfie: kyc.selfie_with_id_url,
-          address_proof: kyc.address_proof_url
-        } : null
-      }
+      investments: investments.slice(0, 10),
+      deposits: deposits.slice(0, 10),
+      withdrawals: withdrawals.slice(0, 10),
+      transactions: transactions.slice(0, 20),
+      referrals: referrals,
+      kyc_submission: kyc
     }));
   } catch (error) {
     handleError(res, error, 'Error fetching user details');
   }
 });
 
-// Get pending investments with images
+// Get pending investments
 app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
   try {
     const pendingInvestments = await Investment.find({ status: 'pending' })
@@ -4064,8 +3681,7 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
       .populate('plan', 'name min_amount daily_interest')
       .sort({ createdAt: -1 })
       .lean();
-
-    // Enhance with image data
+    
     const enhancedInvestments = pendingInvestments.map(inv => ({
       ...inv,
       has_proof: !!inv.payment_proof_url,
@@ -4078,8 +3694,7 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
         phone: inv.user.phone
       }
     }));
-
-    // Create audit log
+    
     await createAdminAudit(
       req.user._id,
       'VIEW_PENDING_INVESTMENTS',
@@ -4089,24 +3704,18 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
       req.ip,
       req.headers['user-agent']
     );
-
+    
     res.json(formatResponse(true, 'Pending investments retrieved successfully', {
       investments: enhancedInvestments,
       count: pendingInvestments.length,
-      total_amount: pendingInvestments.reduce((sum, inv) => sum + inv.amount, 0),
-      summary: {
-        with_proof: pendingInvestments.filter(inv => inv.payment_proof_url).length,
-        without_proof: pendingInvestments.filter(inv => !inv.payment_proof_url).length,
-        average_amount: pendingInvestments.length > 0 ? 
-          pendingInvestments.reduce((sum, inv) => sum + inv.amount, 0) / pendingInvestments.length : 0
-      }
+      total_amount: pendingInvestments.reduce((sum, inv) => sum + inv.amount, 0)
     }));
   } catch (error) {
     handleError(res, error, 'Error fetching pending investments');
   }
 });
 
-// Approve investment with audit log
+// Approve investment
 app.post('/api/admin/investments/:id/approve', adminAuth, [
   body('remarks').optional().trim()
 ], async (req, res) => {
@@ -4115,23 +3724,22 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const investmentId = req.params.id;
     const adminId = req.user._id;
     const { remarks } = req.body;
-
+    
     const investment = await Investment.findById(investmentId)
       .populate('user plan');
     
     if (!investment) {
       return res.status(404).json(formatResponse(false, 'Investment not found'));
     }
-
+    
     if (investment.status !== 'pending') {
       return res.status(400).json(formatResponse(false, 'Investment is not pending approval'));
     }
-
-    // Update investment
+    
     investment.status = 'active';
     investment.approved_at = new Date();
     investment.approved_by = adminId;
@@ -4141,55 +3749,50 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
     investment.remarks = remarks;
     
     await investment.save();
-
-    // Update plan statistics
+    
     await InvestmentPlan.findByIdAndUpdate(investment.plan._id, {
-      $inc: { 
+      $inc: {
         investment_count: 1,
         total_invested: investment.amount
       }
     });
-
-    // Update user investment count
+    
     await User.findByIdAndUpdate(investment.user._id, {
       $inc: { total_investments: 1 },
       last_investment_date: new Date()
     });
-
-    // Create notification for user with image reference
+    
     await createNotification(
       investment.user._id,
       'Investment Approved',
       `Your investment of ₦${investment.amount.toLocaleString()} in ${investment.plan.name} has been approved and is now active.`,
       'investment',
       '/investments',
-      { 
+      {
         amount: investment.amount,
         plan_name: investment.plan.name,
         approved_by: req.user.full_name,
         approved_at: new Date()
       }
     );
-
-    // Send email notification
+    
     await sendEmail(
       investment.user.email,
       'Investment Approved',
       `<h2>Investment Approved</h2>
-       <p>Your investment has been approved and is now active.</p>
-       <p><strong>Investment Details:</strong></p>
-       <ul>
-         <li>Plan: ${investment.plan.name}</li>
-         <li>Amount: ₦${investment.amount.toLocaleString()}</li>
-         <li>Daily Interest: ${investment.plan.daily_interest}%</li>
-         <li>Expected Earnings: ₦${investment.expected_earnings.toLocaleString()}</li>
-         <li>Status: Active</li>
-         <li>Approved By: ${req.user.full_name}</li>
-       </ul>
-       <p><a href="${config.clientURL}/investments">View Investment</a></p>`
+      <p>Your investment has been approved and is now active.</p>
+      <p><strong>Investment Details:</strong></p>
+      <ul>
+        <li>Plan: ${investment.plan.name}</li>
+        <li>Amount: ₦${investment.amount.toLocaleString()}</li>
+        <li>Daily Interest: ${investment.plan.daily_interest}%</li>
+        <li>Expected Earnings: ₦${investment.expected_earnings.toLocaleString()}</li>
+        <li>Status: Active</li>
+        <li>Approved By: ${req.user.full_name}</li>
+      </ul>
+      <p><a href="${config.clientURL}/investments">View Investment</a></p>`
     );
-
-    // Create audit log
+    
     await createAdminAudit(
       adminId,
       'APPROVE_INVESTMENT',
@@ -4205,7 +3808,12 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
+    
+    // Clear cache
+    await cache.clearPattern(`investments_${investment.user._id}`);
+    await cache.delete(`profile_${investment.user._id}`);
+    await cache.delete(`earnings_summary_${investment.user._id}`);
+    
     res.json(formatResponse(true, 'Investment approved successfully', {
       investment: {
         ...investment.toObject(),
@@ -4228,23 +3836,22 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Rejection remarks are required'));
     }
-
+    
     const investmentId = req.params.id;
     const adminId = req.user._id;
     const { remarks } = req.body;
-
+    
     const investment = await Investment.findById(investmentId)
       .populate('user');
     
     if (!investment) {
       return res.status(404).json(formatResponse(false, 'Investment not found'));
     }
-
+    
     if (investment.status !== 'pending') {
       return res.status(400).json(formatResponse(false, 'Investment is not pending'));
     }
-
-    // Update investment
+    
     investment.status = 'rejected';
     investment.approved_by = adminId;
     investment.remarks = remarks;
@@ -4252,13 +3859,11 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
     investment.proof_verified_at = new Date();
     
     await investment.save();
-
-    // Refund user balance
+    
     await User.findByIdAndUpdate(investment.user._id, {
       $inc: { balance: investment.amount }
     });
-
-    // Create transaction for refund
+    
     await createTransaction(
       investment.user._id,
       'refund',
@@ -4267,8 +3872,7 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
       'completed',
       { investment_id: investment._id, remarks: remarks }
     );
-
-    // Create notification
+    
     await createNotification(
       investment.user._id,
       'Investment Rejected',
@@ -4277,8 +3881,7 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
       '/investments',
       { amount: investment.amount, remarks: remarks }
     );
-
-    // Create audit log
+    
     await createAdminAudit(
       adminId,
       'REJECT_INVESTMENT',
@@ -4293,7 +3896,11 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
+    
+    // Clear cache
+    await cache.clearPattern(`investments_${investment.user._id}`);
+    await cache.delete(`profile_${investment.user._id}`);
+    
     res.json(formatResponse(true, 'Investment rejected successfully', {
       investment
     }));
@@ -4302,15 +3909,14 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
   }
 });
 
-// Get pending deposits with images
+// Get pending deposits
 app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
   try {
     const pendingDeposits = await Deposit.find({ status: 'pending' })
       .populate('user', 'full_name email phone balance')
       .sort({ createdAt: -1 })
       .lean();
-
-    // Enhance with image data
+    
     const enhancedDeposits = pendingDeposits.map(dep => ({
       ...dep,
       has_proof: !!dep.payment_proof_url,
@@ -4325,8 +3931,7 @@ app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
       },
       days_pending: Math.ceil((new Date() - new Date(dep.createdAt)) / (1000 * 60 * 60 * 24))
     }));
-
-    // Create audit log
+    
     await createAdminAudit(
       req.user._id,
       'VIEW_PENDING_DEPOSITS',
@@ -4336,26 +3941,18 @@ app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
       req.ip,
       req.headers['user-agent']
     );
-
+    
     res.json(formatResponse(true, 'Pending deposits retrieved successfully', {
       deposits: enhancedDeposits,
       count: pendingDeposits.length,
-      total_amount: pendingDeposits.reduce((sum, dep) => sum + dep.amount, 0),
-      summary: {
-        with_proof: pendingDeposits.filter(dep => dep.payment_proof_url).length,
-        without_proof: pendingDeposits.filter(dep => !dep.payment_proof_url).length,
-        by_payment_method: pendingDeposits.reduce((acc, dep) => {
-          acc[dep.payment_method] = (acc[dep.payment_method] || 0) + 1;
-          return acc;
-        }, {})
-      }
+      total_amount: pendingDeposits.reduce((sum, dep) => sum + dep.amount, 0)
     }));
   } catch (error) {
     handleError(res, error, 'Error fetching pending deposits');
   }
 });
 
-// Approve deposit with audit log
+// Approve deposit
 app.post('/api/admin/deposits/:id/approve', adminAuth, [
   body('remarks').optional().trim()
 ], async (req, res) => {
@@ -4363,19 +3960,18 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
     const depositId = req.params.id;
     const adminId = req.user._id;
     const { remarks } = req.body;
-
+    
     const deposit = await Deposit.findById(depositId)
       .populate('user');
     
     if (!deposit) {
       return res.status(404).json(formatResponse(false, 'Deposit not found'));
     }
-
+    
     if (deposit.status !== 'pending') {
       return res.status(400).json(formatResponse(false, 'Deposit is not pending approval'));
     }
-
-    // Update deposit
+    
     deposit.status = 'approved';
     deposit.approved_at = new Date();
     deposit.approved_by = adminId;
@@ -4384,24 +3980,22 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
     deposit.admin_notes = remarks;
     
     await deposit.save();
-
-    // Update user balance and stats
+    
     await User.findByIdAndUpdate(deposit.user._id, {
-      $inc: { 
+      $inc: {
         balance: deposit.amount,
         total_deposits: deposit.amount
       },
       last_deposit_date: new Date()
     });
-
-    // Create transaction with image reference
+    
     await createTransaction(
       deposit.user._id,
       'deposit',
       deposit.amount,
       `Deposit via ${deposit.payment_method}`,
       'completed',
-      { 
+      {
         deposit_id: deposit._id,
         payment_method: deposit.payment_method,
         proof_url: deposit.payment_proof_url,
@@ -4409,40 +4003,37 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
       },
       deposit.payment_proof_url
     );
-
-    // Create notification
+    
     await createNotification(
       deposit.user._id,
       'Deposit Approved',
       `Your deposit of ₦${deposit.amount.toLocaleString()} has been approved and credited to your account.`,
       'success',
       '/deposits',
-      { 
+      {
         amount: deposit.amount,
         payment_method: deposit.payment_method,
         approved_by: req.user.full_name,
         new_balance: deposit.user.balance + deposit.amount
       }
     );
-
-    // Send email notification
+    
     await sendEmail(
       deposit.user.email,
       'Deposit Approved',
       `<h2>Deposit Approved</h2>
-       <p>Your deposit has been approved and the amount has been credited to your account.</p>
-       <p><strong>Deposit Details:</strong></p>
-       <ul>
-         <li>Amount: ₦${deposit.amount.toLocaleString()}</li>
-         <li>Payment Method: ${deposit.payment_method}</li>
-         <li>Reference: ${deposit.reference}</li>
-         <li>New Balance: ₦${(deposit.user.balance + deposit.amount).toLocaleString()}</li>
-         <li>Approved By: ${req.user.full_name}</li>
-       </ul>
-       <p><a href="${config.clientURL}/deposits">View Deposit</a></p>`
+      <p>Your deposit has been approved and the amount has been credited to your account.</p>
+      <p><strong>Deposit Details:</strong></p>
+      <ul>
+        <li>Amount: ₦${deposit.amount.toLocaleString()}</li>
+        <li>Payment Method: ${deposit.payment_method}</li>
+        <li>Reference: ${deposit.reference}</li>
+        <li>New Balance: ₦${(deposit.user.balance + deposit.amount).toLocaleString()}</li>
+        <li>Approved By: ${req.user.full_name}</li>
+      </ul>
+      <p><a href="${config.clientURL}/deposits">View Deposit</a></p>`
     );
-
-    // Create audit log
+    
     await createAdminAudit(
       adminId,
       'APPROVE_DEPOSIT',
@@ -4459,7 +4050,10 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
+    
+    // Clear cache
+    await cache.delete(`profile_${deposit.user._id}`);
+    
     res.json(formatResponse(true, 'Deposit approved successfully', {
       deposit: {
         ...deposit.toObject(),
@@ -4483,23 +4077,22 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Rejection remarks are required'));
     }
-
+    
     const depositId = req.params.id;
     const adminId = req.user._id;
     const { remarks } = req.body;
-
+    
     const deposit = await Deposit.findById(depositId)
       .populate('user');
     
     if (!deposit) {
       return res.status(404).json(formatResponse(false, 'Deposit not found'));
     }
-
+    
     if (deposit.status !== 'pending') {
       return res.status(400).json(formatResponse(false, 'Deposit is not pending'));
     }
-
-    // Update deposit
+    
     deposit.status = 'rejected';
     deposit.approved_by = adminId;
     deposit.proof_verified_by = adminId;
@@ -4507,8 +4100,7 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
     deposit.admin_notes = remarks;
     
     await deposit.save();
-
-    // Create notification
+    
     await createNotification(
       deposit.user._id,
       'Deposit Rejected',
@@ -4517,8 +4109,7 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
       '/deposits',
       { amount: deposit.amount, remarks: remarks }
     );
-
-    // Create audit log
+    
     await createAdminAudit(
       adminId,
       'REJECT_DEPOSIT',
@@ -4533,7 +4124,7 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
+    
     res.json(formatResponse(true, 'Deposit rejected successfully', {
       deposit
     }));
@@ -4542,15 +4133,14 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
   }
 });
 
-// Get pending withdrawals with images
+// Get pending withdrawals
 app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
   try {
     const pendingWithdrawals = await Withdrawal.find({ status: 'pending' })
       .populate('user', 'full_name email phone balance')
       .sort({ createdAt: -1 })
       .lean();
-
-    // Enhance with calculations and image data
+    
     const enhancedWithdrawals = pendingWithdrawals.map(wdl => ({
       ...wdl,
       has_proof: !!wdl.payment_proof_url,
@@ -4565,22 +4155,15 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
         phone: wdl.user.phone,
         current_balance: wdl.user.balance
       },
-      days_pending: Math.ceil((new Date() - new Date(wdl.createdAt)) / (1000 * 60 * 60 * 24)),
-      payment_details: wdl.bank_details || { wallet_address: wdl.wallet_address } || { paypal_email: wdl.paypal_email }
+      days_pending: Math.ceil((new Date() - new Date(wdl.createdAt)) / (1000 * 60 * 60 * 24))
     }));
-
-    // Calculate summary
+    
     const summary = {
       total_amount: pendingWithdrawals.reduce((sum, wdl) => sum + wdl.amount, 0),
       total_net_amount: pendingWithdrawals.reduce((sum, wdl) => sum + wdl.net_amount, 0),
-      total_fees: pendingWithdrawals.reduce((sum, wdl) => sum + wdl.platform_fee, 0),
-      by_payment_method: pendingWithdrawals.reduce((acc, wdl) => {
-        acc[wdl.payment_method] = (acc[wdl.payment_method] || 0) + 1;
-        return acc;
-      }, {})
+      total_fees: pendingWithdrawals.reduce((sum, wdl) => sum + wdl.platform_fee, 0)
     };
-
-    // Create audit log
+    
     await createAdminAudit(
       req.user._id,
       'VIEW_PENDING_WITHDRAWALS',
@@ -4590,7 +4173,7 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
       req.ip,
       req.headers['user-agent']
     );
-
+    
     res.json(formatResponse(true, 'Pending withdrawals retrieved successfully', {
       withdrawals: enhancedWithdrawals,
       count: pendingWithdrawals.length,
@@ -4601,7 +4184,7 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
   }
 });
 
-// Approve withdrawal with transaction proof
+// Approve withdrawal
 app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
   body('transaction_id').optional().trim(),
   body('payment_proof_url').optional().trim(),
@@ -4611,19 +4194,18 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
     const withdrawalId = req.params.id;
     const adminId = req.user._id;
     const { transaction_id, payment_proof_url, remarks } = req.body;
-
+    
     const withdrawal = await Withdrawal.findById(withdrawalId)
       .populate('user');
     
     if (!withdrawal) {
       return res.status(404).json(formatResponse(false, 'Withdrawal not found'));
     }
-
+    
     if (withdrawal.status !== 'pending') {
       return res.status(400).json(formatResponse(false, 'Withdrawal is not pending approval'));
     }
-
-    // Update withdrawal
+    
     withdrawal.status = 'paid';
     withdrawal.approved_at = new Date();
     withdrawal.approved_by = adminId;
@@ -4635,31 +4217,28 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
     withdrawal.admin_notes = remarks;
     
     await withdrawal.save();
-
-    // Update transaction status
+    
     await Transaction.findOneAndUpdate(
       { related_withdrawal: withdrawalId },
-      { 
+      {
         status: 'completed',
         payment_proof_url: payment_proof_url,
         admin_notes: remarks
       }
     );
-
-    // Update user withdrawal stats
+    
     await User.findByIdAndUpdate(withdrawal.user._id, {
       $inc: { total_withdrawals: withdrawal.amount },
       last_withdrawal_date: new Date()
-    });
-
-    // Create notification with transaction proof
+    );
+    
     await createNotification(
       withdrawal.user._id,
       'Withdrawal Approved',
       `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been approved and processed.${transaction_id ? ` Transaction ID: ${transaction_id}` : ''}`,
       'success',
       '/withdrawals',
-      { 
+      {
         amount: withdrawal.amount,
         net_amount: withdrawal.net_amount,
         fee: withdrawal.platform_fee,
@@ -4668,31 +4247,29 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
         has_proof: !!payment_proof_url
       }
     );
-
-    // Send email notification with proof
+    
     await sendEmail(
       withdrawal.user.email,
       'Withdrawal Processed Successfully',
       `<h2>Withdrawal Processed</h2>
-       <p>Your withdrawal request has been processed successfully.</p>
-       <p><strong>Details:</strong></p>
-       <ul>
-         <li>Amount: ₦${withdrawal.amount.toLocaleString()}</li>
-         <li>Net Amount: ₦${withdrawal.net_amount.toLocaleString()}</li>
-         <li>Platform Fee: ₦${withdrawal.platform_fee.toLocaleString()}</li>
-         <li>Payment Method: ${withdrawal.payment_method}</li>
-         <li>Transaction ID: ${transaction_id || 'N/A'}</li>
-         ${withdrawal.bank_details ? `
-         <li>Bank: ${withdrawal.bank_details.bank_name}</li>
-         <li>Account: ${withdrawal.bank_details.account_number}</li>
-         <li>Account Name: ${withdrawal.bank_details.account_name}</li>
-         ` : ''}
-         ${payment_proof_url ? `<li>Payment Proof: <a href="${payment_proof_url}">View Proof</a></li>` : ''}
-       </ul>
-       <p><a href="${config.clientURL}/withdrawals">View Withdrawal</a></p>`
+      <p>Your withdrawal request has been processed successfully.</p>
+      <p><strong>Details:</strong></p>
+      <ul>
+        <li>Amount: ₦${withdrawal.amount.toLocaleString()}</li>
+        <li>Net Amount: ₦${withdrawal.net_amount.toLocaleString()}</li>
+        <li>Platform Fee: ₦${withdrawal.platform_fee.toLocaleString()}</li>
+        <li>Payment Method: ${withdrawal.payment_method}</li>
+        <li>Transaction ID: ${transaction_id || 'N/A'}</li>
+        ${withdrawal.bank_details ? `
+        <li>Bank: ${withdrawal.bank_details.bank_name}</li>
+        <li>Account: ${withdrawal.bank_details.account_number}</li>
+        <li>Account Name: ${withdrawal.bank_details.account_name}</li>
+        ` : ''}
+        ${payment_proof_url ? `<li>Payment Proof: <a href="${payment_proof_url}">View Proof</a></li>` : ''}
+      </ul>
+      <p><a href="${config.clientURL}/withdrawals">View Withdrawal</a></p>`
     );
-
-    // Create audit log
+    
     await createAdminAudit(
       adminId,
       'APPROVE_WITHDRAWAL',
@@ -4712,7 +4289,10 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
+    
+    // Clear cache
+    await cache.delete(`profile_${withdrawal.user._id}`);
+    
     res.json(formatResponse(true, 'Withdrawal approved successfully', {
       withdrawal: {
         ...withdrawal.toObject(),
@@ -4736,23 +4316,22 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Rejection remarks are required'));
     }
-
+    
     const withdrawalId = req.params.id;
     const adminId = req.user._id;
     const { remarks } = req.body;
-
+    
     const withdrawal = await Withdrawal.findById(withdrawalId)
       .populate('user');
     
     if (!withdrawal) {
       return res.status(404).json(formatResponse(false, 'Withdrawal not found'));
     }
-
+    
     if (withdrawal.status !== 'pending') {
       return res.status(400).json(formatResponse(false, 'Withdrawal is not pending'));
     }
-
-    // Update withdrawal
+    
     withdrawal.status = 'rejected';
     withdrawal.approved_by = adminId;
     withdrawal.proof_verified_by = adminId;
@@ -4760,35 +4339,31 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
     withdrawal.admin_notes = remarks;
     
     await withdrawal.save();
-
-    // Refund user balance
+    
     await User.findByIdAndUpdate(withdrawal.user._id, {
       $inc: { balance: withdrawal.amount }
     });
-
-    // Update transaction status
+    
     await Transaction.findOneAndUpdate(
       { related_withdrawal: withdrawalId },
-      { 
+      {
         status: 'cancelled',
         admin_notes: remarks
       }
     );
-
-    // Create transaction for refund
+    
     await createTransaction(
       withdrawal.user._id,
       'refund',
       withdrawal.amount,
       `Refund for rejected withdrawal`,
       'completed',
-      { 
+      {
         withdrawal_id: withdrawal._id,
-        remarks: remarks 
+        remarks: remarks
       }
     );
-
-    // Create notification
+    
     await createNotification(
       withdrawal.user._id,
       'Withdrawal Rejected',
@@ -4797,8 +4372,7 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
       '/withdrawals',
       { amount: withdrawal.amount, remarks: remarks }
     );
-
-    // Create audit log
+    
     await createAdminAudit(
       adminId,
       'REJECT_WITHDRAWAL',
@@ -4813,7 +4387,10 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
+    
+    // Clear cache
+    await cache.delete(`profile_${withdrawal.user._id}`);
+    
     res.json(formatResponse(true, 'Withdrawal rejected successfully', {
       withdrawal
     }));
@@ -4822,134 +4399,14 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
   }
 });
 
-// Get all transactions with images
-app.get('/api/admin/transactions', adminAuth, async (req, res) => {
-  try {
-    const { 
-      page = 1, 
-      limit = 50,
-      type,
-      status,
-      user_id,
-      start_date,
-      end_date,
-      min_amount,
-      max_amount,
-      has_proof
-    } = req.query;
-    
-    const query = {};
-    
-    if (type) query.type = type;
-    if (status) query.status = status;
-    if (user_id) query.user = user_id;
-    if (start_date || end_date) {
-      query.createdAt = {};
-      if (start_date) query.createdAt.$gte = new Date(start_date);
-      if (end_date) query.createdAt.$lte = new Date(end_date);
-    }
-    if (min_amount || max_amount) {
-      query.amount = {};
-      if (min_amount) query.amount.$gte = parseFloat(min_amount);
-      if (max_amount) query.amount.$lte = parseFloat(max_amount);
-    }
-    if (has_proof === 'true') {
-      query.payment_proof_url = { $exists: true, $ne: '' };
-    } else if (has_proof === 'false') {
-      query.payment_proof_url = { $exists: false };
-    }
-    
-    const skip = (page - 1) * limit;
-    
-    const [transactions, total] = await Promise.all([
-      Transaction.find(query)
-        .populate('user', 'full_name email')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean(),
-      Transaction.countDocuments(query)
-    ]);
-    
-    // Enhance transactions with image data
-    const enhancedTransactions = transactions.map(txn => {
-      const isPositive = txn.amount > 0;
-      const typeColor = isPositive ? 'success' : 'error';
-      
-      return {
-        ...txn,
-        formatted_amount: `${isPositive ? '+' : '-'}₦${Math.abs(txn.amount).toLocaleString()}`,
-        type_color: typeColor,
-        has_proof: !!txn.payment_proof_url,
-        proof_url: txn.payment_proof_url || null,
-        date_formatted: new Date(txn.createdAt).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        }),
-        user_name: txn.user?.full_name || 'N/A',
-        user_email: txn.user?.email || 'N/A'
-      };
-    });
-    
-    // Calculate summary
-    const summary = {
-      total_transactions: total,
-      total_amount: transactions.reduce((sum, t) => sum + t.amount, 0),
-      income: transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0),
-      expenses: transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0),
-      by_type: transactions.reduce((acc, t) => {
-        acc[t.type] = (acc[t.type] || 0) + 1;
-        return acc;
-      }, {}),
-      with_proof: transactions.filter(t => t.payment_proof_url).length,
-      without_proof: transactions.filter(t => !t.payment_proof_url).length
-    };
-    
-    const pagination = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    };
-    
-    // Create audit log
-    await createAdminAudit(
-      req.user._id,
-      'VIEW_ALL_TRANSACTIONS',
-      'system',
-      null,
-      { 
-        page,
-        limit,
-        filters: { type, status, user_id, start_date, end_date, min_amount, max_amount, has_proof },
-        summary
-      },
-      req.ip,
-      req.headers['user-agent']
-    );
-    
-    res.json(formatResponse(true, 'Transactions retrieved successfully', {
-      transactions: enhancedTransactions,
-      summary,
-      pagination
-    }));
-  } catch (error) {
-    handleError(res, error, 'Error fetching transactions');
-  }
-});
-
-// Get pending KYC submissions with images
+// Get pending KYC
 app.get('/api/admin/pending-kyc', adminAuth, async (req, res) => {
   try {
     const pendingKYC = await KYCSubmission.find({ status: 'pending' })
       .populate('user', 'full_name email phone')
       .sort({ createdAt: -1 })
       .lean();
-
-    // Enhance with image data
+    
     const enhancedKYC = pendingKYC.map(kyc => ({
       ...kyc,
       user_name: kyc.user?.full_name,
@@ -4959,16 +4416,9 @@ app.get('/api/admin/pending-kyc', adminAuth, async (req, res) => {
       has_id_back: !!kyc.id_back_url,
       has_selfie: !!kyc.selfie_with_id_url,
       has_address_proof: !!kyc.address_proof_url,
-      days_pending: Math.ceil((new Date() - new Date(kyc.createdAt)) / (1000 * 60 * 60 * 24)),
-      images: {
-        id_front: kyc.id_front_url,
-        id_back: kyc.id_back_url,
-        selfie: kyc.selfie_with_id_url,
-        address_proof: kyc.address_proof_url
-      }
+      days_pending: Math.ceil((new Date() - new Date(kyc.createdAt)) / (1000 * 60 * 60 * 24))
     }));
-
-    // Create audit log
+    
     await createAdminAudit(
       req.user._id,
       'VIEW_PENDING_KYC',
@@ -4978,22 +4428,17 @@ app.get('/api/admin/pending-kyc', adminAuth, async (req, res) => {
       req.ip,
       req.headers['user-agent']
     );
-
+    
     res.json(formatResponse(true, 'Pending KYC submissions retrieved successfully', {
       kyc_submissions: enhancedKYC,
-      count: pendingKYC.length,
-      summary: {
-        complete_submissions: pendingKYC.filter(k => k.id_front_url && k.selfie_with_id_url).length,
-        incomplete_submissions: pendingKYC.filter(k => !(k.id_front_url && k.selfie_with_id_url)).length,
-        with_address_proof: pendingKYC.filter(k => k.address_proof_url).length
-      }
+      count: pendingKYC.length
     }));
   } catch (error) {
     handleError(res, error, 'Error fetching pending KYC');
   }
 });
 
-// Approve KYC with image verification
+// Approve KYC
 app.post('/api/admin/kyc/:id/approve', adminAuth, [
   body('remarks').optional().trim()
 ], async (req, res) => {
@@ -5001,66 +4446,61 @@ app.post('/api/admin/kyc/:id/approve', adminAuth, [
     const kycId = req.params.id;
     const adminId = req.user._id;
     const { remarks } = req.body;
-
+    
     const kyc = await KYCSubmission.findById(kycId)
       .populate('user');
     
     if (!kyc) {
       return res.status(404).json(formatResponse(false, 'KYC submission not found'));
     }
-
+    
     if (kyc.status !== 'pending') {
       return res.status(400).json(formatResponse(false, 'KYC is not pending'));
     }
-
-    // Update KYC
+    
     kyc.status = 'approved';
     kyc.reviewed_by = adminId;
     kyc.reviewed_at = new Date();
     kyc.notes = remarks;
     
     await kyc.save();
-
-    // Update user
+    
     await User.findByIdAndUpdate(kyc.user._id, {
       kyc_status: 'verified',
       kyc_verified: true,
       kyc_verified_at: new Date()
     });
-
-    // Create notification with KYC images reference
+    
     await createNotification(
       kyc.user._id,
       'KYC Approved',
       'Your KYC documents have been verified and approved. You can now enjoy full platform access.',
       'kyc',
       '/profile',
-      { 
+      {
         verified_at: new Date(),
         verified_by: req.user.full_name,
         has_images: true,
         id_type: kyc.id_type
       }
     );
-
-    // Send email
+    
     await sendEmail(
       kyc.user.email,
       'KYC Verification Approved',
       `<h2>KYC Verification Approved</h2>
-       <p>Your KYC documents have been successfully verified and approved.</p>
-       <p>You now have full access to all platform features, including withdrawals.</p>
-       <p><strong>Verification Details:</strong></p>
-       <ul>
-         <li>ID Type: ${kyc.id_type}</li>
-         <li>ID Number: ${kyc.id_number}</li>
-         <li>Verified By: ${req.user.full_name}</li>
-         <li>Verification Date: ${new Date().toLocaleDateString()}</li>
-       </ul>
-       <p>Thank you for completing the verification process.</p>`
+      <p>Your KYC documents have been successfully verified and approved.</p>
+      <p>You now have full access to all platform features, including withdrawals.</p>
+      <p><strong>Verification Details:</strong></p>
+      <ul>
+        <li>ID Type: ${kyc.id_type}</li>
+        <li>ID Number: ${kyc.id_number}</li>
+        <li>Verified By: ${req.user.full_name}</li>
+        <li>Verification Date: ${new Date().toLocaleDateString()}</li>
+      </ul>
+      <p>Thank you for completing the verification process.</p>`
     );
-
-    // Create audit log with image verification
+    
     await createAdminAudit(
       adminId,
       'APPROVE_KYC',
@@ -5078,7 +4518,10 @@ app.post('/api/admin/kyc/:id/approve', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
+    
+    // Clear cache
+    await cache.delete(`profile_${kyc.user._id}`);
+    
     res.json(formatResponse(true, 'KYC approved successfully', {
       kyc: {
         ...kyc.toObject(),
@@ -5101,23 +4544,22 @@ app.post('/api/admin/kyc/:id/reject', adminAuth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Rejection reason is required'));
     }
-
+    
     const kycId = req.params.id;
     const adminId = req.user._id;
     const { rejection_reason, remarks } = req.body;
-
+    
     const kyc = await KYCSubmission.findById(kycId)
       .populate('user');
     
     if (!kyc) {
       return res.status(404).json(formatResponse(false, 'KYC submission not found'));
     }
-
+    
     if (kyc.status !== 'pending') {
       return res.status(400).json(formatResponse(false, 'KYC is not pending'));
     }
-
-    // Update KYC
+    
     kyc.status = 'rejected';
     kyc.reviewed_by = adminId;
     kyc.reviewed_at = new Date();
@@ -5125,27 +4567,24 @@ app.post('/api/admin/kyc/:id/reject', adminAuth, [
     kyc.notes = remarks;
     
     await kyc.save();
-
-    // Update user
+    
     await User.findByIdAndUpdate(kyc.user._id, {
       kyc_status: 'rejected'
     });
-
-    // Create notification
+    
     await createNotification(
       kyc.user._id,
       'KYC Rejected',
       `Your KYC documents have been rejected. Reason: ${rejection_reason}. Please submit new documents.`,
       'kyc',
       '/kyc',
-      { 
+      {
         rejection_reason: rejection_reason,
         remarks: remarks,
         can_resubmit: true
       }
     );
-
-    // Create audit log
+    
     await createAdminAudit(
       adminId,
       'REJECT_KYC',
@@ -5160,7 +4599,10 @@ app.post('/api/admin/kyc/:id/reject', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
+    
+    // Clear cache
+    await cache.delete(`profile_${kyc.user._id}`);
+    
     res.json(formatResponse(true, 'KYC rejected successfully', {
       kyc
     }));
@@ -5178,21 +4620,20 @@ app.put('/api/admin/users/:id/role', adminAuth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const userId = req.params.id;
     const { role } = req.body;
-
+    
     const user = await User.findByIdAndUpdate(
       userId,
       { role },
       { new: true }
     );
-
+    
     if (!user) {
       return res.status(404).json(formatResponse(false, 'User not found'));
     }
-
-    // Create notification for user
+    
     await createNotification(
       userId,
       'Account Role Updated',
@@ -5201,8 +4642,7 @@ app.put('/api/admin/users/:id/role', adminAuth, [
       null,
       { new_role: role, updated_by: req.user.full_name }
     );
-
-    // Create audit log
+    
     await createAdminAudit(
       req.user._id,
       'UPDATE_USER_ROLE',
@@ -5216,7 +4656,10 @@ app.put('/api/admin/users/:id/role', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
+    
+    // Clear cache
+    await cache.delete(`profile_${userId}`);
+    
     res.json(formatResponse(true, 'User role updated successfully', { user }));
   } catch (error) {
     handleError(res, error, 'Error updating user role');
@@ -5232,37 +4675,35 @@ app.put('/api/admin/users/:id/status', adminAuth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const userId = req.params.id;
     const { is_active } = req.body;
-
+    
     const user = await User.findByIdAndUpdate(
       userId,
       { is_active },
       { new: true }
     );
-
+    
     if (!user) {
       return res.status(404).json(formatResponse(false, 'User not found'));
     }
-
-    // Create notification for user
+    
     await createNotification(
       userId,
       is_active ? 'Account Activated' : 'Account Deactivated',
-      is_active 
+      is_active
         ? 'Your account has been activated. You can now access all features.'
         : 'Your account has been deactivated. Please contact support for assistance.',
       'system',
       null,
-      { 
+      {
         status: is_active ? 'active' : 'inactive',
         updated_by: req.user.full_name,
         timestamp: new Date()
       }
     );
-
-    // Create audit log
+    
     await createAdminAudit(
       req.user._id,
       is_active ? 'ACTIVATE_USER' : 'DEACTIVATE_USER',
@@ -5276,9 +4717,12 @@ app.put('/api/admin/users/:id/status', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
-    res.json(formatResponse(true, 
-      is_active ? 'User activated successfully' : 'User deactivated successfully', 
+    
+    // Clear cache
+    await cache.delete(`profile_${userId}`);
+    
+    res.json(formatResponse(true,
+      is_active ? 'User activated successfully' : 'User deactivated successfully',
       { user }
     ));
   } catch (error) {
@@ -5286,7 +4730,7 @@ app.put('/api/admin/users/:id/status', adminAuth, [
   }
 });
 
-// Update user balance with audit
+// Update user balance
 app.put('/api/admin/users/:id/balance', adminAuth, [
   body('amount').isFloat(),
   body('type').isIn(['add', 'subtract', 'set']),
@@ -5298,20 +4742,20 @@ app.put('/api/admin/users/:id/balance', adminAuth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-
+    
     const userId = req.params.id;
     const { amount, type, description, reference } = req.body;
     const adminId = req.user._id;
-
+    
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json(formatResponse(false, 'User not found'));
     }
-
+    
     let newBalance = user.balance;
     let transactionType = 'bonus';
     let transactionDescription = description || '';
-
+    
     switch (type) {
       case 'add':
         newBalance += parseFloat(amount);
@@ -5329,34 +4773,31 @@ app.put('/api/admin/users/:id/balance', adminAuth, [
         transactionDescription = transactionDescription || `Admin set balance to: ₦${amount}`;
         break;
     }
-
-    // Update user balance
+    
     user.balance = newBalance;
     await user.save();
-
-    // Create transaction with reference
+    
     await createTransaction(
       userId,
       transactionType,
       type === 'subtract' ? -parseFloat(amount) : parseFloat(amount),
       transactionDescription,
       'completed',
-      { 
-        admin_id: adminId, 
+      {
+        admin_id: adminId,
         adjustment_type: type,
         reference: reference || generateReference('ADJ'),
         admin_name: req.user.full_name
       }
     );
-
-    // Create notification
+    
     await createNotification(
       userId,
       'Balance Updated',
       `Your account balance has been updated. New balance: ₦${newBalance.toLocaleString()}`,
       'info',
       '/dashboard',
-      { 
+      {
         amount: type === 'set' ? amount : (type === 'add' ? amount : -amount),
         type: type,
         new_balance: newBalance,
@@ -5364,8 +4805,7 @@ app.put('/api/admin/users/:id/balance', adminAuth, [
         reference: reference
       }
     );
-
-    // Create audit log
+    
     await createAdminAudit(
       adminId,
       'ADJUST_USER_BALANCE',
@@ -5383,7 +4823,10 @@ app.put('/api/admin/users/:id/balance', adminAuth, [
       req.ip,
       req.headers['user-agent']
     );
-
+    
+    // Clear cache
+    await cache.delete(`profile_${userId}`);
+    
     res.json(formatResponse(true, 'User balance updated successfully', {
       user: {
         id: user._id,
@@ -5400,90 +4843,9 @@ app.put('/api/admin/users/:id/balance', adminAuth, [
   }
 });
 
-// Verify user bank details
-app.post('/api/admin/users/:id/verify-bank', adminAuth, [
-  body('verified').isBoolean(),
-  body('remarks').optional().trim()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed'));
-    }
-
-    const userId = req.params.id;
-    const { verified, remarks } = req.body;
-    const adminId = req.user._id;
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json(formatResponse(false, 'User not found'));
-    }
-
-    if (!user.bank_details) {
-      return res.status(400).json(formatResponse(false, 'User has no bank details'));
-    }
-
-    // Update bank details
-    user.bank_details.verified = verified;
-    user.bank_details.verified_at = verified ? new Date() : null;
-    user.bank_details.last_updated = new Date();
-    
-    if (remarks) {
-      user.bank_details.remarks = remarks;
-    }
-    
-    await user.save();
-
-    // Create notification
-    await createNotification(
-      userId,
-      verified ? 'Bank Details Verified' : 'Bank Details Verification Removed',
-      verified 
-        ? 'Your bank details have been verified successfully. You can now make withdrawals.'
-        : 'Bank details verification has been removed. Please update and verify your bank details for withdrawals.',
-      verified ? 'success' : 'warning',
-      '/profile/bank',
-      { 
-        verified: verified,
-        verified_at: user.bank_details.verified_at,
-        verified_by: req.user.full_name,
-        remarks: remarks
-      }
-    );
-
-    // Create audit log
-    await createAdminAudit(
-      adminId,
-      verified ? 'VERIFY_BANK_DETAILS' : 'UNVERIFY_BANK_DETAILS',
-      'user',
-      userId,
-      {
-        user_name: user.full_name,
-        bank_name: user.bank_details.bank_name,
-        account_number: user.bank_details.account_number,
-        verified: verified,
-        remarks: remarks
-      },
-      req.ip,
-      req.headers['user-agent']
-    );
-
-    res.json(formatResponse(true, 
-      verified ? 'Bank details verified successfully' : 'Bank details verification removed',
-      { 
-        bank_details: user.bank_details,
-        user_name: user.full_name
-      }
-    ));
-  } catch (error) {
-    handleError(res, error, 'Error verifying bank details');
-  }
-});
-
 // ==================== ENHANCED NOTIFICATION ENDPOINTS ====================
 
-// Get user notifications with images
+// Get user notifications
 app.get('/api/notifications', auth, async (req, res) => {
   try {
     const userId = req.user._id;
@@ -5498,7 +4860,6 @@ app.get('/api/notifications', auth, async (req, res) => {
     }
     
     const skip = (page - 1) * limit;
-    
     const [notifications, total, unreadCount] = await Promise.all([
       Notification.find(query)
         .sort({ createdAt: -1 })
@@ -5508,8 +4869,7 @@ app.get('/api/notifications', auth, async (req, res) => {
       Notification.countDocuments(query),
       Notification.countDocuments({ user: userId, is_read: false })
     ]);
-
-    // Enhance notifications
+    
     const enhancedNotifications = notifications.map(notif => {
       const typeColors = {
         'info': 'blue',
@@ -5521,7 +4881,8 @@ app.get('/api/notifications', auth, async (req, res) => {
         'deposit': 'teal',
         'kyc': 'indigo',
         'referral': 'pink',
-        'system': 'gray'
+        'system': 'gray',
+        'earning': 'green'
       };
       
       return {
@@ -5538,25 +4899,21 @@ app.get('/api/notifications', auth, async (req, res) => {
         has_action: !!notif.action_url
       };
     });
-
+    
     const pagination = {
       page: parseInt(page),
       limit: parseInt(limit),
       total,
       pages: Math.ceil(total / limit)
     };
-
+    
     res.json(formatResponse(true, 'Notifications retrieved successfully', {
       notifications: enhancedNotifications,
       pagination,
       unread_count: unreadCount,
       summary: {
         total: total,
-        unread: unreadCount,
-        by_type: enhancedNotifications.reduce((acc, n) => {
-          acc[n.type] = (acc[n.type] || 0) + 1;
-          return acc;
-        }, {})
+        unread: unreadCount
       }
     }));
   } catch (error) {
@@ -5584,7 +4941,7 @@ app.post('/api/notifications/:id/read', auth, async (req, res) => {
   try {
     const notificationId = req.params.id;
     const userId = req.user._id;
-
+    
     const notification = await Notification.findOne({
       _id: notificationId,
       user: userId
@@ -5593,10 +4950,10 @@ app.post('/api/notifications/:id/read', auth, async (req, res) => {
     if (!notification) {
       return res.status(404).json(formatResponse(false, 'Notification not found'));
     }
-
+    
     notification.is_read = true;
     await notification.save();
-
+    
     res.json(formatResponse(true, 'Notification marked as read', {
       notification_id: notificationId,
       marked_read_at: new Date()
@@ -5610,12 +4967,11 @@ app.post('/api/notifications/:id/read', auth, async (req, res) => {
 app.post('/api/notifications/read-all', auth, async (req, res) => {
   try {
     const userId = req.user._id;
-
     const result = await Notification.updateMany(
       { user: userId, is_read: false },
       { $set: { is_read: true } }
     );
-
+    
     res.json(formatResponse(true, 'All notifications marked as read', {
       marked_count: result.modifiedCount,
       marked_at: new Date()
@@ -5625,113 +4981,38 @@ app.post('/api/notifications/read-all', auth, async (req, res) => {
   }
 });
 
-// Send notification to user (admin only)
-app.post('/api/admin/notifications/send', adminAuth, [
-  body('user_id').optional(),
-  body('title').notEmpty().trim(),
-  body('message').notEmpty().trim(),
-  body('type').isIn(['info', 'success', 'warning', 'error', 'promotional', 'investment', 'withdrawal', 'deposit', 'kyc', 'referral', 'system']),
-  body('action_url').optional().trim()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed'));
-    }
-
-    const { user_id, title, message, type, action_url } = req.body;
-    const adminId = req.user._id;
-
-    let users = [];
-    if (user_id) {
-      // Send to specific user
-      const user = await User.findById(user_id);
-      if (!user) {
-        return res.status(404).json(formatResponse(false, 'User not found'));
-      }
-      users = [user];
-    } else {
-      // Send to all users
-      users = await User.find({ is_active: true });
-    }
-
-    const notifications = [];
-    for (const user of users) {
-      const notification = await createNotification(
-        user._id,
-        title,
-        message,
-        type,
-        action_url,
-        {
-          sent_by_admin: true,
-          admin_id: adminId,
-          admin_name: req.user.full_name
-        }
-      );
-      
-      if (notification) {
-        notifications.push({
-          user_id: user._id,
-          user_name: user.full_name,
-          notification_id: notification._id
-        });
-      }
-    }
-
-    // Create audit log
-    await createAdminAudit(
-      adminId,
-      'SEND_NOTIFICATION',
-      'system',
-      null,
-      {
-        target: user_id ? 'single_user' : 'all_users',
-        user_count: users.length,
-        title: title,
-        type: type,
-        notifications_sent: notifications.length
-      },
-      req.ip,
-      req.headers['user-agent']
-    );
-
-    res.json(formatResponse(true, 'Notifications sent successfully', {
-      sent_count: notifications.length,
-      target_users: users.length,
-      notifications: notifications.slice(0, 10) // Return first 10 for reference
-    }));
-  } catch (error) {
-    handleError(res, error, 'Error sending notifications');
-  }
-});
-
 // ==================== ENHANCED CRON JOBS ====================
 
-// Calculate daily earnings with enhanced tracking
+// Calculate daily earnings
 cron.schedule('0 0 * * *', async () => {
   try {
     console.log('🔄 Calculating daily earnings...');
     
-    const activeInvestments = await Investment.find({ 
+    const activeInvestments = await Investment.find({
       status: 'active',
       end_date: { $gt: new Date() }
     }).populate('user plan');
-
+    
     let totalEarnings = 0;
     let processedCount = 0;
     const earningsByUser = new Map();
-
+    
     for (const investment of activeInvestments) {
       try {
         const dailyEarning = investment.daily_earnings || (investment.amount * investment.plan.daily_interest / 100);
         
-        // Update investment earnings
         investment.earned_so_far += dailyEarning;
         investment.last_earning_date = new Date();
+        
+        investment.earnings_history.push({
+          date: new Date(),
+          amount: dailyEarning,
+          type: 'daily_interest',
+          description: `Daily interest from ${investment.plan.name}`
+        });
+        
         await investment.save();
-
-        // Track user earnings
+        
         if (!earningsByUser.has(investment.user._id.toString())) {
           earningsByUser.set(investment.user._id.toString(), {
             user: investment.user,
@@ -5750,42 +5031,41 @@ cron.schedule('0 0 * * *', async () => {
         
         totalEarnings += dailyEarning;
         processedCount++;
-
+        
       } catch (investmentError) {
         console.error(`Error processing investment ${investment._id}:`, investmentError);
       }
     }
-
-    // Update user balances and create notifications
+    
     for (const [userId, userData] of earningsByUser.entries()) {
       try {
-        // Update user balance and total earnings
         await User.findByIdAndUpdate(userId, {
-          $inc: { 
+          $inc: {
             balance: userData.total,
-            total_earnings: userData.total
+            total_earnings: userData.total,
+            total_daily_earnings: userData.total
           }
         });
         
-        // Create transaction
+        await createEarningsRecord(
+          userId,
+          userData.total,
+          'daily_interest',
+          `Daily earnings from ${userData.investments.length} active investments`
+        );
+        
         await createTransaction(
           userId,
           'earning',
           userData.total,
           `Daily earnings from ${userData.investments.length} active investments`,
           'completed',
-          { 
+          {
             earnings_date: new Date().toISOString().split('T')[0],
-            investment_count: userData.investments.length,
-            investments: userData.investments.map(inv => ({
-              id: inv.investment_id,
-              plan: inv.plan,
-              amount: inv.amount
-            }))
+            investment_count: userData.investments.length
           }
         );
         
-        // Create notification for user
         if (userData.total > 0) {
           await createNotification(
             userId,
@@ -5793,7 +5073,7 @@ cron.schedule('0 0 * * *', async () => {
             `₦${userData.total.toLocaleString()} has been credited to your account from daily earnings.`,
             'earning',
             '/investments',
-            { 
+            {
               amount: userData.total,
               date: new Date().toISOString().split('T')[0],
               investment_count: userData.investments.length
@@ -5801,17 +5081,22 @@ cron.schedule('0 0 * * *', async () => {
           );
         }
         
+        // Clear user cache
+        await cache.delete(`profile_${userId}`);
+        await cache.delete(`earnings_summary_${userId}`);
+        await cache.delete(`daily_earnings_${userId}`);
+        
       } catch (userError) {
         console.error(`Error updating user ${userId}:`, userError);
       }
     }
-
+    
     // Check for completed investments
     const completedInvestments = await Investment.find({
       status: 'active',
       end_date: { $lte: new Date() }
     }).populate('user plan');
-
+    
     for (const investment of completedInvestments) {
       try {
         investment.status = 'completed';
@@ -5823,7 +5108,7 @@ cron.schedule('0 0 * * *', async () => {
           `Your investment in ${investment.plan.name} has completed successfully. Total earnings: ₦${investment.earned_so_far.toLocaleString()}`,
           'success',
           '/investments',
-          { 
+          {
             plan_name: investment.plan.name,
             amount: investment.amount,
             total_earnings: investment.earned_so_far,
@@ -5831,18 +5116,22 @@ cron.schedule('0 0 * * *', async () => {
           }
         );
         
+        // Clear cache
+        await cache.clearPattern(`investments_${investment.user._id}`);
+        
       } catch (completeError) {
         console.error(`Error completing investment ${investment._id}:`, completeError);
       }
     }
-
+    
     console.log(`✅ Daily earnings calculated. Processed: ${processedCount}, Total: ₦${totalEarnings.toLocaleString()}, Users: ${earningsByUser.size}`);
+    
   } catch (error) {
     console.error('❌ Error calculating daily earnings:', error);
   }
 });
 
-// Auto-renew investments with enhanced tracking
+// Auto-renew investments
 cron.schedule('0 1 * * *', async () => {
   try {
     console.log('🔄 Processing auto-renew investments...');
@@ -5852,24 +5141,22 @@ cron.schedule('0 1 * * *', async () => {
       auto_renew: true,
       auto_renewed: false
     }).populate('user plan');
-
+    
     let renewedCount = 0;
     let skippedCount = 0;
-
+    
     for (const investment of completedInvestments) {
       try {
         const userId = investment.user._id;
         const planId = investment.plan._id;
         
-        // Check if user has sufficient balance
         const user = await User.findById(userId);
         if (!user || user.balance < investment.amount) {
           console.log(`User ${userId} has insufficient balance for auto-renew`);
           skippedCount++;
           continue;
         }
-
-        // Create new investment
+        
         const newInvestment = new Investment({
           user: userId,
           plan: planId,
@@ -5888,74 +5175,74 @@ cron.schedule('0 1 * * *', async () => {
             renewal_count: (investment.metadata?.renewal_count || 0) + 1
           }
         });
-
+        
         await newInvestment.save();
         
-        // Update user balance
         await User.findByIdAndUpdate(userId, {
           $inc: { balance: -investment.amount }
         });
         
-        // Create transaction
         await createTransaction(
           userId,
           'investment',
           -investment.amount,
           `Auto-renew investment in ${investment.plan.name}`,
           'completed',
-          { 
+          {
             investment_id: newInvestment._id,
             renewed_from: investment._id,
             plan_name: investment.plan.name,
             renewal_count: (investment.metadata?.renewal_count || 0) + 1
           }
         );
-
-        // Mark original investment as renewed
+        
         investment.auto_renewed = true;
         if (!investment.metadata) investment.metadata = {};
         investment.metadata.renewed_to = newInvestment._id;
         investment.metadata.renewed_at = new Date();
         await investment.save();
-
-        // Create notification
+        
         await createNotification(
           userId,
           'Investment Auto-Renewed',
           `Your investment of ₦${investment.amount.toLocaleString()} in ${investment.plan.name} has been automatically renewed.`,
           'investment',
           '/investments',
-          { 
+          {
             amount: investment.amount,
             plan_name: investment.plan.name,
             new_investment_id: newInvestment._id,
             renewal_count: (investment.metadata?.renewal_count || 0) + 1
           }
         );
-
+        
         renewedCount++;
         console.log(`Auto-renewed investment ${investment._id} for user ${userId}`);
-
+        
+        // Clear cache
+        await cache.clearPattern(`investments_${userId}`);
+        await cache.delete(`profile_${userId}`);
+        await cache.delete(`earnings_summary_${userId}`);
+        
       } catch (error) {
         console.error(`Error auto-renewing investment ${investment._id}:`, error);
         skippedCount++;
       }
     }
-
+    
     console.log(`✅ Auto-renew completed. Renewed: ${renewedCount}, Skipped: ${skippedCount}`);
+    
   } catch (error) {
     console.error('❌ Error processing auto-renew:', error);
   }
 });
 
-// Cleanup expired data with enhanced logging
+// Cleanup expired data
 cron.schedule('0 2 * * *', async () => {
   try {
     console.log('🔄 Cleaning up expired data...');
     
     const now = new Date();
-    
-    // Clean up old notifications (older than 90 days)
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     
@@ -5964,7 +5251,6 @@ cron.schedule('0 2 * * *', async () => {
       is_read: true
     });
     
-    // Clean up expired password reset tokens
     const cleanedUsers = await User.updateMany({
       password_reset_expires: { $lt: now }
     }, {
@@ -5974,22 +5260,15 @@ cron.schedule('0 2 * * *', async () => {
       }
     });
     
-    // Clean up old admin audit logs (older than 180 days)
-    const oneEightyDaysAgo = new Date();
-    oneEightyDaysAgo.setDate(oneEightyDaysAgo.getDate() - 180);
+    console.log(`✅ Cleanup completed. Removed: ${deletedNotifications.deletedCount} notifications`);
     
-    const deletedAudits = await AdminAudit.deleteMany({
-      createdAt: { $lt: oneEightyDaysAgo }
-    });
-    
-    console.log(`✅ Cleanup completed. Removed: ${deletedNotifications.deletedCount} notifications, ${deletedAudits.deletedCount} audit logs`);
   } catch (error) {
     console.error('❌ Error during cleanup:', error);
   }
 });
 
-// Weekly report generation
-cron.schedule('0 9 * * 1', async () => { // Every Monday at 9 AM
+// Weekly report
+cron.schedule('0 9 * * 1', async () => {
   try {
     console.log('📊 Generating weekly report...');
     
@@ -6006,18 +5285,34 @@ cron.schedule('0 9 * * 1', async () => { // Every Monday at 9 AM
       User.countDocuments({ createdAt: { $gte: oneWeekAgo } }),
       Investment.countDocuments({ createdAt: { $gte: oneWeekAgo } }),
       Deposit.aggregate([
-        { $match: { 
-          status: 'approved',
-          createdAt: { $gte: oneWeekAgo }
-        }},
-        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+        {
+          $match: {
+            status: 'approved',
+            createdAt: { $gte: oneWeekAgo }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' },
+            count: { $sum: 1 }
+          }
+        }
       ]),
       Withdrawal.aggregate([
-        { $match: { 
-          status: 'paid',
-          createdAt: { $gte: oneWeekAgo }
-        }},
-        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+        {
+          $match: {
+            status: 'paid',
+            createdAt: { $gte: oneWeekAgo }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' },
+            count: { $sum: 1 }
+          }
+        }
       ]),
       User.countDocuments({ last_login: { $gte: oneWeekAgo } })
     ]);
@@ -6025,28 +5320,27 @@ cron.schedule('0 9 * * 1', async () => { // Every Monday at 9 AM
     const deposits = totalDeposits[0] || { total: 0, count: 0 };
     const withdrawals = totalWithdrawals[0] || { total: 0, count: 0 };
     
-    // Send report to admins
     const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } });
-    
     for (const admin of admins) {
       await sendEmail(
         admin.email,
         'Raw Wealthy - Weekly Report',
         `<h2>Weekly Platform Report</h2>
-         <p>Here's your weekly performance report:</p>
-         <ul>
-           <li><strong>New Users:</strong> ${newUsers}</li>
-           <li><strong>Active Users (last week):</strong> ${activeUsers}</li>
-           <li><strong>New Investments:</strong> ${newInvestments}</li>
-           <li><strong>Total Deposits:</strong> ₦${deposits.total.toLocaleString()} (${deposits.count} transactions)</li>
-           <li><strong>Total Withdrawals:</strong> ₦${withdrawals.total.toLocaleString()} (${withdrawals.count} transactions)</li>
-           <li><strong>Net Flow:</strong> ₦${(deposits.total - withdrawals.total).toLocaleString()}</li>
-         </ul>
-         <p>Report Period: ${oneWeekAgo.toLocaleDateString()} - ${new Date().toLocaleDateString()}</p>`
+        <p>Here's your weekly performance report:</p>
+        <ul>
+          <li><strong>New Users:</strong> ${newUsers}</li>
+          <li><strong>Active Users (last week):</strong> ${activeUsers}</li>
+          <li><strong>New Investments:</strong> ${newInvestments}</li>
+          <li><strong>Total Deposits:</strong> ₦${deposits.total.toLocaleString()} (${deposits.count} transactions)</li>
+          <li><strong>Total Withdrawals:</strong> ₦${withdrawals.total.toLocaleString()} (${withdrawals.count} transactions)</li>
+          <li><strong>Net Flow:</strong> ₦${(deposits.total - withdrawals.total).toLocaleString()}</li>
+        </ul>
+        <p>Report Period: ${oneWeekAgo.toLocaleDateString()} - ${new Date().toLocaleDateString()}</p>`
       );
     }
     
     console.log(`✅ Weekly report sent to ${admins.length} admins`);
+    
   } catch (error) {
     console.error('❌ Error generating weekly report:', error);
   }
@@ -6062,6 +5356,7 @@ app.use((req, res) => {
     available_endpoints: [
       '/api/auth/*',
       '/api/profile',
+      '/api/earnings/*',
       '/api/investments/*',
       '/api/deposits/*',
       '/api/withdrawals/*',
@@ -6080,7 +5375,6 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('Global error:', err);
   
-  // Log error for debugging
   const errorLog = {
     timestamp: new Date().toISOString(),
     url: req.originalUrl,
@@ -6100,12 +5394,10 @@ app.use((err, req, res, next) => {
     return res.status(400).json(formatResponse(false, `File upload error: ${err.message}`));
   }
   
-  // Database errors
   if (err.name === 'MongoError' || err.name === 'MongooseError') {
     return res.status(500).json(formatResponse(false, 'Database error occurred. Please try again later.'));
   }
   
-  // Network errors
   if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
     return res.status(503).json(formatResponse(false, 'Service temporarily unavailable. Please try again later.'));
   }
@@ -6120,14 +5412,13 @@ app.use((err, req, res, next) => {
 
 const startServer = async () => {
   try {
-    // Initialize database
     await initializeDatabase();
     
-    // Start server
     const server = app.listen(config.port, '0.0.0.0', () => {
       console.log(`
-🎯 RAW WEALTHY BACKEND v37.0 - ENHANCED PRODUCTION EDITION
+🎯 RAW WEALTHY BACKEND v38.0 - ULTIMATE PRODUCTION EDITION
 =========================================================
+
 🌐 Server running on port ${config.port}
 🚀 Environment: ${config.nodeEnv}
 📊 Health Check: /health
@@ -6137,89 +5428,73 @@ const startServer = async () => {
 📧 Email: ${config.emailEnabled ? '✅ Enabled' : '❌ Disabled'}
 📁 Uploads: ${config.uploadDir}
 🌐 Server URL: ${config.serverURL}
+⚡ Cache: ${redisClient ? '✅ Redis' : '⚠️ Memory'}
 
 ✅ ENHANCED FEATURES:
-   ✅ Advanced Admin Dashboard with Real-time Analytics
-   ✅ Complete User Dashboard with Daily Interest Calculation
-   ✅ Transaction Images Viewing for Admin & Users
-   ✅ Bank Details Verification System
-   ✅ Investment Plan Earnings Tracking
-   ✅ Automated Notifications System with Email
-   ✅ Forgot Password Functionality
-   ✅ KYC Verification with Multiple Image Uploads
-   ✅ Support Ticket Management with Attachments
-   ✅ Referral Tracking & Commission Management
-   ✅ Wallet Balance Management
-   ✅ File Upload System with Absolute URLs
-   ✅ Advanced Filtering & Search
-   ✅ Real-time Dashboard Updates
-   ✅ Automated Cron Jobs for Earnings & Renewals
-   ✅ Comprehensive Reporting
-   ✅ Admin Audit Logging
-   ✅ Enhanced Error Handling
-   ✅ Weekly Report Generation
-   ✅ Graceful Shutdown
-   ✅ Rate Limiting & Security Headers
-   ✅ CORS Configuration
-   ✅ Memory & Performance Optimization
+✅ Advanced Earnings Calculation System
+✅ Real-time Daily Interest Calculation
+✅ Enhanced Referral Commission Tracking
+✅ Complete User Dashboard Analytics
+✅ Investment Auto-Renewal System
+✅ KYC Verification with Image Upload
+✅ Support Ticket Management
+✅ Admin Dashboard with Real-time Stats
+✅ Redis Caching for Performance
+✅ File Upload System with CDN Support
+✅ Email Notifications System
+✅ Automated Cron Jobs
+✅ Weekly Report Generation
+✅ Advanced Error Handling
+✅ Rate Limiting & Security Headers
+✅ Graceful Shutdown
 
 🚀 FULLY INTEGRATED & PRODUCTION READY!
 🔐 SECURITY ENHANCED WITH AUDIT LOGGING
 📈 COMPLETE ANALYTICS & REPORTING
 📱 RESPONSIVE ADMIN INTERFACE SUPPORT
-      `);
+💸 EARNINGS & REFERRAL SYSTEM ACTIVE
+`);
     });
-
-    // Graceful shutdown
+    
     const gracefulShutdown = async (signal) => {
       console.log(`\n${signal} received, shutting down gracefully...`);
-      
-      // Close server
       server.close(async () => {
         console.log('HTTP server closed');
-        
-        // Close database connection
         try {
           await mongoose.connection.close();
           console.log('Database connection closed');
         } catch (dbError) {
           console.error('Error closing database:', dbError);
         }
-        
         console.log('Process terminated gracefully');
         process.exit(0);
       });
       
-      // Force shutdown after 10 seconds
       setTimeout(() => {
         console.error('Could not close connections in time, forcefully shutting down');
         process.exit(1);
       }, 10000);
     };
-
-    // Handle different shutdown signals
+    
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-    process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')); // For nodemon
-
-    // Handle uncaught exceptions
+    process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2'));
+    
     process.on('uncaughtException', (error) => {
       console.error('Uncaught Exception:', error);
       gracefulShutdown('uncaughtException');
     });
-
+    
     process.on('unhandledRejection', (reason, promise) => {
       console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-      // Don't crash the process for unhandled rejections
     });
-
+    
   } catch (error) {
     console.error('❌ Server initialization failed:', error);
     process.exit(1);
   }
 };
 
-// Start the server
 startServer();
 
 export default app;
