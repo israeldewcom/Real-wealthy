@@ -60,7 +60,7 @@
     "request-ip": "^3.3.0",
     "user-agent": "^1.0.5",
     "geoip-lite": "^1.4.7",
-    "rate-limiter-flexible": "^3.1.2",
+    "rate-limiter-flexible": "^3.1.1",
     "express-async-errors": "^3.1.1",
     "http-status-codes": "^2.2.0",
     "apicache": "^1.6.3"
