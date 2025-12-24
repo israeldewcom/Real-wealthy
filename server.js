@@ -15,7 +15,7 @@ const path = require('path');
 // Load environment variables
 dotenv.config();
 
-// Import routes
+// Import routes - CORRECTED PATHS (server.js is outside src folder)
 const authRoutes = require('./src/routes/authRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const investmentRoutes = require('./src/routes/investmentRoutes');
@@ -110,10 +110,10 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('combined'));
 }
 
-// Static files
+// Static files - UPDATED PATH for Render
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Health check endpoint
+// Health check endpoint for Render
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'success',
@@ -121,7 +121,8 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV,
-    version: process.env.npm_package_version || '1.0.0'
+    version: process.env.npm_package_version || '1.0.0',
+    nodeVersion: process.version
   });
 });
 
@@ -139,16 +140,25 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/wallets', walletRoutes);
 app.use('/api/notifications', notificationRoutes);
 
-// File upload endpoint
-app.post('/api/upload', require('./src/middleware/fileUpload').upload.single('file'), (req, res) => {
+// File upload endpoint - CORRECTED PATH
+const fileUploadMiddleware = require('./src/middleware/fileUpload');
+app.post('/api/upload', fileUploadMiddleware.upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: 'No file uploaded'
+    });
+  }
+  
   res.json({
     success: true,
     message: 'File uploaded successfully',
     data: {
-      fileUrl: req.file.path,
+      fileUrl: `/uploads/${req.file.filename}`,
       filename: req.file.filename,
       originalname: req.file.originalname,
-      size: req.file.size
+      size: req.file.size,
+      mimetype: req.file.mimetype
     }
   });
 });
@@ -159,33 +169,59 @@ app.use(notFound);
 // Error handling middleware
 app.use(errorHandler);
 
-// Database connection
+// Database connection with enhanced error handling
 connectDB()
   .then(() => {
     console.log('✅ MongoDB connected successfully');
     
     // Start cron jobs after DB connection
-    startCronJobs();
+    try {
+      startCronJobs();
+      console.log('✅ Cron jobs initialized');
+    } catch (cronError) {
+      console.warn('⚠️ Cron jobs initialization failed:', cronError.message);
+    }
     
     const PORT = process.env.PORT || 10000;
-    server.listen(PORT, () => {
+    
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📁 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL}`);
+      console.log(`📁 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'Not set'}`);
+      console.log(`🔗 Health check: http://0.0.0.0:${PORT}/api/health`);
     });
   })
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err);
-    process.exit(1);
+    
+    // Even if DB fails, start server for health checks
+    const PORT = process.env.PORT || 10000;
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`⚠️ Server started without DB on port ${PORT}`);
+      console.log(`❌ DB Connection failed: ${err.message}`);
+    });
   });
 
-// Graceful shutdown
+// Graceful shutdown handlers
 process.on('SIGTERM', () => {
   console.log('👋 SIGTERM received. Shutting down gracefully...');
+  
+  // Close server first
   server.close(() => {
-    console.log('💤 Process terminated!');
-    process.exit(0);
+    console.log('💤 HTTP server closed');
+    
+    // Close MongoDB connection
+    mongoose.connection.close(false, () => {
+      console.log('💤 MongoDB connection closed');
+      process.exit(0);
+    });
   });
+  
+  // Force exit after 10 seconds
+  setTimeout(() => {
+    console.error('⏰ Force shutdown after timeout');
+    process.exit(1);
+  }, 10000);
 });
 
 process.on('SIGINT', () => {
@@ -199,9 +235,6 @@ process.on('SIGINT', () => {
 // Global error handlers
 process.on('unhandledRejection', (err) => {
   console.error('🔥 Unhandled Rejection:', err);
-  server.close(() => {
-    process.exit(1);
-  });
 });
 
 process.on('uncaughtException', (err) => {
@@ -211,4 +244,5 @@ process.on('uncaughtException', (err) => {
   });
 });
 
+// Export for testing
 module.exports = { app, server };
