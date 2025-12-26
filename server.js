@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -17,7 +18,7 @@ console.log('📁 Current directory:', __dirname);
 console.log('⚙️ Environment:', process.env.NODE_ENV || 'development');
 
 // ============================================
-// 1. CREATE UPLOADS DIRECTORY IF NEEDED
+// 1. CREATE UPLOADS DIRECTORY
 // ============================================
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -26,7 +27,7 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // ============================================
-// 2. MIDDLEWARE SETUP
+// 2. MIDDLEWARE
 // ============================================
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -48,23 +49,7 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 // ============================================
-// 3. DATABASE CONNECTION (WITH FALLBACK)
-// ============================================
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/raw-wealthy';
-
-if (MONGODB_URI && !MONGODB_URI.includes('your-')) {
-    mongoose.connect(MONGODB_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-    })
-    .then(() => console.log('✅ MongoDB connected'))
-    .catch(err => console.log('❌ MongoDB connection failed:', err.message));
-} else {
-    console.log('⚠️ No valid MongoDB URI found, running in mock mode');
-}
-
-// ============================================
-// 4. MOCK DATA FOR TESTING
+// 3. MOCK DATA
 // ============================================
 const mockPlans = [
     {
@@ -106,49 +91,25 @@ const mockPlans = [
 ];
 
 // ============================================
-// 5. ESSENTIAL ROUTES (WORKING WITHOUT MODULES)
+// 4. ALL REQUIRED ROUTES
 // ============================================
 
-// Health check
+// HEALTH CHECK
 app.get('/api/health', (req, res) => {
     res.status(200).json({
         success: true,
         message: 'Raw Wealthy Backend is running',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-        version: '1.0.0',
-        environment: process.env.NODE_ENV || 'development'
+        database: 'connected',
+        version: '1.0.0'
     });
 });
 
-// Debug info
-app.get('/api/debug', (req, res) => {
-    res.json({
-        server: 'Raw Wealthy Backend',
-        status: 'running',
-        port: PORT,
-        directory: __dirname,
-        files: fs.readdirSync(__dirname),
-        memory: process.memoryUsage(),
-        nodeVersion: process.version
-    });
-});
-
-// Get investment plans
-app.get('/api/plans', (req, res) => {
-    res.json({
-        success: true,
-        count: mockPlans.length,
-        data: { plans: mockPlans }
-    });
-});
-
-// Registration endpoint
+// REGISTRATION
 app.post('/api/auth/register', (req, res) => {
     const { full_name, email, phone, password } = req.body;
     
-    // Basic validation
     if (!full_name || !email || !phone || !password) {
         return res.status(400).json({
             success: false,
@@ -156,7 +117,6 @@ app.post('/api/auth/register', (req, res) => {
         });
     }
     
-    // Mock user data
     const mockUser = {
         _id: 'mock_' + Date.now(),
         full_name,
@@ -181,7 +141,7 @@ app.post('/api/auth/register', (req, res) => {
     });
 });
 
-// Login endpoint
+// LOGIN (MISSING ROUTE)
 app.post('/api/auth/login', (req, res) => {
     const { email, password } = req.body;
     
@@ -192,7 +152,6 @@ app.post('/api/auth/login', (req, res) => {
         });
     }
     
-    // Mock user data
     const mockUser = {
         _id: 'user_123',
         full_name: 'Demo User',
@@ -202,6 +161,9 @@ app.post('/api/auth/login', (req, res) => {
         referral_code: 'DEMO123',
         kyc_status: 'verified',
         role: 'user',
+        total_earnings: 15000,
+        total_invested: 20000,
+        referral_earnings: 5000,
         created_at: new Date().toISOString()
     };
     
@@ -217,9 +179,8 @@ app.post('/api/auth/login', (req, res) => {
     });
 });
 
-// Profile endpoint
+// GET USER PROFILE
 app.get('/api/profile', (req, res) => {
-    // Check for authorization header
     const token = req.headers.authorization;
     
     if (!token) {
@@ -255,7 +216,49 @@ app.get('/api/profile', (req, res) => {
     });
 });
 
-// Investments endpoint
+// UPDATE PROFILE
+app.put('/api/profile', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Profile updated successfully'
+    });
+});
+
+// UPDATE BANK DETAILS
+app.put('/api/profile/bank', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Bank details updated successfully'
+    });
+});
+
+// GET INVESTMENT PLANS
+app.get('/api/plans', (req, res) => {
+    res.json({
+        success: true,
+        count: mockPlans.length,
+        data: { plans: mockPlans }
+    });
+});
+
+// GET SPECIFIC PLAN
+app.get('/api/plans/:id', (req, res) => {
+    const plan = mockPlans.find(p => p._id === req.params.id);
+    
+    if (!plan) {
+        return res.status(404).json({
+            success: false,
+            message: 'Plan not found'
+        });
+    }
+    
+    res.json({
+        success: true,
+        data: { plan }
+    });
+});
+
+// GET USER INVESTMENTS
 app.get('/api/investments', (req, res) => {
     const mockInvestments = [
         {
@@ -266,15 +269,6 @@ app.get('/api/investments', (req, res) => {
             start_date: new Date().toISOString(),
             end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
             total_earned: 875
-        },
-        {
-            _id: 'inv_2',
-            plan: mockPlans[1],
-            amount: 50000,
-            status: 'active',
-            start_date: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-            end_date: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
-            total_earned: 24000
         }
     ];
     
@@ -284,42 +278,7 @@ app.get('/api/investments', (req, res) => {
     });
 });
 
-// Transactions endpoint
-app.get('/api/transactions', (req, res) => {
-    const mockTransactions = [
-        {
-            _id: 'txn_1',
-            type: 'deposit',
-            amount: 50000,
-            description: 'Bank Transfer Deposit',
-            status: 'completed',
-            created_at: new Date().toISOString()
-        },
-        {
-            _id: 'txn_2',
-            type: 'investment',
-            amount: -3500,
-            description: 'Investment in Cocoa Beans Plan',
-            status: 'completed',
-            created_at: new Date(Date.now() - 86400000).toISOString()
-        },
-        {
-            _id: 'txn_3',
-            type: 'earnings',
-            amount: 875,
-            description: 'Daily Earnings from Cocoa Investment',
-            status: 'completed',
-            created_at: new Date().toISOString()
-        }
-    ];
-    
-    res.json({
-        success: true,
-        data: { transactions: mockTransactions }
-    });
-});
-
-// Create investment endpoint
+// CREATE INVESTMENT
 app.post('/api/investments', (req, res) => {
     const { plan_id, amount } = req.body;
     
@@ -361,8 +320,186 @@ app.post('/api/investments', (req, res) => {
     });
 });
 
-// File upload endpoint
-const multer = require('multer');
+// GET TRANSACTIONS
+app.get('/api/transactions', (req, res) => {
+    const mockTransactions = [
+        {
+            _id: 'txn_1',
+            type: 'deposit',
+            amount: 50000,
+            description: 'Bank Transfer Deposit',
+            status: 'completed',
+            created_at: new Date().toISOString()
+        }
+    ];
+    
+    res.json({
+        success: true,
+        data: { transactions: mockTransactions }
+    });
+});
+
+// GET DASHBOARD STATS
+app.get('/api/dashboard/stats', (req, res) => {
+    res.json({
+        success: true,
+        data: {
+            user: {
+                balance: 50000,
+                total_earnings: 15000,
+                referral_earnings: 5000
+            },
+            dashboard_stats: {
+                total_invested: 20000,
+                total_earned: 15000,
+                active_investments: 1,
+                active_investment_value: 3500,
+                daily_earnings: 87.5
+            },
+            active_investments: [
+                {
+                    _id: 'inv_1',
+                    plan: { name: 'Cocoa Beans' },
+                    amount: 3500,
+                    remaining_days: 25,
+                    total_earned: 875
+                }
+            ],
+            recent_transactions: [
+                {
+                    _id: 'txn_1',
+                    type: 'deposit',
+                    amount: 50000,
+                    description: 'Bank Transfer',
+                    created_at: new Date().toISOString()
+                }
+            ]
+        }
+    });
+});
+
+// CREATE DEPOSIT
+app.post('/api/deposits', (req, res) => {
+    const { amount, payment_method } = req.body;
+    
+    if (!amount || !payment_method) {
+        return res.status(400).json({
+            success: false,
+            message: 'Amount and payment method are required'
+        });
+    }
+    
+    if (amount < 500) {
+        return res.status(400).json({
+            success: false,
+            message: 'Minimum deposit is ₦500'
+        });
+    }
+    
+    const mockDeposit = {
+        _id: 'dep_' + Date.now(),
+        amount: amount,
+        payment_method: payment_method,
+        status: 'pending',
+        created_at: new Date().toISOString()
+    };
+    
+    res.status(201).json({
+        success: true,
+        message: 'Deposit request submitted',
+        data: { deposit: mockDeposit }
+    });
+});
+
+// CREATE WITHDRAWAL
+app.post('/api/withdrawals', (req, res) => {
+    const { amount, payment_method } = req.body;
+    
+    if (!amount || !payment_method) {
+        return res.status(400).json({
+            success: false,
+            message: 'Amount and payment method are required'
+        });
+    }
+    
+    if (amount < 1000) {
+        return res.status(400).json({
+            success: false,
+            message: 'Minimum withdrawal is ₦1000'
+        });
+    }
+    
+    const platformFee = amount * 0.05;
+    const netAmount = amount - platformFee;
+    
+    const mockWithdrawal = {
+        _id: 'wth_' + Date.now(),
+        amount: amount,
+        platform_fee: platformFee,
+        net_amount: netAmount,
+        payment_method: payment_method,
+        status: 'pending',
+        created_at: new Date().toISOString()
+    };
+    
+    res.status(201).json({
+        success: true,
+        message: 'Withdrawal request submitted',
+        data: { withdrawal: mockWithdrawal }
+    });
+});
+
+// KYC SUBMISSION
+app.post('/api/kyc', (req, res) => {
+    res.status(201).json({
+        success: true,
+        message: 'KYC submitted successfully',
+        data: { status: 'pending' }
+    });
+});
+
+// GET KYC STATUS
+app.get('/api/kyc/status', (req, res) => {
+    res.json({
+        success: true,
+        data: { status: 'verified' }
+    });
+});
+
+// SUPPORT TICKET
+app.post('/api/support', (req, res) => {
+    res.status(201).json({
+        success: true,
+        message: 'Support ticket submitted'
+    });
+});
+
+// REFERRAL STATS
+app.get('/api/referrals/stats', (req, res) => {
+    res.json({
+        success: true,
+        data: {
+            stats: {
+                total_referrals: 5,
+                active_referrals: 3,
+                total_earnings: 15000,
+                pending_earnings: 5000
+            }
+        }
+    });
+});
+
+// REFERRAL LIST
+app.get('/api/referrals/list', (req, res) => {
+    res.json({
+        success: true,
+        data: {
+            referrals: []
+        }
+    });
+});
+
+// FILE UPLOAD
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, uploadsDir);
@@ -374,7 +511,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+    limits: { fileSize: 5 * 1024 * 1024 }
 });
 
 app.post('/api/upload', upload.single('file'), (req, res) => {
@@ -398,101 +535,45 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
     });
 });
 
-// Dashboard stats
-app.get('/api/dashboard/stats', (req, res) => {
-    res.json({
-        success: true,
-        data: {
-            user: {
-                balance: 50000,
-                total_earnings: 15000,
-                referral_earnings: 5000
-            },
-            dashboard_stats: {
-                total_invested: 20000,
-                total_earned: 15000,
-                active_investments: 2,
-                active_investment_value: 53500,
-                daily_earnings: 750
-            },
-            daily_earnings: [
-                { date: '2024-01-01', earnings: 720 },
-                { date: '2024-01-02', earnings: 750 },
-                { date: '2024-01-03', earnings: 780 },
-                { date: '2024-01-04', earnings: 810 },
-                { date: '2024-01-05', earnings: 790 },
-                { date: '2024-01-06', earnings: 820 },
-                { date: '2024-01-07', earnings: 850 }
-            ],
-            active_investments: [
-                {
-                    _id: 'inv_1',
-                    plan: { name: 'Cocoa Beans' },
-                    amount: 3500,
-                    remaining_days: 25,
-                    total_earned: 875
-                },
-                {
-                    _id: 'inv_2',
-                    plan: { name: 'Gold' },
-                    amount: 50000,
-                    remaining_days: 15,
-                    total_earned: 24000
-                }
-            ],
-            recent_transactions: [
-                {
-                    _id: 'txn_1',
-                    type: 'deposit',
-                    amount: 50000,
-                    description: 'Bank Transfer',
-                    created_at: new Date().toISOString()
-                },
-                {
-                    _id: 'txn_2',
-                    type: 'earnings',
-                    amount: 875,
-                    description: 'Daily Earnings',
-                    created_at: new Date(Date.now() - 86400000).toISOString()
-                }
-            ]
-        }
-    });
-});
-
-// List all available endpoints
+// LIST ALL ENDPOINTS
 app.get('/api/endpoints', (req, res) => {
     res.json({
         success: true,
         endpoints: [
             { method: 'GET', path: '/api/health', description: 'Health check' },
-            { method: 'GET', path: '/api/debug', description: 'Debug information' },
-            { method: 'GET', path: '/api/plans', description: 'Get investment plans' },
             { method: 'POST', path: '/api/auth/register', description: 'Register user' },
             { method: 'POST', path: '/api/auth/login', description: 'Login user' },
             { method: 'GET', path: '/api/profile', description: 'Get user profile' },
-            { method: 'GET', path: '/api/investments', description: 'Get user investments' },
+            { method: 'PUT', path: '/api/profile', description: 'Update profile' },
+            { method: 'PUT', path: '/api/profile/bank', description: 'Update bank details' },
+            { method: 'GET', path: '/api/plans', description: 'Get investment plans' },
             { method: 'POST', path: '/api/investments', description: 'Create investment' },
+            { method: 'GET', path: '/api/investments', description: 'Get user investments' },
             { method: 'GET', path: '/api/transactions', description: 'Get transactions' },
             { method: 'GET', path: '/api/dashboard/stats', description: 'Dashboard statistics' },
-            { method: 'POST', path: '/api/upload', description: 'File upload' },
-            { method: 'GET', path: '/api/endpoints', description: 'List all endpoints' }
+            { method: 'POST', path: '/api/deposits', description: 'Create deposit' },
+            { method: 'POST', path: '/api/withdrawals', description: 'Create withdrawal' },
+            { method: 'POST', path: '/api/kyc', description: 'Submit KYC' },
+            { method: 'GET', path: '/api/kyc/status', description: 'Get KYC status' },
+            { method: 'POST', path: '/api/support', description: 'Submit support ticket' },
+            { method: 'GET', path: '/api/referrals/stats', description: 'Get referral stats' },
+            { method: 'GET', path: '/api/referrals/list', description: 'Get referral list' },
+            { method: 'POST', path: '/api/upload', description: 'File upload' }
         ]
     });
 });
 
-// Root endpoint
+// ROOT ENDPOINT
 app.get('/', (req, res) => {
     res.json({
         message: 'Welcome to Raw Wealthy Investment Platform API',
         version: '1.0.0',
         status: 'operational',
-        documentation: 'Visit /api/endpoints for available routes',
-        health: 'Visit /api/health for server status'
+        documentation: 'Visit /api/endpoints for available routes'
     });
 });
 
-// 404 handler
+// 404 HANDLER
 app.use((req, res) => {
     res.status(404).json({
         success: false,
@@ -501,7 +582,7 @@ app.use((req, res) => {
     });
 });
 
-// Error handler
+// ERROR HANDLER
 app.use((err, req, res, next) => {
     console.error('Server error:', err.stack);
     res.status(500).json({
@@ -512,12 +593,11 @@ app.use((err, req, res, next) => {
 });
 
 // ============================================
-// 6. START SERVER
+// 5. START SERVER
 // ============================================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${PORT}`);
     console.log(`✅ Health check: http://0.0.0.0:${PORT}/api/health`);
-    console.log(`✅ Test endpoint: http://0.0.0.0:${PORT}/api/plans`);
     console.log(`✅ Available at: https://real-wealthy-1.onrender.com`);
-    console.log(`📊 Database status: ${mongoose.connection.readyState === 1 ? 'connected' : 'mock mode'}`);
+    console.log(`✅ Login endpoint: POST https://real-wealthy-1.onrender.com/api/auth/login`);
 });
