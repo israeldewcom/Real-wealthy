@@ -36,8 +36,8 @@ app.use(cors({
     origin: [
         'http://localhost:3000', 
         'http://127.0.0.1:5500', 
-        'https://raw-wealthy.vercel.app',
-        'https://raw-wealthy-frontend.vercel.app',
+        'https://uun-rawwealthy.vercel.app/',
+        'https://uun-rawwealthy.vercel.app/',
         'https://real-wealthy-1.onrender.com'
     ],
     credentials: true,
