@@ -144,11 +144,11 @@ const config = {
   }
 };
 
-// Update to:
+// ✅ FIXED CORS CONFIGURATION
 const allowedOrigins = [
     'https://i-rawwealthy.vercel.app',
-    'https://real-wealthy.vercel.app',
     'https://raw-wealthy.vercel.app',
+    'https://real-wealthy.vercel.app',
     'http://localhost:3000',
     'http://localhost:5500',
     'http://127.0.0.1:3000',
@@ -160,16 +160,21 @@ app.use(cors({
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
         
-        if (allowedOrigins.indexOf(origin) === -1) {
-            const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
-            return callback(new Error(msg), false);
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
         }
-        return callback(null, true);
     },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
 }));
+
+app.use(helmet());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' })); the 
+ 
 
 console.log('⚙️  Dynamic Configuration Loaded:');
 console.log(`- Port: ${config.port}`);
