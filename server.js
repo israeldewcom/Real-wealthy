@@ -144,18 +144,38 @@ const config = {
   }
 };
 
-// Build allowed origins dynamically
-config.allowedOrigins = [
-  config.clientURL,
-  config.serverURL,
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:3001',
-  'https://rawwealthy.com',
-  'https://www.rawwealthy.com',
-  'https://i-rawwealthy.vercel.app/',
-  'https://real-wealthy-03bf.onrender.com'
-].filter(Boolean);
+// Current (likely):
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5500'
+];
+
+// Update to:
+const allowedOrigins = [
+    'https://i-rawwealthy.vercel.app',
+    'https://real-wealthy.vercel.app',
+    'https://raw-wealthy.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5500',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5500'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) === -1) {
+            const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+    },
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
 
 console.log('⚙️  Dynamic Configuration Loaded:');
 console.log(`- Port: ${config.port}`);
