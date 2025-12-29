@@ -1425,6 +1425,17 @@ app.get('/health', async (req, res) => {
   
   res.json(health);
 });
+// ==================== DEBUG MIDDLEWARE ====================
+app.use((req, res, next) => {
+    console.log('\n══════════════════════════════════════════════════');
+    console.log(`🔍 ${new Date().toISOString()}`);
+    console.log(`🌐 ${req.method} ${req.originalUrl}`);
+    console.log(`📱 From: ${req.ip} | ${req.headers['user-agent']}`);
+    console.log(`🔑 Auth: ${req.headers.authorization ? 'YES' : 'NO'}`);
+    console.log(`📦 Body:`, req.body ? JSON.stringify(req.body).substring(0, 200) : 'None');
+    console.log('══════════════════════════════════════════════════\n');
+    next();
+});
 // ==================== DEBUG ENDPOINTS ====================
 
 // 1. Database Connection Test
