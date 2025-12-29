@@ -144,12 +144,6 @@ const config = {
   }
 };
 
-// Current (likely):
-const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:5500'
-];
-
 // Update to:
 const allowedOrigins = [
     'https://i-rawwealthy.vercel.app',
