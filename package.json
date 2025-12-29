@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Raw Wealthy Investment Platform Backend",
   "main": "server.js",
+  "type": "commonjs",  // ✅ ADD THIS
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
@@ -15,6 +16,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "helmet": "^7.0.0",
+    "compression": "^1.7.4",  // ✅ ADD THIS
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.2",
@@ -25,5 +27,6 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "license": "MIT"  // ✅ ADD THIS
 }
