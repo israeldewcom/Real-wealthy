@@ -1425,7 +1425,248 @@ app.get('/health', async (req, res) => {
   
   res.json(health);
 });
+// ==================== DEBUG ENDPOINTS ====================
 
+// 1. Database Connection Test
+app.get('/api/debug/db', async (req, res) => {
+    try {
+        const collections = await mongoose.connection.db.listCollections().toArray();
+        const usersCount = await User.countDocuments();
+        const adminUser = await User.findOne({ email: 'admin@rawwealthy.com' });
+        
+        res.json({
+            success: true,
+            data: {
+                mongoStatus: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+                collections: collections.map(c => c.name),
+                usersCount: usersCount,
+                adminExists: !!adminUser,
+                adminDetails: adminUser ? {
+                    email: adminUser.email,
+                    passwordHash: adminUser.password ? 'HASHED' : 'MISSING',
+                    role: adminUser.role
+                } : null
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 2. Test Login Endpoint
+app.post('/api/debug/login-test', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        
+        console.log('🔐 DEBUG LOGIN TEST:', { email, password });
+        
+        // Find user
+        const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+        console.log('👤 User found:', user ? 'YES' : 'NO');
+        
+        if (!user) {
+            return res.json({
+                success: false,
+                message: 'User not found',
+                debug: { email }
+            });
+        }
+        
+        console.log('🔑 Password field:', user.password ? 'EXISTS' : 'MISSING');
+        console.log('🔑 Password length:', user.password?.length);
+        
+        // Try to compare password
+        let passwordMatch = false;
+        try {
+            passwordMatch = await user.comparePassword(password);
+            console.log('🔐 Password match:', passwordMatch);
+        } catch (bcryptError) {
+            console.log('❌ Bcrypt error:', bcryptError.message);
+        }
+        
+        // Generate token to test
+        let token = null;
+        try {
+            token = user.generateAuthToken();
+            console.log('🎫 Token generated:', token ? 'YES' : 'NO');
+        } catch (tokenError) {
+            console.log('❌ Token generation error:', tokenError.message);
+        }
+        
+        res.json({
+            success: passwordMatch,
+            message: passwordMatch ? 'Password matches' : 'Password does not match',
+            debug: {
+                userExists: !!user,
+                passwordFieldExists: !!user.password,
+                passwordMatch: passwordMatch,
+                tokenGenerated: !!token,
+                userDetails: {
+                    _id: user._id,
+                    email: user.email,
+                    role: user.role,
+                    passwordHash: user.password ? user.password.substring(0, 20) + '...' : null
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Debug login error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            stack: error.stack
+        });
+    }
+});
+
+// 3. Test Admin Creation
+app.post('/api/debug/create-admin', async (req, res) => {
+    try {
+        const { email = 'admin@rawwealthy.com', password = 'Admin123456' } = req.body;
+        
+        console.log('👑 DEBUG ADMIN CREATION:', { email, password });
+        
+        // Delete existing admin
+        await User.deleteOne({ email });
+        console.log('🗑️  Deleted existing admin');
+        
+        // Create new admin using Mongoose (so hooks run)
+        const adminUser = new User({
+            full_name: 'Raw Wealthy Admin',
+            email: email,
+            phone: '09161806424',
+            password: password, // Will be hashed by pre-save hook
+            role: 'super_admin',
+            balance: 1000000,
+            kyc_verified: true,
+            kyc_status: 'verified',
+            is_active: true,
+            is_verified: true
+        });
+        
+        // Manually trigger save to see the hash
+        console.log('🔑 Before save - password:', password);
+        await adminUser.save();
+        console.log('✅ After save - password hash:', adminUser.password.substring(0, 20) + '...');
+        
+        // Verify we can login
+        const savedUser = await User.findOne({ email }).select('+password');
+        const passwordMatch = await savedUser.comparePassword(password);
+        
+        res.json({
+            success: true,
+            message: 'Admin created successfully',
+            debug: {
+                adminCreated: true,
+                passwordHashed: !!savedUser.password,
+                passwordMatches: passwordMatch,
+                loginTest: passwordMatch ? 'SHOULD WORK' : 'WILL FAIL',
+                credentials: {
+                    email: email,
+                    password: password,
+                    hashedPassword: savedUser.password.substring(0, 30) + '...'
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Admin creation error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            stack: error.stack
+        });
+    }
+});
+
+// 4. Test All Routes
+app.get('/api/debug/routes', (req, res) => {
+    const routes = [];
+    
+    app._router.stack.forEach((middleware) => {
+        if (middleware.route) {
+            routes.push({
+                path: middleware.route.path,
+                methods: Object.keys(middleware.route.methods)
+            });
+        } else if (middleware.name === 'router') {
+            middleware.handle.stack.forEach((handler) => {
+                if (handler.route) {
+                    routes.push({
+                        path: handler.route.path,
+                        methods: Object.keys(handler.route.methods)
+                    });
+                }
+            });
+        }
+    });
+    
+    res.json({
+        success: true,
+        data: {
+            totalRoutes: routes.length,
+            routes: routes.filter(r => r.path.includes('/api/'))
+        }
+    });
+});
+
+// 5. Test Token Verification
+app.get('/api/debug/verify-token', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.json({
+                success: false,
+                message: 'No token provided',
+                debug: { header: authHeader }
+            });
+        }
+        
+        const token = authHeader.slice(7);
+        
+        console.log('🎫 Verifying token:', token.substring(0, 20) + '...');
+        
+        let decoded;
+        try {
+            decoded = jwt.verify(token, config.jwtSecret);
+            console.log('✅ Token decoded:', decoded);
+        } catch (jwtError) {
+            console.log('❌ JWT Error:', jwtError.message);
+            return res.json({
+                success: false,
+                message: 'Token invalid',
+                debug: { error: jwtError.message }
+            });
+        }
+        
+        // Find user
+        const user = await User.findById(decoded.id);
+        
+        res.json({
+            success: !!user,
+            message: user ? 'Token valid' : 'User not found',
+            debug: {
+                tokenValid: true,
+                tokenDecoded: decoded,
+                userFound: !!user,
+                userDetails: user ? {
+                    _id: user._id,
+                    email: user.email,
+                    role: user.role
+                } : null
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Token verification error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
 // ==================== ROOT ENDPOINT ====================
 app.get('/', (req, res) => {
   res.json({
