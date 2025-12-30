@@ -1726,7 +1726,63 @@ const createAdminAudit = async (adminId, action, targetType, targetId, details =
     return null;
   }
 };
+// ==================== AUTH MIDDLEWARE ====================
 
+const auth = async (req, res, next) => {
+  try {
+    let token = req.header('Authorization');
+    
+    if (!token) {
+      return res.status(401).json(formatResponse(false, 'No token, authorization denied'));
+    }
+    
+    if (token.startsWith('Bearer ')) {
+      token = token.slice(7, token.length);
+    }
+    
+    const decoded = jwt.verify(token, config.jwtSecret);
+    
+    const user = await User.findById(decoded.id);
+    
+    if (!user) {
+      return res.status(401).json(formatResponse(false, 'Token is not valid'));
+    }
+    
+    if (!user.is_active) {
+      return res.status(401).json(formatResponse(false, 'Account is deactivated. Please contact support.'));
+    }
+    
+    // Update last active timestamp
+    user.last_active = new Date();
+    await user.save();
+    
+    req.user = user;
+    req.userId = user._id;
+    next();
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json(formatResponse(false, 'Invalid token'));
+    } else if (error.name === 'TokenExpiredError') {
+      return res.status(401).json(formatResponse(false, 'Token expired'));
+    }
+    
+    console.error('Auth middleware error:', error);
+    res.status(500).json(formatResponse(false, 'Server error during authentication'));
+  }
+};
+
+const adminAuth = async (req, res, next) => {
+  try {
+    await auth(req, res, () => {
+      if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
+        return res.status(403).json(formatResponse(false, 'Access denied. Admin privileges required.'));
+      }
+      next();
+    });
+  } catch (error) {
+    handleError(res, error, 'Admin authentication error');
+  }
+};
 // ==================== REAL-TIME ENDPOINTS ====================
 
 // Real-time dashboard endpoint
@@ -1951,63 +2007,7 @@ function getNotificationColor(type) {
   return colors[type] || 'gray';
 }
 
-// ==================== AUTH MIDDLEWARE ====================
 
-const auth = async (req, res, next) => {
-  try {
-    let token = req.header('Authorization');
-    
-    if (!token) {
-      return res.status(401).json(formatResponse(false, 'No token, authorization denied'));
-    }
-    
-    if (token.startsWith('Bearer ')) {
-      token = token.slice(7, token.length);
-    }
-    
-    const decoded = jwt.verify(token, config.jwtSecret);
-    
-    const user = await User.findById(decoded.id);
-    
-    if (!user) {
-      return res.status(401).json(formatResponse(false, 'Token is not valid'));
-    }
-    
-    if (!user.is_active) {
-      return res.status(401).json(formatResponse(false, 'Account is deactivated. Please contact support.'));
-    }
-    
-    // Update last active timestamp
-    user.last_active = new Date();
-    await user.save();
-    
-    req.user = user;
-    req.userId = user._id;
-    next();
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json(formatResponse(false, 'Invalid token'));
-    } else if (error.name === 'TokenExpiredError') {
-      return res.status(401).json(formatResponse(false, 'Token expired'));
-    }
-    
-    console.error('Auth middleware error:', error);
-    res.status(500).json(formatResponse(false, 'Server error during authentication'));
-  }
-};
-
-const adminAuth = async (req, res, next) => {
-  try {
-    await auth(req, res, () => {
-      if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-        return res.status(403).json(formatResponse(false, 'Access denied. Admin privileges required.'));
-      }
-      next();
-    });
-  } catch (error) {
-    handleError(res, error, 'Admin authentication error');
-  }
-};
 
 // ==================== DATABASE INITIALIZATION ====================
 
