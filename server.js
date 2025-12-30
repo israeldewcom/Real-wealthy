@@ -3035,7 +3035,8 @@ cron.schedule('* * * * *', async () => {
 const initializeDatabase = async () => {
   try {
     console.log('🔄 Connecting to MongoDB...');
-    
+    // Add pagination to models
+mongoose.plugin(mongoosePaginate);
     // Connect to MongoDB
     await mongoose.connect(config.mongoURI, {
       useNewUrlParser: true,
