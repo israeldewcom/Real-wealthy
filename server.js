@@ -1,7 +1,7 @@
 // server.js - RAW WEALTHY BACKEND v50.0 - FULLY INTEGRATED EDITION
 // COMPLETE BACKEND WITH ALL ENDPOINTS, REAL-TIME FEATURES, AND DATABASE MODELS
 // FULLY MATCHED WITH FRONTEND AND READY FOR PRODUCTION
-
+import mongoosePaginate from 'mongoose-paginate-v2';
 import express from 'express';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
