@@ -19,7 +19,7 @@
     "morgan": "^1.10.0",
     "express-rate-limit": "^7.1.5",
     "express-mongo-sanitize": "^2.2.0",
-    "xss-clean": "^1.0.4",
+    "xss": "^1.0.14",
     "hpp": "^0.2.3",
     "express-validator": "^7.0.1",
     "node-cron": "^3.0.3",
