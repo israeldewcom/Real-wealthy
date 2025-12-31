@@ -12,7 +12,7 @@ import compression from 'compression';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
-import xss from 'xss-clean';
+import xss from 'xss';
 import hpp from 'hpp';
 import { body, validationResult, param } from 'express-validator';
 import cron from 'node-cron';
