@@ -1,7 +1,7 @@
 {
   "name": "raw-wealthy-backend",
   "version": "1.0.0",
-  "description": "Raw Wealthy Investment Platform Backend",
+  "description": "Raw Wealthy Investment Platform ",
   "type": "module",
   "main": "server.js",
   "scripts": {
