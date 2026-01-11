@@ -4241,20 +4241,19 @@ app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
 
     // Enhance with image data
     const enhancedDeposits = pendingDeposits.map(dep => ({
-      ...dep,
-      has_proof: !!dep.payment_proof_url,
-      proof_url: dep.payment_proof_url || null,
-      proof_available: !!dep.payment_proof_url,
-      formatted_amount: `₦${dep.amount.toLocaleString()}`,
-      user_details: {
-        name: dep.user.full_name,
-        email: dep.user.email,
-        phone: dep.user.phone,
-        current_balance: dep.user.balance
-      },
-      days_pending: Math.ceil((new Date() - new Date(dep.createdAt)) / (1000 * 60 * 60 * 24))
-    }));
-
+  ...dep,
+  has_proof: !!dep.payment_proof_url,
+  proof_url: dep.payment_proof_url || null,
+  proof_available: !!dep.payment_proof_url,
+  formatted_amount: `₦${dep.amount.toLocaleString()}`,
+  user_details: {
+    name: dep.user?.full_name || 'Deleted User',
+    email: dep.user?.email || 'N/A',
+    phone: dep.user?.phone || 'N/A',
+    current_balance: dep.user?.balance || 0
+  },
+  days_pending: Math.ceil((new Date() - new Date(dep.createdAt)) / (1000 * 60 * 60 * 24))
+}));
     // Create audit log
     await createAdminAudit(
       req.user._id,
