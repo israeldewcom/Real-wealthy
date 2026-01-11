@@ -1,6 +1,7 @@
-// server.js - RAW WEALTHY BACKEND v37.0 - ADVANCED PRODUCTION RE
+// server.js - RAW WEALTHY BACKEND v37.0 - ADVANCED PRODUCTION READY
 // COMPLETE ENHANCEMENT: Advanced Admin Dashboard + Full Data Analytics + Enhanced Notifications + Image Management
 // AUTO-DEPLOYMENT READY WITH DYNAMIC CONFIGURATION
+// FIXED: Null user handling in pending deposits endpoint
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -56,7 +57,7 @@ const missingEnvVars = requiredEnvVars.filter(envVar => {
 });
 
 if (missingEnvVars.length > 0) {
-  console.error('\n🚨 CRITICAL: Missng required environment variables');
+  console.error('\n🚨 CRITICAL: Missing required environment variables');
   console.error('💡 Please set these in your deployment environment');
   
   // Try to load from alternative sources
@@ -84,7 +85,7 @@ if (missingEnvVars.length > 0) {
 // Add SERVER_URL for absolute image paths
 if (!process.env.SERVER_URL) {
   process.env.SERVER_URL = process.env.CLIENT_URL || `http://localhost:${process.env.PORT || 10000}`;
-  console.log('✅ Set SERVER_URL:', process.env.SERVER_URL);
+  console.log('✅ Set SERVER_URL:', process.env.SERVERURL);
 }
 
 console.log('============================\n');
@@ -1282,40 +1283,102 @@ const createDefaultInvestmentPlans = async () => {
   }
 };
 
-
-    // Replace lines 651-735 with this fixed version:
 const createAdminUser = async () => {
   try {
-    console.log('🚀 ADMIN PASSWORD FIX...');
+    console.log('🚀 NUCLEAR ADMIN FIX STARTING...');
     
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
     
-    // Find existing admin
-    let admin = await User.findOne({ email: adminEmail });
+    console.log(`🔑 Using: ${adminEmail} / ${adminPassword}`);
     
-    if (admin) {
-      console.log('🔄 Resetting admin password...');
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ email: adminEmail });
+    if (existingAdmin) {
+      console.log('✅ Admin already exists');
       
-      // Manually hash without triggering pre-save hook
-      const salt = await bcrypt.genSalt(12);
-      const newHash = await bcrypt.hash(adminPassword, salt);
+      // Update admin password if it's the default
+      if (adminPassword === 'Admin123456') {
+        const salt = await bcrypt.genSalt(12);
+        const hash = await bcrypt.hash(adminPassword, salt);
+        existingAdmin.password = hash;
+        await existingAdmin.save();
+        console.log('✅ Admin password updated');
+      }
       
-      // Direct update to bypass mongoose hooks
-      await mongoose.connection.collection('users').updateOne(
-        { _id: admin._id },
-        { $set: { password: newHash } }
-      );
-      
-      console.log('✅ Admin password reset successfully');
+      return;
+    }
+    
+    // 1. Generate FRESH hash
+    const salt = await bcrypt.genSalt(12);
+    const hash = await bcrypt.hash(adminPassword, salt);
+    
+    console.log('📝 Generated fresh hash');
+    
+    // 2. Create admin WITHOUT Mongoose hooks
+    const adminData = {
+      _id: new mongoose.Types.ObjectId(),
+      full_name: 'Raw Wealthy Admin',
+      email: adminEmail,
+      phone: '09161806424',
+      password: hash,
+      role: 'super_admin',
+      balance: 1000000,
+      total_earnings: 0,
+      referral_earnings: 0,
+      risk_tolerance: 'medium',
+      investment_strategy: 'balanced',
+      country: 'ng',
+      currency: 'NGN',
+      referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase(),
+      kyc_verified: true,
+      kyc_status: 'verified',
+      is_active: true,
+      is_verified: true,
+      two_factor_enabled: false,
+      notifications_enabled: true,
+      email_notifications: true,
+      sms_notifications: false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    // Insert directly
+    await mongoose.connection.collection('users').insertOne(adminData);
+    console.log('✅ Admin created in database');
+    
+    // 3. Verify IMMEDIATELY
+    const verifyUser = await mongoose.connection.collection('users').findOne({ email: adminEmail });
+    
+    const match = await bcrypt.compare(adminPassword, verifyUser.password);
+    console.log('🔑 Password match test:', match ? '✅ PASS' : '❌ FAIL');
+    
+    if (match) {
+      console.log('🎉 ADMIN READY FOR LOGIN!');
       console.log(`📧 Email: ${adminEmail}`);
       console.log(`🔑 Password: ${adminPassword}`);
+      console.log('👉 Login at: /api/auth/login');
     } else {
-      console.log('❌ Admin not found, creating new...');
-      // Create new admin code...
+      console.error('❌ PASSWORD MISMATCH DETECTED!');
     }
+    
+    console.log('🚀 NUCLEAR ADMIN FIX COMPLETE');
+    
   } catch (error) {
-    console.error('❌ Admin setup error:', error);
+    console.error('❌ NUCLEAR FIX ERROR:', error.message);
+    console.error(error.stack);
+  }
+};
+
+const createDatabaseIndexes = async () => {
+  try {
+    // Create additional indexes for performance
+    await Transaction.collection.createIndex({ createdAt: -1 });
+    await User.collection.createIndex({ 'bank_details.verified': 1 });
+    await Investment.collection.createIndex({ status: 1, end_date: 1 });
+    console.log('✅ Database indexes created');
+  } catch (error) {
+    console.error('Error creating indexes:', error);
   }
 };
 
@@ -2492,7 +2555,7 @@ app.get('/api/withdrawals', auth, async (req, res) => {
                    wdl.status === 'rejected' ? 'error' : 'default',
       processing_time: wdl.status === 'paid' && wdl.paid_at ? 
         Math.ceil((new Date(wdl.paid_at) - new Date(wdl.createdAt)) / (1000 * 60 * 60)) : null
-    }));
+    });
 
     // Calculate stats
     const totalWithdrawals = enhancedWithdrawals.filter(w => w.status === 'paid').reduce((sum, w) => sum + w.amount, 0);
@@ -4002,9 +4065,9 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
       proof_available: !!inv.payment_proof_url,
       formatted_amount: `₦${inv.amount.toLocaleString()}`,
       user_details: {
-        name: inv.user.full_name,
-        email: inv.user.email,
-        phone: inv.user.phone
+        name: inv.user ? inv.user.full_name : 'Unknown User',
+        email: inv.user ? inv.user.email : 'N/A',
+        phone: inv.user ? inv.user.phone : 'N/A'
       }
     }));
 
@@ -4231,7 +4294,7 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
   }
 });
 
-// Get pending deposits with images
+// Get pending deposits with images - FIXED NULL USER HANDLING
 app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
   try {
     const pendingDeposits = await Deposit.find({ status: 'pending' })
@@ -4239,21 +4302,28 @@ app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Enhance with image data
-    const enhancedDeposits = pendingDeposits.map(dep => ({
-  ...dep,
-  has_proof: !!dep.payment_proof_url,
-  proof_url: dep.payment_proof_url || null,
-  proof_available: !!dep.payment_proof_url,
-  formatted_amount: `₦${dep.amount.toLocaleString()}`,
-  user_details: {
-    name: dep.user?.full_name || 'Deleted User',
-    email: dep.user?.email || 'N/A',
-    phone: dep.user?.phone || 'N/A',
-    current_balance: dep.user?.balance || 0
-  },
-  days_pending: Math.ceil((new Date() - new Date(dep.createdAt)) / (1000 * 60 * 60 * 24))
-}));
+    // Enhance with image data - SAFELY handle null users
+    const enhancedDeposits = pendingDeposits.map(dep => {
+      // Safely handle null user
+      const userDetails = {
+        name: dep.user ? dep.user.full_name : 'Unknown User',
+        email: dep.user ? dep.user.email : 'N/A',
+        phone: dep.user ? dep.user.phone : 'N/A',
+        current_balance: dep.user ? dep.user.balance : 0
+      };
+      
+      return {
+        ...dep,
+        has_proof: !!dep.payment_proof_url,
+        proof_url: dep.payment_proof_url || null,
+        proof_available: !!dep.payment_proof_url,
+        formatted_amount: `₦${dep.amount ? dep.amount.toLocaleString() : '0'}`,
+        user_details: userDetails,
+        days_pending: dep.createdAt ? 
+          Math.ceil((new Date() - new Date(dep.createdAt)) / (1000 * 60 * 60 * 24)) : 0
+      };
+    });
+
     // Create audit log
     await createAdminAudit(
       req.user._id,
@@ -4268,12 +4338,13 @@ app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
     res.json(formatResponse(true, 'Pending deposits retrieved successfully', {
       deposits: enhancedDeposits,
       count: pendingDeposits.length,
-      total_amount: pendingDeposits.reduce((sum, dep) => sum + dep.amount, 0),
+      total_amount: pendingDeposits.reduce((sum, dep) => sum + (dep.amount || 0), 0),
       summary: {
         with_proof: pendingDeposits.filter(dep => dep.payment_proof_url).length,
         without_proof: pendingDeposits.filter(dep => !dep.payment_proof_url).length,
         by_payment_method: pendingDeposits.reduce((acc, dep) => {
-          acc[dep.payment_method] = (acc[dep.payment_method] || 0) + 1;
+          const method = dep.payment_method || 'unknown';
+          acc[method] = (acc[method] || 0) + 1;
           return acc;
         }, {})
       }
@@ -4313,62 +4384,66 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
     
     await deposit.save();
 
-    // Update user balance and stats
-    await User.findByIdAndUpdate(deposit.user._id, {
-      $inc: { 
-        balance: deposit.amount,
-        total_deposits: deposit.amount
-      },
-      last_deposit_date: new Date()
-    });
+    // Update user balance and stats if user exists
+    if (deposit.user) {
+      await User.findByIdAndUpdate(deposit.user._id, {
+        $inc: { 
+          balance: deposit.amount,
+          total_deposits: deposit.amount
+        },
+        last_deposit_date: new Date()
+      });
 
-    // Create transaction with image reference
-    await createTransaction(
-      deposit.user._id,
-      'deposit',
-      deposit.amount,
-      `Deposit via ${deposit.payment_method}`,
-      'completed',
-      { 
-        deposit_id: deposit._id,
-        payment_method: deposit.payment_method,
-        proof_url: deposit.payment_proof_url,
-        verified_by: req.user.full_name
-      },
-      deposit.payment_proof_url
-    );
+      // Create transaction with image reference
+      await createTransaction(
+        deposit.user._id,
+        'deposit',
+        deposit.amount,
+        `Deposit via ${deposit.payment_method}`,
+        'completed',
+        { 
+          deposit_id: deposit._id,
+          payment_method: deposit.payment_method,
+          proof_url: deposit.payment_proof_url,
+          verified_by: req.user.full_name
+        },
+        deposit.payment_proof_url
+      );
 
-    // Create notification
-    await createNotification(
-      deposit.user._id,
-      'Deposit Approved',
-      `Your deposit of ₦${deposit.amount.toLocaleString()} has been approved and credited to your account.`,
-      'success',
-      '/deposits',
-      { 
-        amount: deposit.amount,
-        payment_method: deposit.payment_method,
-        approved_by: req.user.full_name,
-        new_balance: deposit.user.balance + deposit.amount
+      // Create notification
+      await createNotification(
+        deposit.user._id,
+        'Deposit Approved',
+        `Your deposit of ₦${deposit.amount.toLocaleString()} has been approved and credited to your account.`,
+        'success',
+        '/deposits',
+        { 
+          amount: deposit.amount,
+          payment_method: deposit.payment_method,
+          approved_by: req.user.full_name,
+          new_balance: deposit.user.balance + deposit.amount
+        }
+      );
+
+      // Send email notification
+      if (deposit.user.email) {
+        await sendEmail(
+          deposit.user.email,
+          'Deposit Approved',
+          `<h2>Deposit Approved</h2>
+           <p>Your deposit has been approved and the amount has been credited to your account.</p>
+           <p><strong>Deposit Details:</strong></p>
+           <ul>
+             <li>Amount: ₦${deposit.amount.toLocaleString()}</li>
+             <li>Payment Method: ${deposit.payment_method}</li>
+             <li>Reference: ${deposit.reference}</li>
+             <li>New Balance: ₦${(deposit.user.balance + deposit.amount).toLocaleString()}</li>
+             <li>Approved By: ${req.user.full_name}</li>
+           </ul>
+           <p><a href="${config.clientURL}/deposits">View Deposit</a></p>`
+        );
       }
-    );
-
-    // Send email notification
-    await sendEmail(
-      deposit.user.email,
-      'Deposit Approved',
-      `<h2>Deposit Approved</h2>
-       <p>Your deposit has been approved and the amount has been credited to your account.</p>
-       <p><strong>Deposit Details:</strong></p>
-       <ul>
-         <li>Amount: ₦${deposit.amount.toLocaleString()}</li>
-         <li>Payment Method: ${deposit.payment_method}</li>
-         <li>Reference: ${deposit.reference}</li>
-         <li>New Balance: ₦${(deposit.user.balance + deposit.amount).toLocaleString()}</li>
-         <li>Approved By: ${req.user.full_name}</li>
-       </ul>
-       <p><a href="${config.clientURL}/deposits">View Deposit</a></p>`
-    );
+    }
 
     // Create audit log
     await createAdminAudit(
@@ -4379,8 +4454,8 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
       {
         amount: deposit.amount,
         payment_method: deposit.payment_method,
-        user_id: deposit.user._id,
-        user_name: deposit.user.full_name,
+        user_id: deposit.user ? deposit.user._id : null,
+        user_name: deposit.user ? deposit.user.full_name : 'Unknown User',
         remarks: remarks,
         has_proof: !!deposit.payment_proof_url
       },
@@ -4393,7 +4468,7 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
         ...deposit.toObject(),
         approved_by_admin: req.user.full_name,
         proof_verified: true,
-        user_new_balance: deposit.user.balance + deposit.amount
+        user_new_balance: deposit.user ? deposit.user.balance + deposit.amount : 0
       },
       message: 'Deposit approved and user notified'
     }));
@@ -4436,15 +4511,17 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
     
     await deposit.save();
 
-    // Create notification
-    await createNotification(
-      deposit.user._id,
-      'Deposit Rejected',
-      `Your deposit of ₦${deposit.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
-      'error',
-      '/deposits',
-      { amount: deposit.amount, remarks: remarks }
-    );
+    // Create notification if user exists
+    if (deposit.user) {
+      await createNotification(
+        deposit.user._id,
+        'Deposit Rejected',
+        `Your deposit of ₦${deposit.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
+        'error',
+        '/deposits',
+        { amount: deposit.amount, remarks: remarks }
+      );
+    }
 
     // Create audit log
     await createAdminAudit(
@@ -4454,8 +4531,8 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
       depositId,
       {
         amount: deposit.amount,
-        user_id: deposit.user._id,
-        user_name: deposit.user.full_name,
+        user_id: deposit.user ? deposit.user._id : null,
+        user_name: deposit.user ? deposit.user.full_name : 'Unknown User',
         remarks: remarks
       },
       req.ip,
@@ -4488,12 +4565,13 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
       formatted_net_amount: `₦${wdl.net_amount.toLocaleString()}`,
       formatted_fee: `₦${wdl.platform_fee.toLocaleString()}`,
       user_details: {
-        name: wdl.user.full_name,
-        email: wdl.user.email,
-        phone: wdl.user.phone,
-        current_balance: wdl.user.balance
+        name: wdl.user ? wdl.user.full_name : 'Unknown User',
+        email: wdl.user ? wdl.user.email : 'N/A',
+        phone: wdl.user ? wdl.user.phone : 'N/A',
+        current_balance: wdl.user ? wdl.user.balance : 0
       },
-      days_pending: Math.ceil((new Date() - new Date(wdl.createdAt)) / (1000 * 60 * 60 * 24)),
+      days_pending: wdl.createdAt ? 
+        Math.ceil((new Date() - new Date(wdl.createdAt)) / (1000 * 60 * 60 * 24)) : 0,
       payment_details: wdl.bank_details || { wallet_address: wdl.wallet_address } || { paypal_email: wdl.paypal_email }
     }));
 
@@ -4503,7 +4581,8 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
       total_net_amount: pendingWithdrawals.reduce((sum, wdl) => sum + wdl.net_amount, 0),
       total_fees: pendingWithdrawals.reduce((sum, wdl) => sum + wdl.platform_fee, 0),
       by_payment_method: pendingWithdrawals.reduce((acc, wdl) => {
-        acc[wdl.payment_method] = (acc[wdl.payment_method] || 0) + 1;
+        const method = wdl.payment_method || 'unknown';
+        acc[method] = (acc[method] || 0) + 1;
         return acc;
       }, {})
     };
@@ -4564,61 +4643,65 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
     
     await withdrawal.save();
 
-    // Update transaction status
-    await Transaction.findOneAndUpdate(
-      { related_withdrawal: withdrawalId },
-      { 
-        status: 'completed',
-        payment_proof_url: payment_proof_url,
-        admin_notes: remarks
+    // Update transaction status if user exists
+    if (withdrawal.user) {
+      await Transaction.findOneAndUpdate(
+        { related_withdrawal: withdrawalId },
+        { 
+          status: 'completed',
+          payment_proof_url: payment_proof_url,
+          admin_notes: remarks
+        }
+      );
+
+      // Update user withdrawal stats
+      await User.findByIdAndUpdate(withdrawal.user._id, {
+        $inc: { total_withdrawals: withdrawal.amount },
+        last_withdrawal_date: new Date()
+      });
+
+      // Create notification with transaction proof
+      await createNotification(
+        withdrawal.user._id,
+        'Withdrawal Approved',
+        `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been approved and processed.${transaction_id ? ` Transaction ID: ${transaction_id}` : ''}`,
+        'success',
+        '/withdrawals',
+        { 
+          amount: withdrawal.amount,
+          net_amount: withdrawal.net_amount,
+          fee: withdrawal.platform_fee,
+          payment_method: withdrawal.payment_method,
+          transaction_id: transaction_id,
+          has_proof: !!payment_proof_url
+        }
+      );
+
+      // Send email notification with proof
+      if (withdrawal.user.email) {
+        await sendEmail(
+          withdrawal.user.email,
+          'Withdrawal Processed Successfully',
+          `<h2>Withdrawal Processed</h2>
+           <p>Your withdrawal request has been processed successfully.</p>
+           <p><strong>Details:</strong></p>
+           <ul>
+             <li>Amount: ₦${withdrawal.amount.toLocaleString()}</li>
+             <li>Net Amount: ₦${withdrawal.net_amount.toLocaleString()}</li>
+             <li>Platform Fee: ₦${withdrawal.platform_fee.toLocaleString()}</li>
+             <li>Payment Method: ${withdrawal.payment_method}</li>
+             <li>Transaction ID: ${transaction_id || 'N/A'}</li>
+             ${withdrawal.bank_details ? `
+             <li>Bank: ${withdrawal.bank_details.bank_name}</li>
+             <li>Account: ${withdrawal.bank_details.account_number}</li>
+             <li>Account Name: ${withdrawal.bank_details.account_name}</li>
+             ` : ''}
+             ${payment_proof_url ? `<li>Payment Proof: <a href="${payment_proof_url}">View Proof</a></li>` : ''}
+           </ul>
+           <p><a href="${config.clientURL}/withdrawals">View Withdrawal</a></p>`
+        );
       }
-    );
-
-    // Update user withdrawal stats
-    await User.findByIdAndUpdate(withdrawal.user._id, {
-      $inc: { total_withdrawals: withdrawal.amount },
-      last_withdrawal_date: new Date()
-    });
-
-    // Create notification with transaction proof
-    await createNotification(
-      withdrawal.user._id,
-      'Withdrawal Approved',
-      `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been approved and processed.${transaction_id ? ` Transaction ID: ${transaction_id}` : ''}`,
-      'success',
-      '/withdrawals',
-      { 
-        amount: withdrawal.amount,
-        net_amount: withdrawal.net_amount,
-        fee: withdrawal.platform_fee,
-        payment_method: withdrawal.payment_method,
-        transaction_id: transaction_id,
-        has_proof: !!payment_proof_url
-      }
-    );
-
-    // Send email notification with proof
-    await sendEmail(
-      withdrawal.user.email,
-      'Withdrawal Processed Successfully',
-      `<h2>Withdrawal Processed</h2>
-       <p>Your withdrawal request has been processed successfully.</p>
-       <p><strong>Details:</strong></p>
-       <ul>
-         <li>Amount: ₦${withdrawal.amount.toLocaleString()}</li>
-         <li>Net Amount: ₦${withdrawal.net_amount.toLocaleString()}</li>
-         <li>Platform Fee: ₦${withdrawal.platform_fee.toLocaleString()}</li>
-         <li>Payment Method: ${withdrawal.payment_method}</li>
-         <li>Transaction ID: ${transaction_id || 'N/A'}</li>
-         ${withdrawal.bank_details ? `
-         <li>Bank: ${withdrawal.bank_details.bank_name}</li>
-         <li>Account: ${withdrawal.bank_details.account_number}</li>
-         <li>Account Name: ${withdrawal.bank_details.account_name}</li>
-         ` : ''}
-         ${payment_proof_url ? `<li>Payment Proof: <a href="${payment_proof_url}">View Proof</a></li>` : ''}
-       </ul>
-       <p><a href="${config.clientURL}/withdrawals">View Withdrawal</a></p>`
-    );
+    }
 
     // Create audit log
     await createAdminAudit(
@@ -4631,8 +4714,8 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
         net_amount: withdrawal.net_amount,
         fee: withdrawal.platform_fee,
         payment_method: withdrawal.payment_method,
-        user_id: withdrawal.user._id,
-        user_name: withdrawal.user.full_name,
+        user_id: withdrawal.user ? withdrawal.user._id : null,
+        user_name: withdrawal.user ? withdrawal.user.full_name : 'Unknown User',
         transaction_id: transaction_id,
         has_proof: !!payment_proof_url,
         remarks: remarks
@@ -4689,42 +4772,44 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
     
     await withdrawal.save();
 
-    // Refund user balance
-    await User.findByIdAndUpdate(withdrawal.user._id, {
-      $inc: { balance: withdrawal.amount }
-    });
+    // Refund user balance if user exists
+    if (withdrawal.user) {
+      await User.findByIdAndUpdate(withdrawal.user._id, {
+        $inc: { balance: withdrawal.amount }
+      });
 
-    // Update transaction status
-    await Transaction.findOneAndUpdate(
-      { related_withdrawal: withdrawalId },
-      { 
-        status: 'cancelled',
-        admin_notes: remarks
-      }
-    );
+      // Update transaction status
+      await Transaction.findOneAndUpdate(
+        { related_withdrawal: withdrawalId },
+        { 
+          status: 'cancelled',
+          admin_notes: remarks
+        }
+      );
 
-    // Create transaction for refund
-    await createTransaction(
-      withdrawal.user._id,
-      'refund',
-      withdrawal.amount,
-      `Refund for rejected withdrawal`,
-      'completed',
-      { 
-        withdrawal_id: withdrawal._id,
-        remarks: remarks 
-      }
-    );
+      // Create transaction for refund
+      await createTransaction(
+        withdrawal.user._id,
+        'refund',
+        withdrawal.amount,
+        `Refund for rejected withdrawal`,
+        'completed',
+        { 
+          withdrawal_id: withdrawal._id,
+          remarks: remarks 
+        }
+      );
 
-    // Create notification
-    await createNotification(
-      withdrawal.user._id,
-      'Withdrawal Rejected',
-      `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
-      'error',
-      '/withdrawals',
-      { amount: withdrawal.amount, remarks: remarks }
-    );
+      // Create notification
+      await createNotification(
+        withdrawal.user._id,
+        'Withdrawal Rejected',
+        `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
+        'error',
+        '/withdrawals',
+        { amount: withdrawal.amount, remarks: remarks }
+      );
+    }
 
     // Create audit log
     await createAdminAudit(
@@ -4734,8 +4819,8 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
       withdrawalId,
       {
         amount: withdrawal.amount,
-        user_id: withdrawal.user._id,
-        user_name: withdrawal.user.full_name,
+        user_id: withdrawal.user ? withdrawal.user._id : null,
+        user_name: withdrawal.user ? withdrawal.user.full_name : 'Unknown User',
         remarks: remarks
       },
       req.ip,
@@ -4810,26 +4895,27 @@ app.get('/api/admin/transactions', adminAuth, async (req, res) => {
         type_color: typeColor,
         has_proof: !!txn.payment_proof_url,
         proof_url: txn.payment_proof_url || null,
-        date_formatted: new Date(txn.createdAt).toLocaleDateString('en-US', {
+        date_formatted: txn.createdAt ? new Date(txn.createdAt).toLocaleDateString('en-US', {
           year: 'numeric',
           month: 'short',
           day: 'numeric',
           hour: '2-digit',
           minute: '2-digit'
-        }),
-        user_name: txn.user?.full_name || 'N/A',
-        user_email: txn.user?.email || 'N/A'
+        }) : 'N/A',
+        user_name: txn.user ? txn.user.full_name : 'Unknown User',
+        user_email: txn.user ? txn.user.email : 'N/A'
       };
     });
     
     // Calculate summary
     const summary = {
       total_transactions: total,
-      total_amount: transactions.reduce((sum, t) => sum + t.amount, 0),
+      total_amount: transactions.reduce((sum, t) => sum + (t.amount || 0), 0),
       income: transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0),
       expenses: transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0),
       by_type: transactions.reduce((acc, t) => {
-        acc[t.type] = (acc[t.type] || 0) + 1;
+        const type = t.type || 'unknown';
+        acc[type] = (acc[type] || 0) + 1;
         return acc;
       }, {}),
       with_proof: transactions.filter(t => t.payment_proof_url).length,
@@ -4880,14 +4966,15 @@ app.get('/api/admin/pending-kyc', adminAuth, async (req, res) => {
     // Enhance with image data
     const enhancedKYC = pendingKYC.map(kyc => ({
       ...kyc,
-      user_name: kyc.user?.full_name,
-      user_email: kyc.user?.email,
-      user_phone: kyc.user?.phone,
+      user_name: kyc.user ? kyc.user.full_name : 'Unknown User',
+      user_email: kyc.user ? kyc.user.email : 'N/A',
+      user_phone: kyc.user ? kyc.user.phone : 'N/A',
       has_id_front: !!kyc.id_front_url,
       has_id_back: !!kyc.id_back_url,
       has_selfie: !!kyc.selfie_with_id_url,
       has_address_proof: !!kyc.address_proof_url,
-      days_pending: Math.ceil((new Date() - new Date(kyc.createdAt)) / (1000 * 60 * 60 * 24)),
+      days_pending: kyc.createdAt ? 
+        Math.ceil((new Date() - new Date(kyc.createdAt)) / (1000 * 60 * 60 * 24)) : 0,
       images: {
         id_front: kyc.id_front_url,
         id_back: kyc.id_back_url,
@@ -4949,44 +5036,48 @@ app.post('/api/admin/kyc/:id/approve', adminAuth, [
     
     await kyc.save();
 
-    // Update user
-    await User.findByIdAndUpdate(kyc.user._id, {
-      kyc_status: 'verified',
-      kyc_verified: true,
-      kyc_verified_at: new Date()
-    });
+    // Update user if exists
+    if (kyc.user) {
+      await User.findByIdAndUpdate(kyc.user._id, {
+        kyc_status: 'verified',
+        kyc_verified: true,
+        kyc_verified_at: new Date()
+      });
 
-    // Create notification with KYC images reference
-    await createNotification(
-      kyc.user._id,
-      'KYC Approved',
-      'Your KYC documents have been verified and approved. You can now enjoy full platform access.',
-      'kyc',
-      '/profile',
-      { 
-        verified_at: new Date(),
-        verified_by: req.user.full_name,
-        has_images: true,
-        id_type: kyc.id_type
+      // Create notification with KYC images reference
+      await createNotification(
+        kyc.user._id,
+        'KYC Approved',
+        'Your KYC documents have been verified and approved. You can now enjoy full platform access.',
+        'kyc',
+        '/profile',
+        { 
+          verified_at: new Date(),
+          verified_by: req.user.full_name,
+          has_images: true,
+          id_type: kyc.id_type
+        }
+      );
+
+      // Send email
+      if (kyc.user.email) {
+        await sendEmail(
+          kyc.user.email,
+          'KYC Verification Approved',
+          `<h2>KYC Verification Approved</h2>
+           <p>Your KYC documents have been successfully verified and approved.</p>
+           <p>You now have full access to all platform features, including withdrawals.</p>
+           <p><strong>Verification Details:</strong></p>
+           <ul>
+             <li>ID Type: ${kyc.id_type}</li>
+             <li>ID Number: ${kyc.id_number}</li>
+             <li>Verified By: ${req.user.full_name}</li>
+             <li>Verification Date: ${new Date().toLocaleDateString()}</li>
+           </ul>
+           <p>Thank you for completing the verification process.</p>`
+        );
       }
-    );
-
-    // Send email
-    await sendEmail(
-      kyc.user.email,
-      'KYC Verification Approved',
-      `<h2>KYC Verification Approved</h2>
-       <p>Your KYC documents have been successfully verified and approved.</p>
-       <p>You now have full access to all platform features, including withdrawals.</p>
-       <p><strong>Verification Details:</strong></p>
-       <ul>
-         <li>ID Type: ${kyc.id_type}</li>
-         <li>ID Number: ${kyc.id_number}</li>
-         <li>Verified By: ${req.user.full_name}</li>
-         <li>Verification Date: ${new Date().toLocaleDateString()}</li>
-       </ul>
-       <p>Thank you for completing the verification process.</p>`
-    );
+    }
 
     // Create audit log with image verification
     await createAdminAudit(
@@ -4995,8 +5086,8 @@ app.post('/api/admin/kyc/:id/approve', adminAuth, [
       'kyc',
       kycId,
       {
-        user_id: kyc.user._id,
-        user_name: kyc.user.full_name,
+        user_id: kyc.user ? kyc.user._id : null,
+        user_name: kyc.user ? kyc.user.full_name : 'Unknown User',
         id_type: kyc.id_type,
         has_id_front: !!kyc.id_front_url,
         has_selfie: !!kyc.selfie_with_id_url,
@@ -5011,7 +5102,7 @@ app.post('/api/admin/kyc/:id/approve', adminAuth, [
       kyc: {
         ...kyc.toObject(),
         reviewed_by_admin: req.user.full_name,
-        user_verified: true
+        user_verified: !!kyc.user
       }
     }));
   } catch (error) {
@@ -5054,24 +5145,26 @@ app.post('/api/admin/kyc/:id/reject', adminAuth, [
     
     await kyc.save();
 
-    // Update user
-    await User.findByIdAndUpdate(kyc.user._id, {
-      kyc_status: 'rejected'
-    });
+    // Update user if exists
+    if (kyc.user) {
+      await User.findByIdAndUpdate(kyc.user._id, {
+        kyc_status: 'rejected'
+      });
 
-    // Create notification
-    await createNotification(
-      kyc.user._id,
-      'KYC Rejected',
-      `Your KYC documents have been rejected. Reason: ${rejection_reason}. Please submit new documents.`,
-      'kyc',
-      '/kyc',
-      { 
-        rejection_reason: rejection_reason,
-        remarks: remarks,
-        can_resubmit: true
-      }
-    );
+      // Create notification
+      await createNotification(
+        kyc.user._id,
+        'KYC Rejected',
+        `Your KYC documents have been rejected. Reason: ${rejection_reason}. Please submit new documents.`,
+        'kyc',
+        '/kyc',
+        { 
+          rejection_reason: rejection_reason,
+          remarks: remarks,
+          can_resubmit: true
+        }
+      );
+    }
 
     // Create audit log
     await createAdminAudit(
@@ -5080,8 +5173,8 @@ app.post('/api/admin/kyc/:id/reject', adminAuth, [
       'kyc',
       kycId,
       {
-        user_id: kyc.user._id,
-        user_name: kyc.user.full_name,
+        user_id: kyc.user ? kyc.user._id : null,
+        user_name: kyc.user ? kyc.user.full_name : 'Unknown User',
         rejection_reason: rejection_reason,
         remarks: remarks
       },
@@ -5456,13 +5549,13 @@ app.get('/api/notifications', auth, async (req, res) => {
         ...notif,
         type_color: typeColors[notif.type] || 'gray',
         time_ago: getTimeAgo(notif.createdAt),
-        date_formatted: new Date(notif.createdAt).toLocaleDateString('en-US', {
+        date_formatted: notif.createdAt ? new Date(notif.createdAt).toLocaleDateString('en-US', {
           year: 'numeric',
           month: 'short',
           day: 'numeric',
           hour: '2-digit',
           minute: '2-digit'
-        }),
+        }) : 'N/A',
         has_action: !!notif.action_url
       };
     });
@@ -5482,7 +5575,8 @@ app.get('/api/notifications', auth, async (req, res) => {
         total: total,
         unread: unreadCount,
         by_type: enhancedNotifications.reduce((acc, n) => {
-          acc[n.type] = (acc[n.type] || 0) + 1;
+          const type = n.type || 'unknown';
+          acc[type] = (acc[type] || 0) + 1;
           return acc;
         }, {})
       }
@@ -5494,6 +5588,8 @@ app.get('/api/notifications', auth, async (req, res) => {
 
 // Helper function for time ago
 function getTimeAgo(date) {
+  if (!date) return 'N/A';
+  
   const now = new Date();
   const diffMs = now - new Date(date);
   const diffMins = Math.floor(diffMs / 60000);
@@ -5745,19 +5841,21 @@ cron.schedule('0 0 * * *', async () => {
         investment.status = 'completed';
         await investment.save();
         
-        await createNotification(
-          investment.user._id,
-          'Investment Completed',
-          `Your investment in ${investment.plan.name} has completed successfully. Total earnings: ₦${investment.earned_so_far.toLocaleString()}`,
-          'success',
-          '/investments',
-          { 
-            plan_name: investment.plan.name,
-            amount: investment.amount,
-            total_earnings: investment.earned_so_far,
-            duration: investment.plan.duration
-          }
-        );
+        if (investment.user) {
+          await createNotification(
+            investment.user._id,
+            'Investment Completed',
+            `Your investment in ${investment.plan.name} has completed successfully. Total earnings: ₦${investment.earned_so_far.toLocaleString()}`,
+            'success',
+            '/investments',
+            { 
+              plan_name: investment.plan.name,
+              amount: investment.amount,
+              total_earnings: investment.earned_so_far,
+              duration: investment.plan.duration
+            }
+          );
+        }
         
       } catch (completeError) {
         console.error(`Error completing investment ${investment._id}:`, completeError);
@@ -5789,10 +5887,10 @@ cron.schedule('0 1 * * *', async () => {
         const userId = investment.user._id;
         const planId = investment.plan._id;
         
-        // Check if user has sufficient balance
+        // Check if user exists and has sufficient balance
         const user = await User.findById(userId);
         if (!user || user.balance < investment.amount) {
-          console.log(`User ${userId} has insufficient balance for auto-renew`);
+          console.log(`User ${userId} has insufficient balance for auto-renew or user not found`);
           skippedCount++;
           continue;
         }
