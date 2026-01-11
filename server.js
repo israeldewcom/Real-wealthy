@@ -58,7 +58,7 @@ const missingEnvVars = requiredEnvVars.filter(envVar => {
 
 if (missingEnvVars.length > 0) {
   console.error('\n🚨 CRITICAL: Missing required environment variables');
-  console.error('💡 Please set these in your deployment environment');
+  console.error('💡 Pleasset these in your deployment environment');
   
   // Try to load from alternative sources
   console.log('🔄 Attempting to load from alternative sources...');
