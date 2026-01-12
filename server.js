@@ -52,7 +52,7 @@ const missingEnvVars = requiredEnvVars.filter(envVar => {
     console.error(`❌ Missing: ${envVar}`);
     return true;
   }
-  console.log(`✅ ${envVar}: ${envVar === 'JWT_SECRET' ? '***' : process.env[envVar]}`);
+  console.log(` ${envVar}: ${envVar === 'JWT_SECRET' ? '***' : process.env[envVar]}`);
   return false;
 });
 
