@@ -1,6 +1,6 @@
 // server.js - RAW WEALTHY BACKEND v38.0 - DEBUGGED & ENHANCED PRODUCTION READY
 // COMPLETE DEBUGGING: Database Connection Fix + Advanced Error Handling + Real-time Debugging
-// ENHANCED WITH: Connection Pooling + Retry Logic + Health Monitoring + Performance Optimization
+//  WITH: Connection Pooling + Retry Logic + Health Monitoring + Performance Optimization
 
 import express from 'express';
 import mongoose from 'mongoose';
