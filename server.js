@@ -35,7 +35,7 @@ const __dirname = path.dirname(__filename);
 // Enhanced environment configuration
 dotenv.config({ path: path.join(__dirname, '.env.production') });
 
-// ==================== ENVIRONMENT VALIDATION ====================
+// ================ ENVIRONMENT VALIDATION ====================
 const requiredEnvVars = [
   'MONGODB_URI',
   'JWT_SECRET',
