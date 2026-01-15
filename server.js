@@ -44,7 +44,7 @@ const requiredEnvVars = [
 ];
 
 console.log('🔍 Environment Configuration:');
-console.log('============================');
+console.log('==========================');
 
 const missingEnvVars = requiredEnvVars.filter(envVar => {
   if (!process.env[envVar]) {
