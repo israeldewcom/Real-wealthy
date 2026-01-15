@@ -68,7 +68,7 @@ if (missingEnvVars.length > 0) {
     console.log('✅ Loaded MONGODB_URI from DATABASE_URL');
   }
   
-  // Generate JWT secret if missing
+  // Generat secret if missing
   if (!process.env.JWT_SECRET) {
     process.env.JWT_SECRET = crypto.randomBytes(64).toString('hex');
     console.log('✅ Generated JWT_SECRET automatically');
