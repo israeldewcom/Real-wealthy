@@ -1281,91 +1281,58 @@ const createDefaultInvestmentPlans = async () => {
     console.error('Error creating default investment plans:', error);
   }
 };
-
+// ✅ FIXED VERSION
 const createAdminUser = async () => {
   try {
-    console.log('🚀 NUCLEAR ADMIN FIX STARTING...');
+    console.log('🚀 ADMIN ACCOUNT SETUP...');
     
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
     
-    console.log(`🔑 Using: ${adminEmail} / ${adminPassword}`);
+    console.log(`🔑 Credentials: ${adminEmail} / ${adminPassword}`);
     
     // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: adminEmail });
-    if (existingAdmin) {
-      console.log('✅ Admin already exists');
+    let admin = await User.findOne({ email: adminEmail });
+    
+    if (admin) {
+      console.log('✅ Admin exists, verifying password...');
       
-      // Update admin password if it's the default
-      if (adminPassword === 'Admin123456') {
-        const salt = await bcrypt.genSalt(12);
-        const hash = await bcrypt.hash(adminPassword, salt);
-        existingAdmin.password = hash;
-        await existingAdmin.save();
+      // Test current password
+      const isMatch = await bcrypt.compare(adminPassword, admin.password);
+      
+      if (!isMatch) {
+        console.log('🔄 Updating admin password...');
+        // Directly update password (bypass hooks)
+        admin.password = adminPassword; // Plain text - will be hashed by pre-save hook
+        await admin.save();
         console.log('✅ Admin password updated');
       }
       
       return;
     }
     
-    // 1. Generate FRESH hash
-    const salt = await bcrypt.genSalt(12);
-    const hash = await bcrypt.hash(adminPassword, salt);
-    
-    console.log('📝 Generated fresh hash');
-    
-    // 2. Create admin WITHOUT Mongoose hooks
-    const adminData = {
-      _id: new mongoose.Types.ObjectId(),
+    // Create new admin with proper method
+    admin = new User({
       full_name: 'Raw Wealthy Admin',
       email: adminEmail,
       phone: '09161806424',
-      password: hash,
+      password: adminPassword, // Will be hashed by pre-save hook
       role: 'super_admin',
       balance: 1000000,
-      total_earnings: 0,
-      referral_earnings: 0,
-      risk_tolerance: 'medium',
-      investment_strategy: 'balanced',
-      country: 'ng',
-      currency: 'NGN',
-      referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase(),
       kyc_verified: true,
       kyc_status: 'verified',
       is_active: true,
-      is_verified: true,
-      two_factor_enabled: false,
-      notifications_enabled: true,
-      email_notifications: true,
-      sms_notifications: false,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+      is_verified: true
+    });
     
-    // Insert directly
-    await mongoose.connection.collection('users').insertOne(adminData);
-    console.log('✅ Admin created in database');
-    
-    // 3. Verify IMMEDIATELY
-    const verifyUser = await mongoose.connection.collection('users').findOne({ email: adminEmail });
-    
-    const match = await bcrypt.compare(adminPassword, verifyUser.password);
-    console.log('🔑 Password match test:', match ? '✅ PASS' : '❌ FAIL');
-    
-    if (match) {
-      console.log('🎉 ADMIN READY FOR LOGIN!');
-      console.log(`📧 Email: ${adminEmail}`);
-      console.log(`🔑 Password: ${adminPassword}`);
-      console.log('👉 Login at: /api/auth/login');
-    } else {
-      console.error('❌ PASSWORD MISMATCH DETECTED!');
-    }
-    
-    console.log('🚀 NUCLEAR ADMIN FIX COMPLETE');
+    await admin.save();
+    console.log('🎉 Admin created successfully!');
+    console.log(`📧 Email: ${adminEmail}`);
+    console.log(`🔑 Password: ${adminPassword}`);
+    console.log('👉 Login at: /api/auth/login');
     
   } catch (error) {
-    console.error('❌ NUCLEAR FIX ERROR:', error.message);
-    console.error(error.stack);
+    console.error('❌ Admin setup error:', error.message);
   }
 };
 
