@@ -89,7 +89,7 @@ if (!process.env.SERVER_URL) {
 
 console.log('============================\n');
 
-// ==================== DYNAMIC CONFIGURATION ====================
+// =============== DYNAMIC CONFIGURATION ====================
 const config = {
   // Server
   port: process.env.PORT || 10000,
