@@ -74,7 +74,7 @@ if (missingEnvVars.length > 0) {
     console.log('✅ Generated JWT_SECRET automatically');
   }
   
-  // Set default client URL
+  // Set dult client URL
   if (!process.env.CLIENT_URL) {
     process.env.CLIENT_URL = 'https://us-raw-wealthy.vercel.app';
     console.log('✅ Set default CLIENT_URL');
