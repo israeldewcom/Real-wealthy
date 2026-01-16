@@ -1,8 +1,9 @@
-// server.js - RAW WEALTHY BACKEND v48.0 - ULTIMATE ENTERPRISE EDITION
+// server.js - RAW WEALTHY BACKEND v47.1 - ENTERPRISE EDITION
 // COMPLETE DEBUGGED & ENHANCED: Advanced Admin Dashboard + Full Data Analytics + Enhanced Notifications + Image Management
 // AUTO-DEPLOYMENT READY WITH DYNAMIC CONFIGURATION
 // DEBUGGED MONGODB CONNECTION WITH RETRY MECHANISM
-// ADVANCED DEBUGGING SYSTEM WITH REAL-TIME MONITORING
+// COMPLETE ADMIN PANEL WITH ALL MISSING ENDPOINTS
+// ENHANCED DEBUGGING & MONITORING
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -31,8 +32,7 @@ import dotenv from 'dotenv';
 import axios from 'axios';
 import { Server } from 'socket.io';
 import http from 'http';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
+import util from 'util';
 
 // ES Modules equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -41,9 +41,16 @@ const __dirname = path.dirname(__filename);
 // Enhanced environment configuration with multiple fallbacks
 dotenv.config({ path: path.join(__dirname, '.env.production') });
 
-// ==================== ULTIMATE ENVIRONMENT VALIDATION ====================
-console.log('🔍 Ultimate Environment Configuration:');
-console.log('=========================================');
+// ==================== ENHANCED ENVIRONMENT VALIDATION ====================
+const requiredEnvVars = [
+  'MONGODB_URI',
+  'JWT_SECRET',
+  'NODE_ENV',
+  'CLIENT_URL'
+];
+
+console.log('🔍 Environment Configuration:');
+console.log('============================');
 
 // Try multiple sources for MongoDB URI
 let mongoURI = process.env.MONGODB_URI;
@@ -89,9 +96,86 @@ if (!process.env.SERVER_URL) {
   console.log('✅ Set SERVER_URL:', process.env.SERVER_URL);
 }
 
-console.log('=========================================\n');
+console.log('============================\n');
 
-// ==================== ULTIMATE CONFIGURATION WITH DEBUGGING ====================
+// ==================== ADVANCED DEBUGGING CONFIGURATION ====================
+const debugConfig = {
+  enabled: process.env.DEBUG === 'true' || false,
+  level: process.env.DEBUG_LEVEL || 'info',
+  logToFile: process.env.LOG_TO_FILE === 'true' || false,
+  logFile: path.join(__dirname, 'debug.log'),
+  maxLogSize: parseInt(process.env.MAX_LOG_SIZE) || 10 * 1024 * 1024, // 10MB
+};
+
+// Enhanced logging function
+const log = {
+  info: (...args) => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] ℹ️ INFO:`, ...args);
+    if (debugConfig.logToFile) logToFile('INFO', args);
+  },
+  
+  warn: (...args) => {
+    const timestamp = new Date().toISOString();
+    console.warn(`[${timestamp}] ⚠️ WARN:`, ...args);
+    if (debugConfig.logToFile) logToFile('WARN', args);
+  },
+  
+  error: (...args) => {
+    const timestamp = new Date().toISOString();
+    console.error(`[${timestamp}] ❌ ERROR:`, ...args);
+    if (debugConfig.logToFile) logToFile('ERROR', args);
+  },
+  
+  debug: (...args) => {
+    if (debugConfig.enabled) {
+      const timestamp = new Date().toISOString();
+      console.debug(`[${timestamp}] 🔍 DEBUG:`, ...args);
+      if (debugConfig.logToFile) logToFile('DEBUG', args);
+    }
+  },
+  
+  success: (...args) => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] ✅ SUCCESS:`, ...args);
+    if (debugConfig.logToFile) logToFile('SUCCESS', args);
+  },
+  
+  database: (...args) => {
+    if (debugConfig.enabled && debugConfig.level === 'debug') {
+      const timestamp = new Date().toISOString();
+      console.log(`[${timestamp}] 🗄️ DATABASE:`, ...args);
+    }
+  }
+};
+
+// File logging function
+function logToFile(level, args) {
+  try {
+    const timestamp = new Date().toISOString();
+    const message = args.map(arg => 
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ');
+    
+    const logEntry = `[${timestamp}] ${level}: ${message}\n`;
+    
+    // Check if log file exists and size
+    if (fs.existsSync(debugConfig.logFile)) {
+      const stats = fs.statSync(debugConfig.logFile);
+      if (stats.size > debugConfig.maxLogSize) {
+        // Rotate log file
+        const rotatedFile = debugConfig.logFile + '.' + Date.now();
+        fs.renameSync(debugConfig.logFile, rotatedFile);
+      }
+    }
+    
+    fs.appendFileSync(debugConfig.logFile, logEntry);
+  } catch (error) {
+    console.error('Failed to write to log file:', error);
+  }
+}
+
+// ==================== ENHANCED CONFIGURATION WITH DEBUGGING ====================
 const config = {
   // Server
   port: process.env.PORT || 10000,
@@ -146,13 +230,8 @@ const config = {
   },
   
   // Debugging
-  debug: process.env.DEBUG === 'true',
-  logLevel: process.env.LOG_LEVEL || 'info',
-  
-  // Advanced Debugging
-  enableWebSocketDebug: process.env.ENABLE_WS_DEBUG === 'true',
-  enableRequestLogging: process.env.ENABLE_REQUEST_LOGGING === 'true',
-  enableDatabaseQueryLogging: process.env.ENABLE_DB_QUERY_LOGGING === 'true'
+  debug: debugConfig.enabled,
+  logLevel: debugConfig.level
 };
 
 // Build allowed origins dynamically
@@ -171,118 +250,16 @@ config.allowedOrigins = [
   'https://raw-wealthy-backend.herokuapp.com'
 ].filter(Boolean);
 
-console.log('⚙️  Ultimate Configuration Loaded:');
-console.log(`- Port: ${config.port}`);
-console.log(`- Environment: ${config.nodeEnv}`);
-console.log(`- Client URL: ${config.clientURL}`);
-console.log(`- Server URL: ${config.serverURL}`);
-console.log(`- Database URI: ${config.mongoURI ? 'Set (masked)' : 'Not set'}`);
-console.log(`- Email Enabled: ${config.emailEnabled}`);
-console.log(`- Allowed Origins: ${config.allowedOrigins.length}`);
-console.log(`- Debug Mode: ${config.debug}`);
-console.log(`- WebSocket Debug: ${config.enableWebSocketDebug}`);
-console.log(`- Request Logging: ${config.enableRequestLogging}`);
-
-// ==================== ADVANCED DEBUGGING SYSTEM ====================
-const debugSystem = {
-  requests: new Map(),
-  errors: [],
-  performance: [],
-  databaseQueries: [],
-  requestCounts: {},
-  
-  logRequest(req, res, duration) {
-    if (!config.enableRequestLogging) return;
-    
-    const logEntry = {
-      id: req._requestId || crypto.randomBytes(8).toString('hex'),
-      timestamp: new Date().toISOString(),
-      method: req.method,
-      url: req.originalUrl,
-      statusCode: res.statusCode,
-      duration,
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-      userId: req.user?._id,
-      success: true
-    };
-    
-    this.requests.set(logEntry.id, logEntry);
-    
-    // Track endpoint hits
-    const endpoint = req.path;
-    this.requestCounts[endpoint] = (this.requestCounts[endpoint] || 0) + 1;
-    
-    // Keep only last 1000 requests
-    if (this.requests.size > 1000) {
-      const firstKey = this.requests.keys().next().value;
-      this.requests.delete(firstKey);
-    }
-  },
-  
-  logError(error, req) {
-    const errorEntry = {
-      id: crypto.randomBytes(8).toString('hex'),
-      timestamp: new Date().toISOString(),
-      message: error.message,
-      stack: error.stack,
-      url: req?.originalUrl,
-      method: req?.method,
-      userId: req?.user?._id
-    };
-    
-    this.errors.push(errorEntry);
-    
-    // Keep only last 500 errors
-    if (this.errors.length > 500) {
-      this.errors.shift();
-    }
-    
-    // Emit to WebSocket clients
-    if (config.enableWebSocketDebug) {
-      io.emit('error_log', errorEntry);
-    }
-  },
-  
-  logDatabaseQuery(collection, method, query, duration) {
-    if (!config.enableDatabaseQueryLogging) return;
-    
-    const queryEntry = {
-      id: crypto.randomBytes(8).toString('hex'),
-      timestamp: new Date().toISOString(),
-      collection,
-      method,
-      query: JSON.stringify(query).substring(0, 500),
-      duration
-    };
-    
-    this.databaseQueries.push(queryEntry);
-    
-    // Keep only last 500 queries
-    if (this.databaseQueries.length > 500) {
-      this.databaseQueries.shift();
-    }
-  },
-  
-  getStats() {
-    return {
-      totalRequests: this.requests.size,
-      totalErrors: this.errors.length,
-      totalQueries: this.databaseQueries.length,
-      requestCounts: this.requestCounts,
-      memoryUsage: process.memoryUsage(),
-      uptime: process.uptime()
-    };
-  },
-  
-  clear() {
-    this.requests.clear();
-    this.errors = [];
-    this.performance = [];
-    this.databaseQueries = [];
-    this.requestCounts = {};
-  }
-};
+log.info('⚙️ Dynamic Configuration Loaded:');
+log.info(`- Port: ${config.port}`);
+log.info(`- Environment: ${config.nodeEnv}`);
+log.info(`- Client URL: ${config.clientURL}`);
+log.info(`- Server URL: ${config.serverURL}`);
+log.info(`- Database URI: ${config.mongoURI ? 'Set (masked)' : 'Not set'}`);
+log.info(`- Email Enabled: ${config.emailEnabled}`);
+log.info(`- Allowed Origins: ${config.allowedOrigins.length}`);
+log.info(`- Upload Directory: ${config.uploadDir}`);
+log.info(`- Debug Mode: ${config.debug}`);
 
 // ==================== ENHANCED EXPRESS SETUP ====================
 const app = express();
@@ -296,40 +273,18 @@ const io = new Server(server, {
   }
 });
 
-// Initialize WebSocket for debugging
-let wss;
-if (config.enableWebSocketDebug) {
-  wss = new WebSocketServer({ noServer: true });
-  
-  wss.on('connection', (ws) => {
-    console.log('🔌 WebSocket debug client connected');
-    
-    ws.on('message', (message) => {
-      try {
-        const data = JSON.parse(message);
-        console.log('📨 WebSocket message:', data);
-      } catch (error) {
-        console.error('WebSocket message error:', error);
-      }
-    });
-    
-    // Send initial stats
-    ws.send(JSON.stringify({
-      type: 'initial',
-      stats: debugSystem.getStats(),
-      timestamp: new Date().toISOString()
-    }));
-  });
-  
-  // Attach WebSocket to HTTP server
-  server.on('upgrade', (request, socket, head) => {
-    if (request.url === '/debug-ws') {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-      });
-    }
-  });
-}
+// Advanced request tracking
+let requestCounts = {};
+let activeConnections = new Set();
+let requestLatencies = [];
+let errorCounts = {};
+
+// Reset stats every hour
+setInterval(() => {
+  requestCounts = {};
+  requestLatencies = [];
+  errorCounts = {};
+}, 3600000);
 
 // Security Headers with dynamic CSP
 app.use(helmet({
@@ -360,17 +315,119 @@ if (config.logLevel === 'debug') {
   app.use(morgan(morganFormat));
 }
 
-// ==================== ULTIMATE CORS CONFIGURATION ====================
+// ==================== ADVANCED REQUEST DEBUGGING MIDDLEWARE ====================
+app.use((req, res, next) => {
+  const requestId = crypto.randomBytes(8).toString('hex');
+  const startTime = Date.now();
+  
+  // Add request ID and start time to request object
+  req.requestId = requestId;
+  req.startTime = startTime;
+  
+  // Track active connection
+  activeConnections.add(requestId);
+  
+  // Track endpoint usage
+  const endpoint = req.path;
+  requestCounts[endpoint] = (requestCounts[endpoint] || 0) + 1;
+  
+  if (config.debug) {
+    log.debug('\n' + '='.repeat(80));
+    log.debug(`📡 REQUEST START [${requestId}]`);
+    log.debug(`- Method: ${req.method}`);
+    log.debug(`- URL: ${req.originalUrl}`);
+    log.debug(`- IP: ${req.ip}`);
+    log.debug(`- User-Agent: ${req.headers['user-agent']?.substring(0, 100)}`);
+    
+    if (req.method !== 'GET') {
+      log.debug(`- Body (first 500 chars):`, 
+        JSON.stringify(req.body, null, 2).substring(0, 500));
+    }
+    
+    if (req.headers.authorization) {
+      log.debug(`- Auth: Bearer token present`);
+      try {
+        const token = req.headers.authorization.replace('Bearer ', '');
+        const decoded = jwt.decode(token);
+        log.debug(`- Token payload:`, decoded);
+      } catch (err) {
+        log.debug(`- Token decode error: ${err.message}`);
+      }
+    }
+  }
+  
+  // Store original send and json methods
+  const originalSend = res.send;
+  const originalJson = res.json;
+  
+  // Override send method
+  res.send = function(body) {
+    const endTime = Date.now();
+    const latency = endTime - startTime;
+    
+    // Track latency
+    requestLatencies.push(latency);
+    if (requestLatencies.length > 1000) requestLatencies.shift();
+    
+    // Remove from active connections
+    activeConnections.delete(requestId);
+    
+    if (config.debug) {
+      log.debug(`📤 RESPONSE SENT [${requestId}]`);
+      log.debug(`- Status: ${res.statusCode}`);
+      log.debug(`- Latency: ${latency}ms`);
+      log.debug(`- Response size: ${typeof body === 'string' ? body.length : JSON.stringify(body).length} bytes`);
+      log.debug('='.repeat(80) + '\n');
+    }
+    
+    return originalSend.call(this, body);
+  };
+  
+  // Override json method
+  res.json = function(body) {
+    const endTime = Date.now();
+    const latency = endTime - startTime;
+    
+    // Track latency
+    requestLatencies.push(latency);
+    if (requestLatencies.length > 1000) requestLatencies.shift();
+    
+    // Remove from active connections
+    activeConnections.delete(requestId);
+    
+    if (config.debug) {
+      log.debug(`📤 RESPONSE JSON [${requestId}]`);
+      log.debug(`- Status: ${res.statusCode}`);
+      log.debug(`- Latency: ${latency}ms`);
+      log.debug(`- Success: ${body?.success || 'N/A'}`);
+      log.debug(`- Message: ${body?.message?.substring(0, 100) || 'N/A'}`);
+      log.debug('='.repeat(80) + '\n');
+    }
+    
+    return originalJson.call(this, body);
+  };
+  
+  next();
+});
+
+// Error tracking middleware
+app.use((err, req, res, next) => {
+  const endpoint = req.path;
+  errorCounts[endpoint] = (errorCounts[endpoint] || 0) + 1;
+  next(err);
+});
+
+// ==================== ENHANCED CORS CONFIGURATION ====================
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) {
-      if (config.debug) console.log('🌐 No origin - Allowing request');
+      if (config.debug) log.debug('🌐 No origin - Allowing request');
       return callback(null, true);
     }
     
     if (config.allowedOrigins.indexOf(origin) !== -1) {
-      if (config.debug) console.log(`🌐 Allowed origin: ${origin}`);
+      if (config.debug) log.debug(`🌐 Allowed origin: ${origin}`);
       callback(null, true);
     } else {
       // Check if origin matches pattern (for preview deployments)
@@ -380,10 +437,10 @@ const corsOptions = {
                                   origin.includes('github.io');
       
       if (isPreviewDeployment) {
-        console.log(`🌐 Allowed preview deployment: ${origin}`);
+        log.info(`🌐 Allowed preview deployment: ${origin}`);
         callback(null, true);
       } else {
-        console.log(`🚫 Blocked by CORS: ${origin}`);
+        log.warn(`🚫 Blocked by CORS: ${origin}`);
         callback(new Error('Not allowed by CORS'));
       }
     }
@@ -391,22 +448,26 @@ const corsOptions = {
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'x-api-key', 'x-user-id', 'x-debug-token'],
-  exposedHeaders: ['X-Response-Time', 'X-Powered-By', 'X-Version']
+  exposedHeaders: ['X-Response-Time', 'X-Powered-By', 'X-Version', 'X-Request-ID']
 };
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-// ==================== ULTIMATE BODY PARSING ====================
+// ==================== ENHANCED BODY PARSING ====================
 app.use(express.json({ 
   limit: '50mb',
   verify: (req, res, buf) => {
     req.rawBody = buf;
     if (config.debug && req.headers['content-type']?.includes('application/json')) {
       try {
-        console.log('📨 Incoming JSON:', JSON.parse(buf.toString()).length ? '[Data present]' : 'Empty');
+        const jsonData = JSON.parse(buf.toString());
+        log.debug('📨 Incoming JSON size:', buf.length, 'bytes');
+        if (Object.keys(jsonData).length > 0) {
+          log.debug('📨 JSON keys:', Object.keys(jsonData));
+        }
       } catch (e) {
-        console.log('📨 Raw body (not JSON):', buf.toString().substring(0, 200));
+        log.debug('📨 Raw body (not JSON):', buf.toString().substring(0, 200));
       }
     }
   }
@@ -417,7 +478,7 @@ app.use(express.urlencoded({
   parameterLimit: 100000
 }));
 
-// ==================== ULTIMATE RATE LIMITING ====================
+// ==================== ENHANCED RATE LIMITING ====================
 const createRateLimiter = (windowMs, max, message) => rateLimit({
   windowMs,
   max,
@@ -428,6 +489,10 @@ const createRateLimiter = (windowMs, max, message) => rateLimit({
   keyGenerator: (req) => {
     // Use user ID if authenticated, otherwise IP
     return req.user?.id || req.ip;
+  },
+  handler: (req, res) => {
+    log.warn(`🚫 Rate limit exceeded for ${req.ip} on ${req.path}`);
+    res.status(429).json({ success: false, message });
   }
 });
 
@@ -438,8 +503,7 @@ const rateLimiters = {
   financial: createRateLimiter(15 * 60 * 1000, 50, 'Too many financial operations, please try again later'),
   passwordReset: createRateLimiter(15 * 60 * 1000, 5, 'Too many password reset attempts, please try again later'),
   admin: createRateLimiter(15 * 60 * 1000, 500, 'Too many admin requests'),
-  upload: createRateLimiter(15 * 60 * 1000, 20, 'Too many file uploads, please try again later'),
-  debug: createRateLimiter(15 * 60 * 1000, 100, 'Too many debug requests')
+  upload: createRateLimiter(15 * 60 * 1000, 20, 'Too many file uploads, please try again later')
 };
 
 // Apply rate limiting
@@ -452,64 +516,7 @@ app.use('/api/deposits', rateLimiters.financial);
 app.use('/api/withdrawals', rateLimiters.financial);
 app.use('/api/admin', rateLimiters.admin);
 app.use('/api/upload', rateLimiters.upload);
-app.use('/api/debug', rateLimiters.debug);
 app.use('/api/', rateLimiters.api);
-
-// ==================== ADVANCED DEBUG MIDDLEWARE ====================
-app.use((req, res, next) => {
-  const startTime = Date.now();
-  const requestId = crypto.randomBytes(8).toString('hex');
-  
-  // Store debug info
-  req._debug = {
-    id: requestId,
-    startTime,
-    ip: req.ip,
-    userAgent: req.headers['user-agent'],
-    timestamp: new Date().toISOString()
-  };
-  
-  if (config.debug) {
-    console.log('\n' + '='.repeat(80));
-    console.log(`📡 [${new Date().toISOString()}] ${requestId} - ${req.method} ${req.originalUrl}`);
-    console.log(`👤 IP: ${req.ip} | User-Agent: ${req.headers['user-agent']?.substring(0, 50)}...`);
-    
-    if (req.method !== 'GET') {
-      console.log(`📦 Body:`, JSON.stringify(req.body, null, 2).substring(0, 500));
-    }
-    
-    if (req.headers.authorization) {
-      const token = req.headers.authorization.replace('Bearer ', '');
-      console.log(`🔑 Auth: Token present (${token.length} chars)`);
-      try {
-        const decoded = jwt.decode(token);
-        console.log(`👤 Token payload:`, decoded);
-      } catch (err) {
-        console.log(`❌ Token decode error:`, err.message);
-      }
-    }
-  }
-  
-  // Override res.json to log responses
-  const originalJson = res.json;
-  res.json = function(data) {
-    const responseTime = Date.now() - startTime;
-    
-    // Log to debug system
-    debugSystem.logRequest(req, res, responseTime);
-    
-    if (config.debug) {
-      console.log(`⏱️  Response time: ${responseTime}ms`);
-      console.log(`📤 Status: ${res.statusCode}`);
-      console.log(`📊 Response:`, JSON.stringify(data, null, 2).substring(0, 500));
-      console.log('='.repeat(80) + '\n');
-    }
-    
-    return originalJson.call(this, data);
-  };
-  
-  next();
-});
 
 // ==================== ENHANCED FILE UPLOAD CONFIGURATION ====================
 const storage = multer.memoryStorage();
@@ -538,12 +545,12 @@ const upload = multer({
 // Enhanced file upload handler with debugging
 const handleFileUpload = async (file, folder = 'general', userId = null) => {
   if (!file) {
-    console.error('No file provided for upload');
+    log.error('No file provided for upload');
     return null;
   }
   
   try {
-    console.log(`📁 Uploading file: ${file.originalname}, Size: ${file.size} bytes, Type: ${file.mimetype}`);
+    log.info(`📁 Uploading file: ${file.originalname}, Size: ${file.size} bytes, Type: ${file.mimetype}`);
     
     // Validate file type
     if (!config.allowedMimeTypes[file.mimetype]) {
@@ -555,7 +562,7 @@ const handleFileUpload = async (file, folder = 'general', userId = null) => {
     // Create directory if it doesn't exist
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
-      console.log(`📁 Created directory: ${uploadsDir}`);
+      log.info(`📁 Created directory: ${uploadsDir}`);
     }
     
     // Generate secure filename
@@ -572,7 +579,7 @@ const handleFileUpload = async (file, folder = 'general', userId = null) => {
     // Generate URL
     const url = `${config.serverURL}/uploads/${folder}/${filename}`;
     
-    console.log(`✅ File uploaded: ${filename}, URL: ${url}`);
+    log.info(`✅ File uploaded: ${filename}, URL: ${url}`);
     
     return {
       url,
@@ -585,7 +592,7 @@ const handleFileUpload = async (file, folder = 'general', userId = null) => {
       uploadedAt: new Date()
     };
   } catch (error) {
-    console.error('❌ File upload error:', error);
+    log.error('❌ File upload error:', error);
     throw new Error(`File upload failed: ${error.message}`);
   }
 };
@@ -593,7 +600,7 @@ const handleFileUpload = async (file, folder = 'general', userId = null) => {
 // Create uploads directory if it doesn't exist
 if (!fs.existsSync(config.uploadDir)) {
   fs.mkdirSync(config.uploadDir, { recursive: true });
-  console.log(`📁 Created upload directory: ${config.uploadDir}`);
+  log.info(`📁 Created upload directory: ${config.uploadDir}`);
 }
 
 // Serve static files with proper caching
@@ -606,7 +613,9 @@ app.use('/uploads', express.static(config.uploadDir, {
   }
 }));
 
-// ==================== ENHANCED DATABASE MODELS (UNCHANGED) ====================
+// ==================== ENHANCED DATABASE MODELS ====================
+
+// Enhanced User Model
 const userSchema = new mongoose.Schema({
   full_name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true },
@@ -655,12 +664,14 @@ const userSchema = new mongoose.Schema({
   email_notifications: { type: Boolean, default: true },
   sms_notifications: { type: Boolean, default: false },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+  // Enhanced fields
   total_deposits: { type: Number, default: 0 },
   total_withdrawals: { type: Number, default: 0 },
   total_investments: { type: Number, default: 0 },
   last_deposit_date: Date,
   last_withdrawal_date: Date,
   last_investment_date: Date,
+  // Debug fields
   created_by_ip: String,
   created_by_user_agent: String
 }, { 
@@ -679,24 +690,27 @@ const userSchema = new mongoose.Schema({
   }
 });
 
+// Indexes
 userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ referral_code: 1 }, { unique: true, sparse: true });
 userSchema.index({ is_active: 1, role: 1, kyc_status: 1 });
 userSchema.index({ createdAt: -1 });
 
+// Virtuals
 userSchema.virtual('portfolio_value').get(function() {
   return this.balance + this.total_earnings + this.referral_earnings;
 });
 
+// Pre-save hooks
 userSchema.pre('save', async function(next) {
   if (this.isModified('password')) {
-    console.log(`🔑 Hashing password for user: ${this.email}`);
+    log.debug(`🔑 Hashing password for user: ${this.email}`);
     this.password = await bcrypt.hash(this.password, config.bcryptRounds);
   }
   
   if (!this.referral_code) {
     this.referral_code = crypto.randomBytes(6).toString('hex').toUpperCase();
-    console.log(`🎫 Generated referral code for ${this.email}: ${this.referral_code}`);
+    log.debug(`🎫 Generated referral code for ${this.email}: ${this.referral_code}`);
   }
   
   if (this.isModified('email') && !this.is_verified) {
@@ -711,6 +725,7 @@ userSchema.pre('save', async function(next) {
   next();
 });
 
+// Methods
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
@@ -740,6 +755,7 @@ userSchema.methods.generatePasswordResetToken = function() {
 
 const User = mongoose.model('User', userSchema);
 
+// Enhanced Investment Plan Model
 const investmentPlanSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
   description: { type: String, required: true },
@@ -772,6 +788,7 @@ investmentPlanSchema.index({ is_active: 1, is_popular: 1, category: 1 });
 
 const InvestmentPlan = mongoose.model('InvestmentPlan', investmentPlanSchema);
 
+// Enhanced Investment Model
 const investmentSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   plan: { type: mongoose.Schema.Types.ObjectId, ref: 'InvestmentPlan', required: true },
@@ -806,6 +823,7 @@ investmentSchema.index({ createdAt: -1 });
 
 const Investment = mongoose.model('Investment', investmentSchema);
 
+// Enhanced Deposit Model
 const depositSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   amount: { type: Number, required: true, min: config.minDeposit },
@@ -839,6 +857,7 @@ depositSchema.index({ reference: 1 }, { unique: true, sparse: true });
 
 const Deposit = mongoose.model('Deposit', depositSchema);
 
+// Enhanced Withdrawal Model
 const withdrawalSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   amount: { type: Number, required: true, min: config.minWithdrawal },
@@ -874,6 +893,7 @@ withdrawalSchema.index({ reference: 1 }, { unique: true, sparse: true });
 
 const Withdrawal = mongoose.model('Withdrawal', withdrawalSchema);
 
+// Enhanced Transaction Model
 const transactionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   type: { type: String, enum: ['deposit', 'withdrawal', 'investment', 'earning', 'referral', 'bonus', 'fee', 'refund', 'transfer'], required: true },
@@ -898,6 +918,7 @@ transactionSchema.index({ type: 1, status: 1 });
 
 const Transaction = mongoose.model('Transaction', transactionSchema);
 
+// Enhanced KYC Submission Model
 const kycSubmissionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
   id_type: { type: String, enum: ['national_id', 'passport', 'driver_license', 'voters_card'], required: true },
@@ -920,6 +941,7 @@ kycSubmissionSchema.index({ status: 1, submitted_at: -1 });
 
 const KYCSubmission = mongoose.model('KYCSubmission', kycSubmissionSchema);
 
+// Enhanced Support Ticket Model
 const supportTicketSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   ticket_id: { type: String, unique: true, required: true },
@@ -948,6 +970,7 @@ supportTicketSchema.index({ user: 1, status: 1, createdAt: -1 });
 
 const SupportTicket = mongoose.model('SupportTicket', supportTicketSchema);
 
+// Enhanced Referral Model
 const referralSchema = new mongoose.Schema({
   referrer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   referred_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
@@ -967,6 +990,7 @@ referralSchema.index({ referrer: 1, status: 1 });
 
 const Referral = mongoose.model('Referral', referralSchema);
 
+// Enhanced Notification Model
 const notificationSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   title: { type: String, required: true },
@@ -985,6 +1009,7 @@ notificationSchema.index({ user: 1, is_read: 1, createdAt: -1 });
 
 const Notification = mongoose.model('Notification', notificationSchema);
 
+// Enhanced Admin Audit Log Model
 const adminAuditSchema = new mongoose.Schema({
   admin_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   action: { type: String, required: true },
@@ -1009,7 +1034,13 @@ const formatResponse = (success, message, data = null, pagination = null) => {
     success, 
     message, 
     timestamp: new Date().toISOString(),
-    version: '48.0.0'
+    version: '47.1.0',
+    debug: config.debug ? {
+      requestCounts: Object.keys(requestCounts).length,
+      activeConnections: activeConnections.size,
+      avgLatency: requestLatencies.length > 0 ? 
+        Math.round(requestLatencies.reduce((a, b) => a + b, 0) / requestLatencies.length) : 0
+    } : undefined
   };
   
   if (data !== null) response.data = data;
@@ -1019,7 +1050,10 @@ const formatResponse = (success, message, data = null, pagination = null) => {
 };
 
 const handleError = (res, error, defaultMessage = 'An error occurred') => {
-  console.error('❌ Error Details:', {
+  const errorId = crypto.randomBytes(4).toString('hex');
+  
+  log.error('❌ Error Details:', {
+    errorId,
     message: error.message,
     stack: error.stack,
     name: error.name,
@@ -1028,20 +1062,23 @@ const handleError = (res, error, defaultMessage = 'An error occurred') => {
   
   if (error.name === 'ValidationError') {
     const messages = Object.values(error.errors).map(val => val.message);
-    return res.status(400).json(formatResponse(false, 'Validation Error', { errors: messages }));
+    return res.status(400).json(formatResponse(false, 'Validation Error', { 
+      errors: messages,
+      errorId 
+    }));
   }
   
   if (error.code === 11000) {
     const field = Object.keys(error.keyValue)[0];
-    return res.status(400).json(formatResponse(false, `${field} already exists`));
+    return res.status(400).json(formatResponse(false, `${field} already exists`, { errorId }));
   }
   
   if (error.name === 'JsonWebTokenError') {
-    return res.status(401).json(formatResponse(false, 'Invalid token'));
+    return res.status(401).json(formatResponse(false, 'Invalid token', { errorId }));
   }
   
   if (error.name === 'TokenExpiredError') {
-    return res.status(401).json(formatResponse(false, 'Token expired'));
+    return res.status(401).json(formatResponse(false, 'Token expired', { errorId }));
   }
   
   const statusCode = error.statusCode || error.status || 500;
@@ -1049,7 +1086,7 @@ const handleError = (res, error, defaultMessage = 'An error occurred') => {
     ? defaultMessage 
     : error.message;
 
-  return res.status(statusCode).json(formatResponse(false, message));
+  return res.status(statusCode).json(formatResponse(false, message, { errorId }));
 };
 
 const generateReference = (prefix = 'REF') => {
@@ -1058,6 +1095,7 @@ const generateReference = (prefix = 'REF') => {
   return `${prefix}${timestamp}${random}`;
 };
 
+// Enhanced createNotification
 const createNotification = async (userId, title, message, type = 'info', actionUrl = null, metadata = {}) => {
   try {
     const notification = new Notification({
@@ -1083,20 +1121,21 @@ const createNotification = async (userId, title, message, type = 'info', actionU
       timestamp: new Date()
     });
     
-    console.log(`📢 Notification created for user ${userId}: ${title}`);
+    log.debug(`📢 Notification created for user ${userId}: ${title}`);
     
     return notification;
   } catch (error) {
-    console.error('Error creating notification:', error);
+    log.error('Error creating notification:', error);
     return null;
   }
 };
 
+// Enhanced createTransaction
 const createTransaction = async (userId, type, amount, description, status = 'completed', metadata = {}, proofUrl = null) => {
   try {
     const user = await User.findById(userId);
     if (!user) {
-      console.error(`User ${userId} not found for transaction creation`);
+      log.error(`User ${userId} not found for transaction creation`);
       return null;
     }
     
@@ -1135,15 +1174,16 @@ const createTransaction = async (userId, type, amount, description, status = 'co
       await User.findByIdAndUpdate(userId, updateFields);
     }
     
-    console.log(`💳 Transaction created: ${type} - ${amount} for user ${userId}`);
+    log.debug(`💳 Transaction created: ${type} - ${amount} for user ${userId}`);
     
     return transaction;
   } catch (error) {
-    console.error('Error creating transaction:', error);
+    log.error('Error creating transaction:', error);
     return null;
   }
 };
 
+// Enhanced calculateUserStats
 const calculateUserStats = async (userId) => {
   try {
     const [
@@ -1176,6 +1216,7 @@ const calculateUserStats = async (userId) => {
         .lean()
     ]);
 
+    // Calculate daily interest from active investments
     const activeInv = await Investment.find({ 
       user: userId, 
       status: 'active' 
@@ -1206,11 +1247,12 @@ const calculateUserStats = async (userId) => {
       }
     };
   } catch (error) {
-    console.error('Error calculating user stats:', error);
+    log.error('Error calculating user stats:', error);
     return null;
   }
 };
 
+// Enhanced createAdminAudit
 const createAdminAudit = async (adminId, action, targetType, targetId, details = {}, ip = '', userAgent = '') => {
   try {
     const audit = new AdminAudit({
@@ -1227,10 +1269,10 @@ const createAdminAudit = async (adminId, action, targetType, targetId, details =
     });
     
     await audit.save();
-    console.log(`📝 Admin audit created: ${action} by admin ${adminId}`);
+    log.debug(`📝 Admin audit created: ${action} by admin ${adminId}`);
     return audit;
   } catch (error) {
-    console.error('Error creating admin audit:', error);
+    log.error('Error creating admin audit:', error);
     return null;
   }
 };
@@ -1242,7 +1284,7 @@ const auth = async (req, res, next) => {
     let token = req.header('Authorization');
     
     if (!token) {
-      console.log('🔒 No token provided');
+      log.debug('🔒 No token provided');
       return res.status(401).json(formatResponse(false, 'No token, authorization denied'));
     }
     
@@ -1255,12 +1297,12 @@ const auth = async (req, res, next) => {
     const user = await User.findById(decoded.id);
     
     if (!user) {
-      console.log(`🔒 User not found for token: ${decoded.id}`);
+      log.debug(`🔒 User not found for token: ${decoded.id}`);
       return res.status(401).json(formatResponse(false, 'Token is not valid'));
     }
     
     if (!user.is_active) {
-      console.log(`🔒 User account deactivated: ${user.email}`);
+      log.debug(`🔒 User account deactivated: ${user.email}`);
       return res.status(401).json(formatResponse(false, 'Account is deactivated. Please contact support.'));
     }
     
@@ -1271,18 +1313,18 @@ const auth = async (req, res, next) => {
     user.last_active = new Date();
     await user.save();
     
-    console.log(`🔒 Authenticated user: ${user.email} (${user.role})`);
+    log.debug(`🔒 Authenticated user: ${user.email} (${user.role})`);
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
-      console.log('🔒 Invalid JWT token');
+      log.debug('🔒 Invalid JWT token');
       return res.status(401).json(formatResponse(false, 'Invalid token'));
     } else if (error.name === 'TokenExpiredError') {
-      console.log('🔒 Expired JWT token');
+      log.debug('🔒 Expired JWT token');
       return res.status(401).json(formatResponse(false, 'Token expired'));
     }
     
-    console.error('Auth middleware error:', error);
+    log.error('Auth middleware error:', error);
     res.status(500).json(formatResponse(false, 'Server error during authentication'));
   }
 };
@@ -1291,10 +1333,10 @@ const adminAuth = async (req, res, next) => {
   try {
     await auth(req, res, () => {
       if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-        console.log(`🔒 Admin access denied for user: ${req.user.email}`);
+        log.debug(`🔒 Admin access denied for user: ${req.user.email}`);
         return res.status(403).json(formatResponse(false, 'Access denied. Admin privileges required.'));
       }
-      console.log(`🔒 Admin access granted: ${req.user.email}`);
+      log.debug(`🔒 Admin access granted: ${req.user.email}`);
       next();
     });
   } catch (error) {
@@ -1305,58 +1347,44 @@ const adminAuth = async (req, res, next) => {
 // ==================== DEBUGGED DATABASE INITIALIZATION ====================
 
 const initializeDatabase = async () => {
-  console.log('🔄 Initializing database with enhanced connection...');
+  log.info('🔄 Initializing database with enhanced connection...');
   
   // Set Mongoose debug mode
-  mongoose.set('debug', config.enableDatabaseQueryLogging ? (collection, method, query, doc) => {
-    const start = Date.now();
-    const logData = {
-      collection,
-      method,
-      query: JSON.stringify(query),
-      doc: doc ? JSON.stringify(doc).substring(0, 200) : null
-    };
-    
-    process.nextTick(() => {
-      const duration = Date.now() - start;
-      debugSystem.logDatabaseQuery(collection, method, query, duration);
-      
-      if (config.debug) {
-        console.log(`🗄️  MongoDB ${method} on ${collection}:`, {
-          query: JSON.stringify(query).substring(0, 200),
-          duration: `${duration}ms`
-        });
-      }
-    });
-  } : false);
+  mongoose.set('debug', (collectionName, method, query, doc) => {
+    if (config.debug) {
+      log.database(`${collectionName}.${method}`, {
+        query: JSON.stringify(query),
+        doc: doc ? JSON.stringify(doc).substring(0, 200) : null
+      });
+    }
+  });
   
   // Handle Mongoose connection events
   mongoose.connection.on('connecting', () => {
-    console.log('🔄 MongoDB connecting...');
+    log.info('🔄 MongoDB connecting...');
   });
   
   mongoose.connection.on('connected', () => {
-    console.log('✅ MongoDB connected successfully');
+    log.success('✅ MongoDB connected successfully');
   });
   
   mongoose.connection.on('error', (err) => {
-    console.error('❌ MongoDB connection error:', err.message);
-    debugSystem.logError(err, null);
+    log.error('❌ MongoDB connection error:', err.message);
   });
   
   mongoose.connection.on('disconnected', () => {
-    console.log('⚠️ MongoDB disconnected');
+    log.warn('⚠️ MongoDB disconnected');
   });
   
   mongoose.connection.on('reconnected', () => {
-    console.log('🔁 MongoDB reconnected');
+    log.info('🔁 MongoDB reconnected');
   });
   
   try {
-    console.log(`🔗 Attempting to connect to: ${config.mongoURI ? 'MongoDB URI provided' : 'No URI found'}`);
+    log.info(`🔗 Attempting to connect to: ${config.mongoURI ? 'MongoDB URI provided' : 'No URI found'}`);
     
     const connectionOptions = {
-      serverSelectionTimeoutMS: 10000,
+      serverSelectionTimeoutMS: 10000, // Increased timeout
       socketTimeoutMS: 45000,
       maxPoolSize: 10,
       retryWrites: true,
@@ -1364,7 +1392,7 @@ const initializeDatabase = async () => {
     
     await mongoose.connect(config.mongoURI, connectionOptions);
     
-    console.log('✅ MongoDB connection established');
+    log.success('✅ MongoDB connection established');
     
     // Load investment plans
     await loadInvestmentPlans();
@@ -1375,27 +1403,26 @@ const initializeDatabase = async () => {
     // Create indexes
     await createDatabaseIndexes();
     
-    console.log('✅ Database initialization completed successfully');
+    log.success('✅ Database initialization completed successfully');
     
   } catch (error) {
-    console.error('❌ FATAL: Database initialization failed:', error.message);
-    console.error('Stack trace:', error.stack);
-    debugSystem.logError(error, null);
+    log.error('❌ FATAL: Database initialization failed:', error.message);
+    log.error('Stack trace:', error.stack);
     
     // Try fallback connection for development
     if (config.nodeEnv === 'development') {
-      console.log('🔄 Attempting fallback to local MongoDB...');
+      log.info('🔄 Attempting fallback to local MongoDB...');
       try {
         const fallbackURI = 'mongodb://localhost:27017/rawwealthy';
         await mongoose.connect(fallbackURI);
-        console.log('✅ Connected to local MongoDB fallback');
+        log.success('✅ Connected to local MongoDB fallback');
       } catch (fallbackError) {
-        console.error('❌ Fallback connection also failed:', fallbackError.message);
+        log.error('❌ Fallback connection also failed:', fallbackError.message);
       }
     }
     
     // Don't throw error - let server start without DB for debugging
-    console.log('⚠️ Server starting without database connection');
+    log.warn('⚠️ Server starting without database connection');
   }
 };
 
@@ -1406,14 +1433,14 @@ const loadInvestmentPlans = async () => {
       .lean();
     
     config.investmentPlans = plans;
-    console.log(`✅ Loaded ${plans.length} investment plans`);
+    log.info(`✅ Loaded ${plans.length} investment plans`);
     
     // If no plans exist, create default plans
     if (plans.length === 0) {
       await createDefaultInvestmentPlans();
     }
   } catch (error) {
-    console.error('Error loading investment plans:', error);
+    log.error('Error loading investment plans:', error);
   }
 };
 
@@ -1474,31 +1501,31 @@ const createDefaultInvestmentPlans = async () => {
   try {
     await InvestmentPlan.insertMany(defaultPlans);
     config.investmentPlans = defaultPlans;
-    console.log('✅ Created default investment plans');
+    log.info('✅ Created default investment plans');
   } catch (error) {
-    console.error('Error creating default investment plans:', error);
+    log.error('Error creating default investment plans:', error);
   }
 };
 
 const createAdminUser = async () => {
-  console.log('🚀 ADMIN USER INITIALIZATION STARTING...');
+  log.info('🚀 ADMIN USER INITIALIZATION STARTING...');
   
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
   const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
   
-  console.log(`🔑 Attempting to create admin: ${adminEmail}`);
+  log.info(`🔑 Attempting to create admin: ${adminEmail}`);
   
   try {
     // Check if admin already exists
     const existingAdmin = await User.findOne({ email: adminEmail });
     if (existingAdmin) {
-      console.log('✅ Admin already exists');
+      log.info('✅ Admin already exists');
       
       // Ensure admin has correct role
       if (existingAdmin.role !== 'super_admin') {
         existingAdmin.role = 'super_admin';
         await existingAdmin.save();
-        console.log('✅ Updated existing admin to super_admin role');
+        log.info('✅ Updated existing admin to super_admin role');
       }
       
       return;
@@ -1526,17 +1553,17 @@ const createAdminUser = async () => {
     const admin = new User(adminData);
     await admin.save();
     
-    console.log('🎉 ADMIN USER CREATED SUCCESSFULLY!');
-    console.log(`📧 Email: ${adminEmail}`);
-    console.log(`🔑 Password: ${adminPassword}`);
-    console.log('👉 Login at: /api/auth/login');
+    log.success('🎉 ADMIN USER CREATED SUCCESSFULLY!');
+    log.info(`📧 Email: ${adminEmail}`);
+    log.info(`🔑 Password: ${adminPassword}`);
+    log.info('👉 Login at: /api/auth/login');
     
   } catch (error) {
-    console.error('❌ Error creating admin user:', error.message);
-    console.error(error.stack);
+    log.error('❌ Error creating admin user:', error.message);
+    log.error(error.stack);
   }
   
-  console.log('🚀 ADMIN USER INITIALIZATION COMPLETE');
+  log.info('🚀 ADMIN USER INITIALIZATION COMPLETE');
 };
 
 const createDatabaseIndexes = async () => {
@@ -1551,9 +1578,9 @@ const createDatabaseIndexes = async () => {
       Transaction.collection.createIndex({ user: 1, createdAt: -1 })
     ]);
     
-    console.log('✅ Database indexes created/verified');
+    log.info('✅ Database indexes created/verified');
   } catch (error) {
-    console.error('Error creating indexes:', error);
+    log.error('Error creating indexes:', error);
   }
 };
 
@@ -1575,20 +1602,21 @@ if (config.emailEnabled) {
     // Verify connection
     emailTransporter.verify((error, success) => {
       if (error) {
-        console.log('❌ Email configuration error:', error.message);
+        log.error('❌ Email configuration error:', error.message);
       } else {
-        console.log('✅ Email server is ready to send messages');
+        log.success('✅ Email server is ready to send messages');
       }
     });
   } catch (error) {
-    console.error('❌ Email setup failed:', error.message);
+    log.error('❌ Email setup failed:', error.message);
   }
 }
 
+// Enhanced email utility function
 const sendEmail = async (to, subject, html, text = '') => {
   try {
     if (!emailTransporter) {
-      console.log(`📧 Email would be sent (simulated): To: ${to}, Subject: ${subject}`);
+      log.info(`📧 Email would be sent (simulated): To: ${to}, Subject: ${subject}`);
       return { simulated: true, success: true };
     }
     
@@ -1601,237 +1629,36 @@ const sendEmail = async (to, subject, html, text = '') => {
     };
     
     const info = await emailTransporter.sendMail(mailOptions);
-    console.log(`✅ Email sent to ${to} (Message ID: ${info.messageId})`);
+    log.info(`✅ Email sent to ${to} (Message ID: ${info.messageId})`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('❌ Email sending error:', error.message);
+    log.error('❌ Email sending error:', error.message);
     return { success: false, error: error.message };
   }
 };
 
 // ==================== SOCKET.IO INTEGRATION ====================
 
+// Socket.IO connection handling
 io.on('connection', (socket) => {
-  console.log(`🔌 New Socket.IO connection: ${socket.id}`);
+  log.info(`🔌 New Socket.IO connection: ${socket.id}`);
   
   // Join user-specific room
   socket.on('join-user', (userId) => {
     socket.join(`user:${userId}`);
-    console.log(`👤 Socket ${socket.id} joined user room: ${userId}`);
+    log.debug(`👤 Socket ${socket.id} joined user room: ${userId}`);
   });
   
   // Join admin room
   socket.on('join-admin', () => {
     socket.join('admin-room');
-    console.log(`👨‍💼 Socket ${socket.id} joined admin room`);
-  });
-  
-  // Debug room
-  socket.on('join-debug', () => {
-    socket.join('debug-room');
-    console.log(`🐛 Socket ${socket.id} joined debug room`);
+    log.debug(`👨‍💼 Socket ${socket.id} joined admin room`);
   });
   
   socket.on('disconnect', () => {
-    console.log(`🔌 Socket disconnected: ${socket.id}`);
+    log.info(`🔌 Socket disconnected: ${socket.id}`);
   });
 });
-
-// ==================== ADVANCED DEBUG ENDPOINTS ====================
-
-// Debug dashboard
-app.get('/api/debug/dashboard', adminAuth, async (req, res) => {
-  try {
-    const stats = debugSystem.getStats();
-    
-    // Get recent errors
-    const recentErrors = debugSystem.errors.slice(-10);
-    
-    // Get recent requests
-    const recentRequests = Array.from(debugSystem.requests.values()).slice(-10);
-    
-    // Get recent database queries
-    const recentQueries = debugSystem.databaseQueries.slice(-10);
-    
-    // Get database stats
-    const dbStats = await getDatabaseStats();
-    
-    res.json(formatResponse(true, 'Debug dashboard', {
-      system: {
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        nodeVersion: process.version,
-        platform: process.platform,
-        pid: process.pid
-      },
-      debugStats: stats,
-      recentErrors,
-      recentRequests,
-      recentQueries,
-      database: dbStats,
-      config: {
-        debug: config.debug,
-        enableRequestLogging: config.enableRequestLogging,
-        enableDatabaseQueryLogging: config.enableDatabaseQueryLogging,
-        enableWebSocketDebug: config.enableWebSocketDebug
-      }
-    }));
-  } catch (error) {
-    handleError(res, error, 'Error fetching debug dashboard');
-  }
-});
-
-// Clear debug logs
-app.post('/api/debug/clear', adminAuth, (req, res) => {
-  debugSystem.clear();
-  res.json(formatResponse(true, 'Debug logs cleared'));
-});
-
-// Test all endpoints
-app.get('/api/debug/test-endpoints', adminAuth, async (req, res) => {
-  const testResults = {};
-  
-  try {
-    // Test health endpoint
-    try {
-      const response = await axios.get(`${config.serverURL}/health`);
-      testResults.health = response.status === 200 ? '✅ Working' : '❌ Failed';
-    } catch (error) {
-      testResults.health = '❌ Failed';
-    }
-    
-    // Test database connection
-    testResults.database = mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected';
-    
-    // Test email configuration
-    testResults.email = config.emailEnabled ? '✅ Configured' : '❌ Not configured';
-    
-    // Test socket.io
-    testResults.socketio = '✅ Running';
-    
-    // Test file upload directory
-    testResults.uploadDir = fs.existsSync(config.uploadDir) ? '✅ Exists' : '❌ Missing';
-    
-    res.json(formatResponse(true, 'Endpoint tests', testResults));
-  } catch (error) {
-    testResults.error = error.message;
-    res.json(formatResponse(false, 'Test error', testResults));
-  }
-});
-
-// Get request logs
-app.get('/api/debug/requests', adminAuth, (req, res) => {
-  const { limit = 50, page = 1 } = req.query;
-  const allRequests = Array.from(debugSystem.requests.values());
-  const start = (page - 1) * limit;
-  const end = start + parseInt(limit);
-  const paginatedRequests = allRequests.slice(start, end);
-  
-  res.json(formatResponse(true, 'Request logs', {
-    requests: paginatedRequests,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total: allRequests.length,
-      pages: Math.ceil(allRequests.length / limit)
-    }
-  }));
-});
-
-// Get error logs
-app.get('/api/debug/errors', adminAuth, (req, res) => {
-  const { limit = 50, page = 1 } = req.query;
-  const start = (page - 1) * limit;
-  const end = start + parseInt(limit);
-  const paginatedErrors = debugSystem.errors.slice(start, end);
-  
-  res.json(formatResponse(true, 'Error logs', {
-    errors: paginatedErrors,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total: debugSystem.errors.length,
-      pages: Math.ceil(debugSystem.errors.length / limit)
-    }
-  }));
-});
-
-// Get database query logs
-app.get('/api/debug/queries', adminAuth, (req, res) => {
-  const { limit = 50, page = 1 } = req.query;
-  const start = (page - 1) * limit;
-  const end = start + parseInt(limit);
-  const paginatedQueries = debugSystem.databaseQueries.slice(start, end);
-  
-  res.json(formatResponse(true, 'Database query logs', {
-    queries: paginatedQueries,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total: debugSystem.databaseQueries.length,
-      pages: Math.ceil(debugSystem.databaseQueries.length / limit)
-    }
-  }));
-});
-
-// Helper function to get database stats
-async function getDatabaseStats() {
-  try {
-    const [
-      usersCount,
-      investmentsCount,
-      depositsCount,
-      withdrawalsCount,
-      transactionsCount,
-      referralsCount,
-      kycCount,
-      notificationsCount
-    ] = await Promise.all([
-      User.countDocuments({}),
-      Investment.countDocuments({}),
-      Deposit.countDocuments({}),
-      Withdrawal.countDocuments({}),
-      Transaction.countDocuments({}),
-      Referral.countDocuments({}),
-      KYCSubmission.countDocuments({}),
-      Notification.countDocuments({})
-    ]);
-    
-    // Get collection sizes
-    const collections = await mongoose.connection.db.listCollections().toArray();
-    const collectionSizes = {};
-    
-    for (const collection of collections) {
-      const stats = await mongoose.connection.db.collection(collection.name).stats();
-      collectionSizes[collection.name] = {
-        count: stats.count,
-        size: stats.size,
-        storageSize: stats.storageSize,
-        avgObjSize: stats.avgObjSize
-      };
-    }
-    
-    return {
-      counts: {
-        users: usersCount,
-        investments: investmentsCount,
-        deposits: depositsCount,
-        withdrawals: withdrawalsCount,
-        transactions: transactionsCount,
-        referrals: referralsCount,
-        kyc: kycCount,
-        notifications: notificationsCount
-      },
-      collectionSizes,
-      connectionState: mongoose.connection.readyState,
-      host: mongoose.connection.host,
-      name: mongoose.connection.name
-    };
-  } catch (error) {
-    console.error('Error getting database stats:', error);
-    return { error: error.message };
-  }
-}
 
 // ==================== ENHANCED HEALTH CHECK ====================
 app.get('/health', async (req, res) => {
@@ -1839,7 +1666,7 @@ app.get('/health', async (req, res) => {
     success: true,
     status: 'OK',
     timestamp: new Date().toISOString(),
-    version: '48.0.0',
+    version: '47.1.0',
     environment: config.nodeEnv,
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     database_state: mongoose.connection.readyState,
@@ -1855,32 +1682,52 @@ app.get('/health', async (req, res) => {
       deposits: await Deposit.estimatedDocumentCount().catch(() => 'N/A'),
       withdrawals: await Withdrawal.estimatedDocumentCount().catch(() => 'N/A')
     },
+    performance: {
+      activeConnections: activeConnections.size,
+      requestCounts: Object.keys(requestCounts).length,
+      avgLatency: requestLatencies.length > 0 ? 
+        Math.round(requestLatencies.reduce((a, b) => a + b, 0) / requestLatencies.length) : 0,
+      errorCounts: Object.keys(errorCounts).length
+    },
     config: {
       port: config.port,
       client_url: config.clientURL,
       server_url: config.serverURL,
       debug: config.debug
-    },
-    debug: {
-      totalRequests: debugSystem.requests.size,
-      totalErrors: debugSystem.errors.length,
-      totalQueries: debugSystem.databaseQueries.length
     }
   };
   
   res.json(health);
 });
 
-// Database debug endpoint
+// ==================== COMPREHENSIVE DEBUG ENDPOINTS ====================
 app.get('/debug/db', async (req, res) => {
   try {
     const collections = await mongoose.connection.db.listCollections().toArray();
     const collectionNames = collections.map(col => col.name);
     
+    // Get collection stats
+    const collectionStats = {};
+    for (const col of collections.slice(0, 10)) {
+      try {
+        const stats = await mongoose.connection.db.collection(col.name).stats();
+        collectionStats[col.name] = {
+          count: stats.count,
+          size: stats.size,
+          storageSize: stats.storageSize,
+          avgObjSize: stats.avgObjSize
+        };
+      } catch (err) {
+        collectionStats[col.name] = { error: err.message };
+      }
+    }
+    
     const stats = {
       connection_state: mongoose.connection.readyState,
       collections: collectionNames,
-      mongo_uri: config.mongoURI ? `${config.mongoURI.substring(0, 50)}...` : 'Not set'
+      collection_stats: collectionStats,
+      mongo_uri: config.mongoURI ? `${config.mongoURI.substring(0, 50)}...` : 'Not set',
+      indexes: await mongoose.connection.db.collection('users').indexes().catch(() => [])
     };
     
     res.json(formatResponse(true, 'Database debug info', stats));
@@ -1898,12 +1745,77 @@ app.get('/debug/users', auth, async (req, res) => {
   res.json(formatResponse(true, 'Users debug', { users }));
 });
 
+app.get('/debug/performance', async (req, res) => {
+  const performance = {
+    server: {
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      cpu: process.cpuUsage(),
+      platform: process.platform,
+      nodeVersion: process.version
+    },
+    requests: {
+      activeConnections: activeConnections.size,
+      requestCounts: requestCounts,
+      errorCounts: errorCounts,
+      latencies: {
+        avg: requestLatencies.length > 0 ? 
+          Math.round(requestLatencies.reduce((a, b) => a + b, 0) / requestLatencies.length) : 0,
+        min: requestLatencies.length > 0 ? Math.min(...requestLatencies) : 0,
+        max: requestLatencies.length > 0 ? Math.max(...requestLatencies) : 0,
+        p95: requestLatencies.length > 0 ? 
+          requestLatencies.sort((a, b) => a - b)[Math.floor(requestLatencies.length * 0.95)] : 0
+      }
+    },
+    database: {
+      state: mongoose.connection.readyState,
+      host: mongoose.connection.host,
+      name: mongoose.connection.name,
+      models: Object.keys(mongoose.connection.models)
+    }
+  };
+  
+  res.json(formatResponse(true, 'Performance stats', performance));
+});
+
+app.get('/debug/endpoints', async (req, res) => {
+  const endpoints = [];
+  
+  app._router.stack.forEach((middleware) => {
+    if (middleware.route) {
+      const route = middleware.route;
+      endpoints.push({
+        path: route.path,
+        methods: Object.keys(route.methods),
+        regexp: route.regexp.toString()
+      });
+    } else if (middleware.name === 'router') {
+      // Handle router middleware
+      middleware.handle.stack.forEach((handler) => {
+        if (handler.route) {
+          const route = handler.route;
+          endpoints.push({
+            path: route.path,
+            methods: Object.keys(route.methods),
+            regexp: route.regexp.toString()
+          });
+        }
+      });
+    }
+  });
+  
+  res.json(formatResponse(true, 'Registered endpoints', {
+    count: endpoints.length,
+    endpoints: endpoints
+  }));
+});
+
 // ==================== ROOT ENDPOINT ====================
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🚀 Raw Wealthy Backend API v48.0 - Ultimate Enterprise Edition',
-    version: '48.0.0',
+    message: '🚀 Raw Wealthy Backend API v47.1 - Enterprise Edition',
+    version: '47.1.0',
     timestamp: new Date().toISOString(),
     status: 'Operational',
     environment: config.nodeEnv,
@@ -1922,13 +1834,14 @@ app.get('/', (req, res) => {
       upload: '/api/upload',
       forgot_password: '/api/auth/forgot-password',
       health: '/health',
-      debug: '/api/debug/*'
+      debug: '/debug/* (admin only)'
     }
   });
 });
 
-// ==================== ENHANCED AUTH ENDPOINTS (UNCHANGED) ====================
-// [Your existing auth endpoints remain exactly the same]
+// ==================== ENHANCED AUTH ENDPOINTS ====================
+
+// Register
 app.post('/api/auth/register', [
   body('full_name').notEmpty().trim().isLength({ min: 2, max: 100 }),
   body('email').isEmail().normalizeEmail(),
@@ -1948,12 +1861,12 @@ app.post('/api/auth/register', [
 
     const { full_name, email, phone, password, referral_code, risk_tolerance = 'medium', investment_strategy = 'balanced' } = req.body;
 
-    console.log(`📝 Registration attempt: ${email}`);
+    log.info(`📝 Registration attempt: ${email}`);
 
     // Check if user exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
-      console.log(`❌ User already exists: ${email}`);
+      log.warn(`❌ User already exists: ${email}`);
       return res.status(400).json(formatResponse(false, 'User already exists with this email'));
     }
 
@@ -1962,10 +1875,10 @@ app.post('/api/auth/register', [
     if (referral_code) {
       referredBy = await User.findOne({ referral_code: referral_code.toUpperCase() });
       if (!referredBy) {
-        console.log(`❌ Invalid referral code: ${referral_code}`);
+        log.warn(`❌ Invalid referral code: ${referral_code}`);
         return res.status(400).json(formatResponse(false, 'Invalid referral code'));
       }
-      console.log(`👥 Referral found: ${referredBy.email}`);
+      log.info(`👥 Referral found: ${referredBy.email}`);
     }
 
     // Create user
@@ -1983,7 +1896,7 @@ app.post('/api/auth/register', [
     });
 
     await user.save();
-    console.log(`✅ User created: ${email}`);
+    log.info(`✅ User created: ${email}`);
 
     // Handle referral
     if (referredBy) {
@@ -1998,7 +1911,7 @@ app.post('/api/auth/register', [
       });
       await referral.save();
       
-      console.log(`👥 Referral created for ${referredBy.email}`);
+      log.info(`👥 Referral created for ${referredBy.email}`);
       
       // Create notification for referrer
       await createNotification(
@@ -2012,7 +1925,7 @@ app.post('/api/auth/register', [
 
     // Generate token
     const token = user.generateAuthToken();
-    console.log(`🔑 Token generated for ${email}`);
+    log.info(`🔑 Token generated for ${email}`);
 
     // Create welcome notification
     await createNotification(
@@ -2050,7 +1963,7 @@ app.post('/api/auth/register', [
       );
     }
 
-    console.log(`🎉 Registration complete for ${email}`);
+    log.success(`🎉 Registration complete for ${email}`);
 
     res.status(201).json(formatResponse(true, 'User registered successfully', {
       user: user.toObject(),
@@ -2058,12 +1971,12 @@ app.post('/api/auth/register', [
     }));
 
   } catch (error) {
-    console.error('Registration error:', error);
+    log.error('Registration error:', error);
     handleError(res, error, 'Registration failed');
   }
 });
 
-// Login endpoint
+// Login
 app.post('/api/auth/login', [
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty()
@@ -2076,20 +1989,20 @@ app.post('/api/auth/login', [
 
     const { email, password } = req.body;
     
-    console.log(`🔐 Login attempt: ${email}`);
+    log.info(`🔐 Login attempt: ${email}`);
 
     // Find user with password
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
     
     if (!user) {
-      console.log(`❌ User not found: ${email}`);
+      log.warn(`❌ User not found: ${email}`);
       return res.status(400).json(formatResponse(false, 'Invalid credentials'));
     }
 
     // Check if account is locked
     if (user.lock_until && user.lock_until > new Date()) {
       const lockTime = Math.ceil((user.lock_until - new Date()) / 1000 / 60);
-      console.log(`🔒 Account locked for ${email}: ${lockTime} minutes remaining`);
+      log.warn(`🔒 Account locked for ${email}: ${lockTime} minutes remaining`);
       return res.status(423).json(formatResponse(false, `Account is locked. Try again in ${lockTime} minutes.`));
     }
 
@@ -2099,10 +2012,10 @@ app.post('/api/auth/login', [
       user.login_attempts += 1;
       if (user.login_attempts >= 5) {
         user.lock_until = new Date(Date.now() + 15 * 60 * 1000);
-        console.log(`🔒 Account locked for ${email} due to failed attempts`);
+        log.warn(`🔒 Account locked for ${email} due to failed attempts`);
       }
       await user.save();
-      console.log(`❌ Invalid password for ${email}`);
+      log.warn(`❌ Invalid password for ${email}`);
       return res.status(400).json(formatResponse(false, 'Invalid credentials'));
     }
 
@@ -2116,7 +2029,7 @@ app.post('/api/auth/login', [
     // Generate token
     const token = user.generateAuthToken();
     
-    console.log(`✅ Login successful: ${email}`);
+    log.success(`✅ Login successful: ${email}`);
 
     res.json(formatResponse(true, 'Login successful', {
       user: user.toObject(),
@@ -2124,17 +2037,1075 @@ app.post('/api/auth/login', [
     }));
 
   } catch (error) {
-    console.error('Login error:', error);
+    log.error('Login error:', error);
     handleError(res, error, 'Login failed');
   }
 });
 
-// ==================== ENHANCED REFERRAL ENDPOINTS ====================
+// Forgot Password
+app.post('/api/auth/forgot-password', [
+  body('email').isEmail().normalizeEmail()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
 
-// Get referral statistics
+    const { email } = req.body;
+    
+    log.info(`🔑 Forgot password request: ${email}`);
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      log.warn(`❌ User not found for password reset: ${email}`);
+      return res.status(404).json(formatResponse(false, 'No user found with this email'));
+    }
+
+    // Generate reset token
+    const resetToken = user.generatePasswordResetToken();
+    await user.save();
+
+    // Create reset URL
+    const resetUrl = `${config.clientURL}/reset-password/${resetToken}`;
+
+    // Send email
+    const emailResult = await sendEmail(
+      user.email,
+      'Password Reset Request',
+      `<h2>Password Reset Request</h2>
+       <p>You requested a password reset for your Raw Wealthy account.</p>
+       <p>Click the link below to reset your password:</p>
+       <p><a href="${resetUrl}">${resetUrl}</a></p>
+       <p>This link will expire in 10 minutes.</p>
+       <p>If you didn't request this, please ignore this email.</p>`
+    );
+
+    if (!emailResult.success) {
+      log.error(`❌ Failed to send reset email to ${email}`);
+      return res.status(500).json(formatResponse(false, 'Failed to send reset email'));
+    }
+
+    log.info(`✅ Password reset email sent to ${email}`);
+
+    res.json(formatResponse(true, 'Password reset email sent successfully'));
+  } catch (error) {
+    log.error('Forgot password error:', error);
+    handleError(res, error, 'Error processing forgot password request');
+  }
+});
+
+// Reset Password
+app.post('/api/auth/reset-password/:token', [
+  body('password').isLength({ min: 6 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const { token } = req.params;
+    const { password } = req.body;
+    
+    log.info(`🔑 Password reset attempt with token`);
+
+    // Hash token
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    const user = await User.findOne({
+      password_reset_token: hashedToken,
+      password_reset_expires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      log.warn(`❌ Invalid or expired reset token`);
+      return res.status(400).json(formatResponse(false, 'Invalid or expired token'));
+    }
+
+    // Update password
+    user.password = password;
+    user.password_reset_token = undefined;
+    user.password_reset_expires = undefined;
+    await user.save();
+
+    // Send confirmation email
+    await sendEmail(
+      user.email,
+      'Password Reset Successful',
+      `<h2>Password Reset Successful</h2>
+       <p>Your password has been successfully reset.</p>
+       <p>If you did not perform this action, please contact our support team immediately.</p>`
+    );
+
+    // Create notification
+    await createNotification(
+      user._id,
+      'Password Changed',
+      'Your password has been successfully reset.',
+      'system'
+    );
+
+    log.info(`✅ Password reset successful for ${user.email}`);
+
+    res.json(formatResponse(true, 'Password reset successful'));
+  } catch (error) {
+    log.error('Reset password error:', error);
+    handleError(res, error, 'Error resetting password');
+  }
+});
+
+// ==================== ENHANCED PROFILE ENDPOINTS ====================
+
+// Get profile with complete data
+app.get('/api/profile', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    log.info(`📊 Fetching profile for user: ${userId}`);
+    
+    // Get user with basic info
+    const user = await User.findById(userId).lean();
+    if (!user) {
+      log.warn(`❌ User not found: ${userId}`);
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+    
+    // Get other data in parallel
+    const [
+      investments,
+      transactions,
+      notifications,
+      kyc,
+      deposits,
+      withdrawals,
+      referrals,
+      supportTickets
+    ] = await Promise.all([
+      Investment.find({ user: userId })
+        .populate('plan', 'name daily_interest duration total_interest')
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean(),
+      Transaction.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean(),
+      Notification.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      KYCSubmission.findOne({ user: userId }).lean(),
+      Deposit.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      Withdrawal.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      Referral.find({ referrer: userId })
+        .populate('referred_user', 'full_name email createdAt balance')
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      SupportTicket.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean()
+    ]);
+
+    // Calculate stats
+    const activeInvestments = investments.filter(inv => inv.status === 'active');
+    const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+    
+    const dailyInterest = activeInvestments.reduce((sum, inv) => {
+      if (inv.plan && inv.plan.daily_interest) {
+        return sum + ((inv.amount || 0) * inv.plan.daily_interest / 100);
+      }
+      return sum;
+    }, 0);
+    
+    const totalEarnings = investments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
+    const referralEarnings = referrals.reduce((sum, ref) => sum + (ref.earnings || 0), 0);
+    
+    const totalDepositsAmount = deposits
+      .filter(d => d.status === 'approved')
+      .reduce((sum, dep) => sum + (dep.amount || 0), 0);
+    
+    const totalWithdrawalsAmount = withdrawals
+      .filter(w => w.status === 'paid')
+      .reduce((sum, wdl) => sum + (wdl.amount || 0), 0);
+
+    const profileData = {
+      user: {
+        ...user,
+        bank_details: user.bank_details || null,
+        wallet_address: user.wallet_address || null,
+        paypal_email: user.paypal_email || null
+      },
+      
+      dashboard_stats: {
+        active_investment_value: totalActiveValue,
+        total_earnings: totalEarnings,
+        daily_interest: dailyInterest,
+        referral_earnings: referralEarnings,
+        total_deposits_amount: totalDepositsAmount,
+        total_withdrawals_amount: totalWithdrawalsAmount,
+        
+        total_investments: investments.length,
+        active_investments_count: activeInvestments.length,
+        total_deposits: deposits.filter(d => d.status === 'approved').length,
+        total_withdrawals: withdrawals.filter(w => w.status === 'paid').length,
+        referral_count: user.referral_count || 0,
+        unread_notifications: notifications.filter(n => !n.is_read).length,
+        
+        available_balance: user.balance || 0,
+        portfolio_value: (user.balance || 0) + totalEarnings + referralEarnings,
+        
+        kyc_status: user.kyc_status || 'not_submitted',
+        kyc_verified: user.kyc_verified || false,
+        account_status: user.is_active ? 'active' : 'inactive'
+      },
+      
+      investment_history: investments,
+      transaction_history: transactions,
+      deposit_history: deposits,
+      withdrawal_history: withdrawals,
+      referral_history: referrals,
+      kyc_submission: kyc,
+      notifications: notifications,
+      support_tickets: supportTickets
+    };
+
+    log.info(`✅ Profile fetched for user: ${userId}`);
+
+    res.json(formatResponse(true, 'Profile retrieved successfully', profileData));
+  } catch (error) {
+    log.error('Error fetching profile:', error);
+    handleError(res, error, 'Error fetching profile');
+  }
+});
+
+// Update profile
+app.put('/api/profile', auth, [
+  body('full_name').optional().trim().isLength({ min: 2, max: 100 }),
+  body('phone').optional().trim(),
+  body('country').optional().isLength({ min: 2, max: 2 }),
+  body('risk_tolerance').optional().isIn(['low', 'medium', 'high']),
+  body('investment_strategy').optional().isIn(['conservative', 'balanced', 'aggressive']),
+  body('notifications_enabled').optional().isBoolean(),
+  body('email_notifications').optional().isBoolean()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const userId = req.user._id;
+    const updateData = req.body;
+
+    log.info(`✏️ Updating profile for user: ${userId}`);
+
+    // Update allowed fields
+    const allowedUpdates = ['full_name', 'phone', 'country', 'risk_tolerance', 'investment_strategy', 'notifications_enabled', 'email_notifications', 'sms_notifications'];
+    const updateFields = {};
+    
+    allowedUpdates.forEach(field => {
+      if (updateData[field] !== undefined) {
+        updateFields[field] = updateData[field];
+      }
+    });
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      updateFields,
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      log.warn(`❌ User not found during update: ${userId}`);
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+
+    await createNotification(
+      userId,
+      'Profile Updated',
+      'Your profile information has been successfully updated.',
+      'info',
+      '/profile'
+    );
+
+    log.info(`✅ Profile updated for user: ${userId}`);
+
+    res.json(formatResponse(true, 'Profile updated successfully', { user }));
+  } catch (error) {
+    log.error('Error updating profile:', error);
+    handleError(res, error, 'Error updating profile');
+  }
+});
+
+// Update bank details
+app.put('/api/profile/bank', auth, [
+  body('bank_name').notEmpty().trim(),
+  body('account_name').notEmpty().trim(),
+  body('account_number').notEmpty().trim(),
+  body('bank_code').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const userId = req.user._id;
+    const { bank_name, account_name, account_number, bank_code } = req.body;
+
+    log.info(`🏦 Updating bank details for user: ${userId}`);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+
+    user.bank_details = {
+      bank_name,
+      account_name,
+      account_number,
+      bank_code: bank_code || '',
+      verified: false,
+      last_updated: new Date()
+    };
+
+    await user.save();
+
+    await createNotification(
+      userId,
+      'Bank Details Updated',
+      'Your bank account details have been updated successfully. They will be verified by our team.',
+      'info',
+      '/profile'
+    );
+
+    // Notify admin about bank details update
+    const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } }).limit(5);
+    for (const admin of admins) {
+      await createNotification(
+        admin._id,
+        'User Updated Bank Details',
+        `User ${user.full_name} has updated their bank details. Please verify for withdrawal requests.`,
+        'system',
+        `/admin/users/${userId}`
+      );
+    }
+
+    log.info(`✅ Bank details updated for user: ${userId}`);
+
+    res.json(formatResponse(true, 'Bank details updated successfully', {
+      bank_details: user.bank_details
+    }));
+  } catch (error) {
+    log.error('Error updating bank details:', error);
+    handleError(res, error, 'Error updating bank details');
+  }
+});
+
+// ==================== ENHANCED INVESTMENT PLANS ENDPOINTS ====================
+
+// Get all investment plans
+app.get('/api/plans', async (req, res) => {
+  try {
+    log.info('📋 Fetching investment plans');
+    
+    const plans = await InvestmentPlan.find({ is_active: true })
+      .sort({ display_order: 1, min_amount: 1 })
+      .lean();
+    
+    // Calculate ROI and other metrics for display
+    const enhancedPlans = plans.map(plan => ({
+      ...plan,
+      roi_percentage: plan.total_interest,
+      daily_roi: plan.daily_interest,
+      monthly_roi: plan.daily_interest * 30,
+      is_popular: plan.is_popular || false,
+      features: plan.features || ['Secure Investment', 'Daily Payouts', '24/7 Support']
+    }));
+    
+    log.info(`✅ Found ${plans.length} investment plans`);
+    
+    res.json(formatResponse(true, 'Plans retrieved successfully', { plans: enhancedPlans }));
+  } catch (error) {
+    log.error('Error fetching investment plans:', error);
+    handleError(res, error, 'Error fetching investment plans');
+  }
+});
+
+// Get specific plan
+app.get('/api/plans/:id', async (req, res) => {
+  try {
+    const plan = await InvestmentPlan.findById(req.params.id);
+    
+    if (!plan) {
+      log.warn(`❌ Investment plan not found: ${req.params.id}`);
+      return res.status(404).json(formatResponse(false, 'Investment plan not found'));
+    }
+    
+    // Calculate additional metrics
+    const enhancedPlan = {
+      ...plan.toObject(),
+      roi_percentage: plan.total_interest,
+      daily_roi: plan.daily_interest,
+      monthly_roi: plan.daily_interest * 30,
+      estimated_monthly_earnings: (plan.min_amount * plan.daily_interest * 30) / 100,
+      estimated_total_earnings: (plan.min_amount * plan.total_interest) / 100
+    };
+    
+    log.info(`✅ Retrieved plan: ${plan.name}`);
+    
+    res.json(formatResponse(true, 'Plan retrieved successfully', { plan: enhancedPlan }));
+  } catch (error) {
+    log.error('Error fetching investment plan:', error);
+    handleError(res, error, 'Error fetching investment plan');
+  }
+});
+
+// ==================== ENHANCED INVESTMENT ENDPOINTS ====================
+
+// Get user investments
+app.get('/api/investments', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { status, page = 1, limit = 10 } = req.query;
+    
+    log.info(`📊 Fetching investments for user: ${userId}, status: ${status || 'all'}`);
+    
+    const query = { user: userId };
+    if (status) query.status = status;
+    
+    const skip = (page - 1) * limit;
+    
+    const [investments, total] = await Promise.all([
+      Investment.find(query)
+        .populate('plan', 'name daily_interest duration total_interest')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Investment.countDocuments(query)
+    ]);
+
+    // Calculate additional details
+    const enhancedInvestments = investments.map(inv => {
+      const remainingDays = Math.max(0, Math.ceil((new Date(inv.end_date) - new Date()) / (1000 * 60 * 60 * 24)));
+      const totalDays = Math.ceil((new Date(inv.end_date) - new Date(inv.start_date)) / (1000 * 60 * 60 * 24));
+      const daysPassed = totalDays - remainingDays;
+      const progressPercentage = inv.status === 'active' ? 
+        Math.min(100, (daysPassed / totalDays) * 100) : 
+        (inv.status === 'completed' ? 100 : 0);
+
+      return {
+        ...inv,
+        remaining_days: remainingDays,
+        total_days: totalDays,
+        days_passed: daysPassed,
+        progress_percentage: Math.round(progressPercentage),
+        estimated_completion: inv.end_date,
+        daily_earning: (inv.amount * (inv.plan?.daily_interest || 0)) / 100,
+        total_earned_so_far: inv.earned_so_far || 0,
+        remaining_earnings: (inv.expected_earnings || 0) - (inv.earned_so_far || 0),
+        has_proof: !!inv.payment_proof_url,
+        proof_url: inv.payment_proof_url || null,
+        can_withdraw_earnings: inv.status === 'active' && (inv.earned_so_far || 0) > 0
+      };
+    });
+
+    const activeInvestments = enhancedInvestments.filter(inv => inv.status === 'active');
+    const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
+    const totalEarnings = activeInvestments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
+    const dailyEarnings = activeInvestments.reduce((sum, inv) => sum + inv.daily_earning, 0);
+
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+
+    log.info(`✅ Found ${total} investments for user ${userId}`);
+
+    res.json(formatResponse(true, 'Investments retrieved successfully', {
+      investments: enhancedInvestments,
+      stats: {
+        total_active_value: totalActiveValue,
+        total_earnings: totalEarnings,
+        daily_earnings: dailyEarnings,
+        active_count: activeInvestments.length,
+        total_count: total,
+        pending_count: enhancedInvestments.filter(inv => inv.status === 'pending').length
+      },
+      pagination
+    }));
+  } catch (error) {
+    log.error('Error fetching investments:', error);
+    handleError(res, error, 'Error fetching investments');
+  }
+});
+
+// Create investment
+app.post('/api/investments', auth, upload.single('payment_proof'), [
+  body('plan_id').notEmpty(),
+  body('amount').isFloat({ min: config.minInvestment }),
+  body('auto_renew').optional().isBoolean(),
+  body('remarks').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const { plan_id, amount, auto_renew = false, remarks } = req.body;
+    const userId = req.user._id;
+    
+    log.info(`💰 Creating investment for user ${userId}, plan: ${plan_id}, amount: ${amount}`);
+
+    // Check plan
+    const plan = await InvestmentPlan.findById(plan_id);
+    if (!plan) {
+      log.warn(`❌ Investment plan not found: ${plan_id}`);
+      return res.status(404).json(formatResponse(false, 'Investment plan not found'));
+    }
+
+    const investmentAmount = parseFloat(amount);
+
+    // Validate amount
+    if (investmentAmount < plan.min_amount) {
+      log.warn(`❌ Investment below minimum: ${investmentAmount} < ${plan.min_amount}`);
+      return res.status(400).json(formatResponse(false, 
+        `Minimum investment for ${plan.name} is ₦${plan.min_amount.toLocaleString()}`));
+    }
+
+    if (plan.max_amount && investmentAmount > plan.max_amount) {
+      log.warn(`❌ Investment above maximum: ${investmentAmount} > ${plan.max_amount}`);
+      return res.status(400).json(formatResponse(false,
+        `Maximum investment for ${plan.name} is ₦${plan.max_amount.toLocaleString()}`));
+    }
+
+    // Check balance
+    if (investmentAmount > req.user.balance) {
+      log.warn(`❌ Insufficient balance: ${investmentAmount} > ${req.user.balance}`);
+      return res.status(400).json(formatResponse(false, 'Insufficient balance for this investment'));
+    }
+
+    // Handle file upload
+    let proofUrl = null;
+    let uploadResult = null;
+    if (req.file) {
+      try {
+        uploadResult = await handleFileUpload(req.file, 'investment-proofs', userId);
+        proofUrl = uploadResult.url;
+        log.info(`📁 Payment proof uploaded: ${proofUrl}`);
+      } catch (uploadError) {
+        log.error('File upload error:', uploadError);
+        return res.status(400).json(formatResponse(false, `File upload failed: ${uploadError.message}`));
+      }
+    }
+
+    // Calculate expected earnings
+    const expectedEarnings = (investmentAmount * plan.total_interest) / 100;
+    const dailyEarnings = (investmentAmount * plan.daily_interest) / 100;
+    const endDate = new Date(Date.now() + plan.duration * 24 * 60 * 60 * 1000);
+
+    // Create investment
+    const investment = new Investment({
+      user: userId,
+      plan: plan_id,
+      amount: investmentAmount,
+      status: proofUrl ? 'pending' : 'active',
+      start_date: new Date(),
+      end_date: endDate,
+      expected_earnings: expectedEarnings,
+      earned_so_far: 0,
+      daily_earnings: dailyEarnings,
+      auto_renew,
+      payment_proof_url: proofUrl,
+      payment_verified: !proofUrl,
+      remarks: remarks,
+      investment_image_url: proofUrl,
+      metadata: {
+        uploaded_file: uploadResult ? {
+          filename: uploadResult.filename,
+          size: uploadResult.size,
+          mime_type: uploadResult.mimeType
+        } : null
+      }
+    });
+
+    await investment.save();
+
+    // Update user balance
+    await User.findByIdAndUpdate(userId, { 
+      $inc: { balance: -investmentAmount }
+    });
+
+    // Update plan statistics
+    await InvestmentPlan.findByIdAndUpdate(plan_id, {
+      $inc: { 
+        investment_count: 1,
+        total_invested: investmentAmount
+      }
+    });
+
+    // Create transaction
+    await createTransaction(
+      userId,
+      'investment',
+      -investmentAmount,
+      `Investment in ${plan.name} plan`,
+      proofUrl ? 'pending' : 'completed',
+      { 
+        investment_id: investment._id,
+        plan_name: plan.name,
+        plan_duration: plan.duration,
+        daily_interest: plan.daily_interest
+      },
+      proofUrl
+    );
+
+    // Create notification
+    await createNotification(
+      userId,
+      'Investment Created',
+      `Your investment of ₦${investmentAmount.toLocaleString()} in ${plan.name} has been created successfully.${proofUrl ? ' Awaiting admin approval.' : ''}`,
+      'investment',
+      '/investments',
+      { amount: investmentAmount, plan_name: plan.name }
+    );
+
+    // Notify admin if payment proof uploaded
+    if (proofUrl) {
+      const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } }).limit(5);
+      for (const admin of admins) {
+        await createNotification(
+          admin._id,
+          'New Investment Pending Approval',
+          `User ${req.user.full_name} has created a new investment of ₦${investmentAmount.toLocaleString()} requiring approval.`,
+          'system',
+          `/admin/investments/${investment._id}`,
+          { 
+            user_id: userId,
+            user_name: req.user.full_name,
+            amount: investmentAmount,
+            proof_url: proofUrl 
+          }
+        );
+      }
+    }
+
+    log.info(`✅ Investment created: ${investment._id}`);
+
+    res.status(201).json(formatResponse(true, 'Investment created successfully!', { 
+      investment: {
+        ...investment.toObject(),
+        plan_name: plan.name,
+        plan_details: {
+          daily_interest: plan.daily_interest,
+          duration: plan.duration,
+          total_interest: plan.total_interest
+        },
+        expected_daily_earnings: dailyEarnings,
+        expected_total_earnings: expectedEarnings,
+        end_date: endDate,
+        requires_approval: !!proofUrl
+      }
+    }));
+  } catch (error) {
+    log.error('Error creating investment:', error);
+    handleError(res, error, 'Error creating investment');
+  }
+});
+
+// ==================== ENHANCED DEPOSIT ENDPOINTS ====================
+
+// Get user deposits
+app.get('/api/deposits', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { status, page = 1, limit = 10 } = req.query;
+    
+    log.info(`💰 Fetching deposits for user: ${userId}`);
+    
+    const query = { user: userId };
+    if (status) query.status = status;
+    
+    const skip = (page - 1) * limit;
+    
+    const [deposits, total] = await Promise.all([
+      Deposit.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Deposit.countDocuments(query)
+    ]);
+
+    // Calculate stats
+    const totalDeposits = deposits.filter(d => d.status === 'approved').reduce((sum, d) => sum + (d.amount || 0), 0);
+    const pendingDeposits = deposits.filter(d => d.status === 'pending').reduce((sum, d) => sum + (d.amount || 0), 0);
+
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+
+    log.info(`✅ Found ${total} deposits for user ${userId}`);
+
+    res.json(formatResponse(true, 'Deposits retrieved successfully', {
+      deposits,
+      stats: {
+        total_deposits: totalDeposits,
+        pending_deposits: pendingDeposits,
+        total_count: total,
+        approved_count: deposits.filter(d => d.status === 'approved').length,
+        pending_count: deposits.filter(d => d.status === 'pending').length
+      },
+      pagination
+    }));
+  } catch (error) {
+    log.error('Error fetching deposits:', error);
+    handleError(res, error, 'Error fetching deposits');
+  }
+});
+
+// Create deposit
+app.post('/api/deposits', auth, upload.single('payment_proof'), [
+  body('amount').isFloat({ min: config.minDeposit }),
+  body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal', 'card']),
+  body('remarks').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const { amount, payment_method, remarks } = req.body;
+    const userId = req.user._id;
+    const depositAmount = parseFloat(amount);
+
+    log.info(`💰 Creating deposit for user ${userId}, amount: ${depositAmount}, method: ${payment_method}`);
+
+    // Handle file upload
+    let proofUrl = null;
+    let uploadResult = null;
+    if (req.file) {
+      try {
+        uploadResult = await handleFileUpload(req.file, 'deposit-proofs', userId);
+        proofUrl = uploadResult.url;
+        log.info(`📁 Deposit proof uploaded: ${proofUrl}`);
+      } catch (uploadError) {
+        log.error('File upload error:', uploadError);
+        return res.status(400).json(formatResponse(false, `File upload failed: ${uploadError.message}`));
+      }
+    }
+
+    // Create deposit
+    const deposit = new Deposit({
+      user: userId,
+      amount: depositAmount,
+      payment_method,
+      status: 'pending',
+      payment_proof_url: proofUrl,
+      deposit_image_url: proofUrl,
+      reference: generateReference('DEP'),
+      remarks: remarks,
+      metadata: {
+        uploaded_file: uploadResult ? {
+          filename: uploadResult.filename,
+          size: uploadResult.size,
+          mime_type: uploadResult.mimeType
+        } : null,
+        ip_address: req.ip,
+        user_agent: req.headers['user-agent']
+      }
+    });
+
+    await deposit.save();
+
+    // Create notification
+    await createNotification(
+      userId,
+      'Deposit Request Submitted',
+      `Your deposit request of ₦${depositAmount.toLocaleString()} has been submitted and is pending approval.`,
+      'deposit',
+      '/deposits',
+      { amount: depositAmount, payment_method, has_proof: !!proofUrl }
+    );
+
+    // Notify admin
+    const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } }).limit(5);
+    for (const admin of admins) {
+      await createNotification(
+        admin._id,
+        'New Deposit Request',
+        `User ${req.user.full_name} has submitted a deposit request of ₦${depositAmount.toLocaleString()}.${proofUrl ? ' Payment proof attached.' : ''}`,
+        'system',
+        `/admin/deposits/${deposit._id}`,
+        { 
+          user_id: userId,
+          user_name: req.user.full_name,
+          amount: depositAmount,
+          payment_method,
+          proof_url: proofUrl 
+        }
+      );
+    }
+
+    log.info(`✅ Deposit created: ${deposit._id}`);
+
+    res.status(201).json(formatResponse(true, 'Deposit request submitted successfully!', { 
+      deposit: {
+        ...deposit.toObject(),
+        formatted_amount: `₦${depositAmount.toLocaleString()}`,
+        requires_approval: true,
+        estimated_approval_time: '24-48 hours',
+        proof_uploaded: !!proofUrl
+      },
+      message: 'Your deposit is pending approval. You will be notified once approved.'
+    }));
+  } catch (error) {
+    log.error('Error creating deposit:', error);
+    handleError(res, error, 'Error creating deposit');
+  }
+});
+
+// ==================== ENHANCED WITHDRAWAL ENDPOINTS ====================
+
+// Get user withdrawals
+app.get('/api/withdrawals', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { status, page = 1, limit = 10 } = req.query;
+    
+    log.info(`💳 Fetching withdrawals for user: ${userId}`);
+    
+    const query = { user: userId };
+    if (status) query.status = status;
+    
+    const skip = (page - 1) * limit;
+    
+    const [withdrawals, total] = await Promise.all([
+      Withdrawal.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Withdrawal.countDocuments(query)
+    ]);
+
+    // Calculate stats
+    const totalWithdrawals = withdrawals.filter(w => w.status === 'paid').reduce((sum, w) => sum + (w.amount || 0), 0);
+    const pendingWithdrawals = withdrawals.filter(w => w.status === 'pending').reduce((sum, w) => sum + (w.amount || 0), 0);
+    const totalFees = withdrawals.filter(w => w.status === 'paid').reduce((sum, w) => sum + (w.platform_fee || 0), 0);
+
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+
+    log.info(`✅ Found ${total} withdrawals for user ${userId}`);
+
+    res.json(formatResponse(true, 'Withdrawals retrieved successfully', {
+      withdrawals,
+      stats: {
+        total_withdrawals: totalWithdrawals,
+        pending_withdrawals: pendingWithdrawals,
+        total_fees: totalFees,
+        total_count: total,
+        paid_count: withdrawals.filter(w => w.status === 'paid').length,
+        pending_count: withdrawals.filter(w => w.status === 'pending').length
+      },
+      pagination
+    }));
+  } catch (error) {
+    log.error('Error fetching withdrawals:', error);
+    handleError(res, error, 'Error fetching withdrawals');
+  }
+});
+
+// Create withdrawal
+app.post('/api/withdrawals', auth, [
+  body('amount').isFloat({ min: config.minWithdrawal }),
+  body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal']),
+  body('remarks').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const { amount, payment_method, remarks } = req.body;
+    const userId = req.user._id;
+    const withdrawalAmount = parseFloat(amount);
+
+    log.info(`💳 Creating withdrawal for user ${userId}, amount: ${withdrawalAmount}, method: ${payment_method}`);
+
+    // Check minimum withdrawal
+    if (withdrawalAmount < config.minWithdrawal) {
+      log.warn(`❌ Withdrawal below minimum: ${withdrawalAmount} < ${config.minWithdrawal}`);
+      return res.status(400).json(formatResponse(false, 
+        `Minimum withdrawal is ₦${config.minWithdrawal.toLocaleString()}`));
+    }
+
+    // Check user balance
+    if (withdrawalAmount > req.user.balance) {
+      log.warn(`❌ Insufficient balance for withdrawal: ${withdrawalAmount} > ${req.user.balance}`);
+      return res.status(400).json(formatResponse(false, 'Insufficient balance for withdrawal'));
+    }
+
+    // Calculate platform fee
+    const platformFee = withdrawalAmount * (config.platformFeePercent / 100);
+    const netAmount = withdrawalAmount - platformFee;
+
+    // Validate payment method specific details
+    let paymentDetails = {};
+    if (payment_method === 'bank_transfer') {
+      if (!req.user.bank_details || !req.user.bank_details.account_number) {
+        log.warn(`❌ No bank details for user ${userId}`);
+        return res.status(400).json(formatResponse(false, 'Please update your bank details in profile settings'));
+      }
+      paymentDetails = {
+        bank_name: req.user.bank_details.bank_name,
+        account_name: req.user.bank_details.account_name,
+        account_number: req.user.bank_details.account_number,
+        bank_code: req.user.bank_details.bank_code || '',
+        verified: req.user.bank_details.verified || false
+      };
+    } else if (payment_method === 'crypto') {
+      if (!req.user.wallet_address) {
+        log.warn(`❌ No wallet address for user ${userId}`);
+        return res.status(400).json(formatResponse(false, 'Please set your wallet address in profile settings'));
+      }
+      paymentDetails = { wallet_address: req.user.wallet_address };
+    } else if (payment_method === 'paypal') {
+      if (!req.user.paypal_email) {
+        log.warn(`❌ No PayPal email for user ${userId}`);
+        return res.status(400).json(formatResponse(false, 'Please set your PayPal email in profile settings'));
+      }
+      paymentDetails = { paypal_email: req.user.paypal_email };
+    }
+
+    // Create withdrawal
+    const withdrawal = new Withdrawal({
+      user: userId,
+      amount: withdrawalAmount,
+      payment_method,
+      platform_fee: platformFee,
+      net_amount: netAmount,
+      status: 'pending',
+      reference: generateReference('WDL'),
+      remarks: remarks,
+      ...paymentDetails,
+      metadata: {
+        ip_address: req.ip,
+        user_agent: req.headers['user-agent']
+      }
+    });
+
+    await withdrawal.save();
+
+    // Update user balance (temporarily hold the amount)
+    await User.findByIdAndUpdate(userId, { 
+      $inc: { balance: -withdrawalAmount }
+    });
+
+    // Create transaction
+    await createTransaction(
+      userId,
+      'withdrawal',
+      -withdrawalAmount,
+      `Withdrawal request via ${payment_method}`,
+      'pending',
+      { 
+        withdrawal_id: withdrawal._id,
+        payment_method,
+        platform_fee: platformFee,
+        net_amount: netAmount 
+      }
+    );
+
+    // Create notification
+    await createNotification(
+      userId,
+      'Withdrawal Request Submitted',
+      `Your withdrawal request of ₦${withdrawalAmount.toLocaleString()} has been submitted and is pending approval.`,
+      'withdrawal',
+      '/withdrawals',
+      { 
+        amount: withdrawalAmount,
+        net_amount: netAmount,
+        fee: platformFee,
+        payment_method 
+      }
+    );
+
+    // Notify admin
+    const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } }).limit(5);
+    for (const admin of admins) {
+      await createNotification(
+        admin._id,
+        'New Withdrawal Request',
+        `User ${req.user.full_name} has requested a withdrawal of ₦${withdrawalAmount.toLocaleString()} via ${payment_method}.`,
+        'system',
+        `/admin/withdrawals/${withdrawal._id}`,
+        { 
+          user_id: userId,
+          user_name: req.user.full_name,
+          amount: withdrawalAmount,
+          net_amount: netAmount,
+          fee: platformFee,
+          payment_method,
+          ...paymentDetails
+        }
+      );
+    }
+
+    log.info(`✅ Withdrawal created: ${withdrawal._id}`);
+
+    res.status(201).json(formatResponse(true, 'Withdrawal request submitted successfully!', { 
+      withdrawal: {
+        ...withdrawal.toObject(),
+        formatted_amount: `₦${withdrawalAmount.toLocaleString()}`,
+        formatted_net_amount: `₦${netAmount.toLocaleString()}`,
+        formatted_fee: `₦${platformFee.toLocaleString()}`,
+        requires_approval: true,
+        estimated_processing_time: '24-48 hours'
+      },
+      message: 'Your withdrawal is pending approval. Processing time is 24-48 hours.'
+    }));
+  } catch (error) {
+    log.error('Error creating withdrawal:', error);
+    handleError(res, error, 'Error creating withdrawal');
+  }
+});
+
+// ==================== REFERRAL ENDPOINTS (NEW) ====================
+
+// Get referral statistics for authenticated user
 app.get('/api/referrals/stats', auth, async (req, res) => {
   try {
     const userId = req.user._id;
+    
+    log.info(`📊 Fetching referral stats for user: ${userId}`);
     
     // Get user's referral stats
     const user = await User.findById(userId);
@@ -2174,6 +3145,7 @@ app.get('/api/referrals/stats', auth, async (req, res) => {
       recent_activity: recentReferrals.slice(0, 5)
     }));
   } catch (error) {
+    log.error('Error fetching referral stats:', error);
     handleError(res, error, 'Error fetching referral stats');
   }
 });
@@ -2224,7 +3196,75 @@ app.get('/api/referrals/list', auth, async (req, res) => {
       pagination
     }));
   } catch (error) {
+    log.error('Error fetching referrals:', error);
     handleError(res, error, 'Error fetching referrals');
+  }
+});
+
+// Get referral earnings history
+app.get('/api/referrals/earnings', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { start_date, end_date, page = 1, limit = 20 } = req.query;
+    
+    const query = { 
+      referrer: userId,
+      earnings_paid: true
+    };
+    
+    // Date filter
+    if (start_date || end_date) {
+      query.paid_at = {};
+      if (start_date) query.paid_at.$gte = new Date(start_date);
+      if (end_date) query.paid_at.$lte = new Date(end_date);
+    }
+    
+    const skip = (page - 1) * limit;
+    
+    const [earnings, total] = await Promise.all([
+      Referral.find(query)
+        .populate('referred_user', 'full_name email')
+        .sort({ paid_at: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Referral.countDocuments(query)
+    ]);
+
+    // Calculate totals
+    const totalEarnings = earnings.reduce((sum, item) => sum + (item.earnings || 0), 0);
+    
+    // Group by month
+    const monthlyEarnings = {};
+    earnings.forEach(item => {
+      if (item.paid_at) {
+        const monthYear = new Date(item.paid_at).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short'
+        });
+        monthlyEarnings[monthYear] = (monthlyEarnings[monthYear] || 0) + (item.earnings || 0);
+      }
+    });
+
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+
+    res.json(formatResponse(true, 'Referral earnings retrieved successfully', {
+      earnings,
+      totals: {
+        total_earnings: totalEarnings,
+        monthly_earnings: monthlyEarnings,
+        average_per_referral: total > 0 ? totalEarnings / total : 0
+      },
+      pagination
+    }));
+  } catch (error) {
+    log.error('Error fetching referral earnings:', error);
+    handleError(res, error, 'Error fetching referral earnings');
   }
 });
 
@@ -2233,7 +3273,7 @@ app.get('/api/referrals/list', auth, async (req, res) => {
 // Admin dashboard
 app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
   try {
-    console.log(`📊 Admin dashboard requested by: ${req.user.email}`);
+    log.info(`📊 Admin dashboard requested by: ${req.user.email}`);
     
     const [
       totalUsers,
@@ -2245,7 +3285,8 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
       pendingInvestments,
       pendingDeposits,
       pendingWithdrawals,
-      pendingKYC
+      pendingKYC,
+      totalEarnings
     ] = await Promise.all([
       User.countDocuments({}),
       User.countDocuments({ 
@@ -2258,27 +3299,25 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
       Investment.countDocuments({ status: 'pending' }),
       Deposit.countDocuments({ status: 'pending' }),
       Withdrawal.countDocuments({ status: 'pending' }),
-      KYCSubmission.countDocuments({ status: 'pending' })
-    ]);
-
-    // Get financial totals
-    const [
-      totalDepositsAmount,
-      totalWithdrawalsAmount,
-      totalBalance
-    ] = await Promise.all([
-      Deposit.aggregate([
-        { $match: { status: 'approved' } },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
-      ]),
-      Withdrawal.aggregate([
-        { $match: { status: 'paid' } },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
-      ]),
-      User.aggregate([
-        { $group: { _id: null, total: { $sum: '$balance' } } }
+      KYCSubmission.countDocuments({ status: 'pending' }),
+      Investment.aggregate([
+        { $group: { _id: null, total: { $sum: '$earned_so_far' } } }
       ])
     ]);
+
+    // Get recent activities
+    const recentActivities = await Transaction.find({})
+      .populate('user', 'full_name')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    // Get top users by balance
+    const topUsers = await User.find({})
+      .sort({ balance: -1 })
+      .limit(5)
+      .select('full_name email balance total_earnings')
+      .lean();
 
     const stats = {
       overview: {
@@ -2288,9 +3327,10 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         active_investments: activeInvestments,
         total_deposits: totalDeposits,
         total_withdrawals: totalWithdrawals,
-        total_deposits_amount: totalDepositsAmount[0]?.total || 0,
-        total_withdrawals_amount: totalWithdrawalsAmount[0]?.total || 0,
-        total_balance: totalBalance[0]?.total || 0
+        total_earnings: totalEarnings[0]?.total || 0,
+        total_balance: await User.aggregate([
+          { $group: { _id: null, total: { $sum: '$balance' } } }
+        ]).then(res => res[0]?.total || 0)
       },
       pending_actions: {
         pending_investments: pendingInvestments,
@@ -2298,31 +3338,28 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         pending_withdrawals: pendingWithdrawals,
         pending_kyc: pendingKYC,
         total_pending: pendingInvestments + pendingDeposits + pendingWithdrawals + pendingKYC
-      }
+      },
+      recent_activities: recentActivities,
+      top_users: topUsers
     };
 
-    // Get recent activities
-    const recentActivities = await Transaction.find({})
-      .populate('user', 'full_name')
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .lean();
-
-    console.log(`✅ Admin dashboard data retrieved for ${req.user.email}`);
+    log.info(`✅ Admin dashboard data retrieved for ${req.user.email}`);
 
     res.json(formatResponse(true, 'Admin dashboard stats retrieved successfully', {
       stats,
-      recent_activities: recentActivities,
       quick_links: {
         pending_investments: '/api/admin/pending-investments',
         pending_deposits: '/api/admin/pending-deposits',
         pending_withdrawals: '/api/admin/pending-withdrawals',
         pending_kyc: '/api/admin/pending-kyc',
-        all_users: '/api/admin/users'
+        all_users: '/api/admin/users',
+        transactions: '/api/admin/transactions',
+        referrals: '/api/admin/referrals',
+        audit_logs: '/api/admin/audit'
       }
     }));
   } catch (error) {
-    console.error('Error fetching admin dashboard stats:', error);
+    log.error('Error fetching admin dashboard stats:', error);
     handleError(res, error, 'Error fetching admin dashboard stats');
   }
 });
@@ -2336,7 +3373,7 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    console.log(`📋 Found ${pendingInvestments.length} pending investments`);
+    log.info(`📋 Found ${pendingInvestments.length} pending investments`);
 
     res.json(formatResponse(true, 'Pending investments retrieved successfully', {
       investments: pendingInvestments,
@@ -2344,7 +3381,7 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
       total_amount: pendingInvestments.reduce((sum, inv) => sum + (inv.amount || 0), 0)
     }));
   } catch (error) {
-    console.error('Error fetching pending investments:', error);
+    log.error('Error fetching pending investments:', error);
     handleError(res, error, 'Error fetching pending investments');
   }
 });
@@ -2363,18 +3400,18 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
     const adminId = req.user._id;
     const { remarks } = req.body;
 
-    console.log(`✅ Approving investment: ${investmentId} by admin: ${adminId}`);
+    log.info(`✅ Approving investment: ${investmentId} by admin: ${adminId}`);
 
     const investment = await Investment.findById(investmentId)
       .populate('user plan');
     
     if (!investment) {
-      console.log(`❌ Investment not found: ${investmentId}`);
+      log.warn(`❌ Investment not found: ${investmentId}`);
       return res.status(404).json(formatResponse(false, 'Investment not found'));
     }
 
     if (investment.status !== 'pending') {
-      console.log(`❌ Investment not pending: ${investmentId}, status: ${investment.status}`);
+      log.warn(`❌ Investment not pending: ${investmentId}, status: ${investment.status}`);
       return res.status(400).json(formatResponse(false, 'Investment is not pending approval'));
     }
 
@@ -2429,7 +3466,7 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
       req.headers['user-agent']
     );
 
-    console.log(`✅ Investment approved: ${investmentId}`);
+    log.info(`✅ Investment approved: ${investmentId}`);
 
     res.json(formatResponse(true, 'Investment approved successfully', {
       investment: {
@@ -2440,14 +3477,14 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
       message: 'Investment approved and user notified'
     }));
   } catch (error) {
-    console.error('Error approving investment:', error);
+    log.error('Error approving investment:', error);
     handleError(res, error, 'Error approving investment');
   }
 });
 
 // Reject investment
 app.post('/api/admin/investments/:id/reject', adminAuth, [
-  body('remarks').notEmpty()
+  body('remarks').notEmpty().trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -2459,18 +3496,18 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
     const adminId = req.user._id;
     const { remarks } = req.body;
 
-    console.log(`❌ Rejecting investment: ${investmentId} by admin: ${adminId}`);
+    log.info(`❌ Rejecting investment: ${investmentId} by admin: ${adminId}`);
 
     const investment = await Investment.findById(investmentId)
-      .populate('user');
+      .populate('user plan');
     
     if (!investment) {
-      console.log(`❌ Investment not found: ${investmentId}`);
+      log.warn(`❌ Investment not found: ${investmentId}`);
       return res.status(404).json(formatResponse(false, 'Investment not found'));
     }
 
     if (investment.status !== 'pending') {
-      console.log(`❌ Investment not pending: ${investmentId}, status: ${investment.status}`);
+      log.warn(`❌ Investment not pending: ${investmentId}, status: ${investment.status}`);
       return res.status(400).json(formatResponse(false, 'Investment is not pending approval'));
     }
 
@@ -2481,7 +3518,7 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
     
     await investment.save();
 
-    // Refund user balance
+    // Refund user
     await User.findByIdAndUpdate(investment.user._id, {
       $inc: { balance: investment.amount }
     });
@@ -2490,14 +3527,14 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
     await createNotification(
       investment.user._id,
       'Investment Rejected',
-      `Your investment of ₦${investment.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
+      `Your investment of ₦${investment.amount.toLocaleString()} in ${investment.plan.name} has been rejected. Reason: ${remarks}`,
       'error',
       '/investments',
       { 
         amount: investment.amount,
+        plan_name: investment.plan.name,
         rejected_by: req.user.full_name,
-        rejected_at: new Date(),
-        remarks: remarks
+        rejection_reason: remarks
       }
     );
 
@@ -2509,6 +3546,7 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
       investmentId,
       {
         amount: investment.amount,
+        plan: investment.plan.name,
         user_id: investment.user._id,
         user_name: investment.user.full_name,
         remarks: remarks
@@ -2517,7 +3555,7 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
       req.headers['user-agent']
     );
 
-    console.log(`✅ Investment rejected: ${investmentId}`);
+    log.info(`✅ Investment rejected: ${investmentId}`);
 
     res.json(formatResponse(true, 'Investment rejected successfully', {
       investment: {
@@ -2527,7 +3565,7 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
       message: 'Investment rejected and user notified'
     }));
   } catch (error) {
-    console.error('Error rejecting investment:', error);
+    log.error('Error rejecting investment:', error);
     handleError(res, error, 'Error rejecting investment');
   }
 });
@@ -2540,7 +3578,7 @@ app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    console.log(`📋 Found ${pendingDeposits.length} pending deposits`);
+    log.info(`📋 Found ${pendingDeposits.length} pending deposits`);
 
     res.json(formatResponse(true, 'Pending deposits retrieved successfully', {
       deposits: pendingDeposits,
@@ -2548,7 +3586,7 @@ app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
       total_amount: pendingDeposits.reduce((sum, dep) => sum + (dep.amount || 0), 0)
     }));
   } catch (error) {
-    console.error('Error fetching pending deposits:', error);
+    log.error('Error fetching pending deposits:', error);
     handleError(res, error, 'Error fetching pending deposits');
   }
 });
@@ -2562,18 +3600,18 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
     const adminId = req.user._id;
     const { remarks } = req.body;
 
-    console.log(`✅ Approving deposit: ${depositId} by admin: ${adminId}`);
+    log.info(`✅ Approving deposit: ${depositId} by admin: ${adminId}`);
 
     const deposit = await Deposit.findById(depositId)
       .populate('user');
     
     if (!deposit) {
-      console.log(`❌ Deposit not found: ${depositId}`);
+      log.warn(`❌ Deposit not found: ${depositId}`);
       return res.status(404).json(formatResponse(false, 'Deposit not found'));
     }
 
     if (deposit.status !== 'pending') {
-      console.log(`❌ Deposit not pending: ${depositId}, status: ${deposit.status}`);
+      log.warn(`❌ Deposit not pending: ${depositId}, status: ${deposit.status}`);
       return res.status(400).json(formatResponse(false, 'Deposit is not pending approval'));
     }
 
@@ -2645,7 +3683,7 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
       req.headers['user-agent']
     );
 
-    console.log(`✅ Deposit approved: ${depositId}`);
+    log.info(`✅ Deposit approved: ${depositId}`);
 
     res.json(formatResponse(true, 'Deposit approved successfully', {
       deposit: {
@@ -2657,14 +3695,14 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
       message: 'Deposit approved and user notified'
     }));
   } catch (error) {
-    console.error('Error approving deposit:', error);
+    log.error('Error approving deposit:', error);
     handleError(res, error, 'Error approving deposit');
   }
 });
 
 // Reject deposit
 app.post('/api/admin/deposits/:id/reject', adminAuth, [
-  body('remarks').notEmpty()
+  body('remarks').notEmpty().trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -2676,18 +3714,18 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
     const adminId = req.user._id;
     const { remarks } = req.body;
 
-    console.log(`❌ Rejecting deposit: ${depositId} by admin: ${adminId}`);
+    log.info(`❌ Rejecting deposit: ${depositId} by admin: ${adminId}`);
 
     const deposit = await Deposit.findById(depositId)
       .populate('user');
     
     if (!deposit) {
-      console.log(`❌ Deposit not found: ${depositId}`);
+      log.warn(`❌ Deposit not found: ${depositId}`);
       return res.status(404).json(formatResponse(false, 'Deposit not found'));
     }
 
     if (deposit.status !== 'pending') {
-      console.log(`❌ Deposit not pending: ${depositId}, status: ${deposit.status}`);
+      log.warn(`❌ Deposit not pending: ${depositId}, status: ${deposit.status}`);
       return res.status(400).json(formatResponse(false, 'Deposit is not pending approval'));
     }
 
@@ -2709,8 +3747,7 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
         amount: deposit.amount,
         payment_method: deposit.payment_method,
         rejected_by: req.user.full_name,
-        rejected_at: new Date(),
-        remarks: remarks
+        rejection_reason: remarks
       }
     );
 
@@ -2725,13 +3762,14 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
         payment_method: deposit.payment_method,
         user_id: deposit.user._id,
         user_name: deposit.user.full_name,
-        remarks: remarks
+        remarks: remarks,
+        has_proof: !!deposit.payment_proof_url
       },
       req.ip,
       req.headers['user-agent']
     );
 
-    console.log(`✅ Deposit rejected: ${depositId}`);
+    log.info(`✅ Deposit rejected: ${depositId}`);
 
     res.json(formatResponse(true, 'Deposit rejected successfully', {
       deposit: {
@@ -2741,7 +3779,7 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
       message: 'Deposit rejected and user notified'
     }));
   } catch (error) {
-    console.error('Error rejecting deposit:', error);
+    log.error('Error rejecting deposit:', error);
     handleError(res, error, 'Error rejecting deposit');
   }
 });
@@ -2754,7 +3792,7 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    console.log(`📋 Found ${pendingWithdrawals.length} pending withdrawals`);
+    log.info(`📋 Found ${pendingWithdrawals.length} pending withdrawals`);
 
     res.json(formatResponse(true, 'Pending withdrawals retrieved successfully', {
       withdrawals: pendingWithdrawals,
@@ -2762,7 +3800,7 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
       total_amount: pendingWithdrawals.reduce((sum, wdl) => sum + (wdl.amount || 0), 0)
     }));
   } catch (error) {
-    console.error('Error fetching pending withdrawals:', error);
+    log.error('Error fetching pending withdrawals:', error);
     handleError(res, error, 'Error fetching pending withdrawals');
   }
 });
@@ -2778,18 +3816,18 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
     const adminId = req.user._id;
     const { transaction_id, payment_proof_url, remarks } = req.body;
 
-    console.log(`✅ Approving withdrawal: ${withdrawalId} by admin: ${adminId}`);
+    log.info(`✅ Approving withdrawal: ${withdrawalId} by admin: ${adminId}`);
 
     const withdrawal = await Withdrawal.findById(withdrawalId)
       .populate('user');
     
     if (!withdrawal) {
-      console.log(`❌ Withdrawal not found: ${withdrawalId}`);
+      log.warn(`❌ Withdrawal not found: ${withdrawalId}`);
       return res.status(404).json(formatResponse(false, 'Withdrawal not found'));
     }
 
     if (withdrawal.status !== 'pending') {
-      console.log(`❌ Withdrawal not pending: ${withdrawalId}, status: ${withdrawal.status}`);
+      log.warn(`❌ Withdrawal not pending: ${withdrawalId}, status: ${withdrawal.status}`);
       return res.status(400).json(formatResponse(false, 'Withdrawal is not pending approval'));
     }
 
@@ -2850,7 +3888,7 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
       req.headers['user-agent']
     );
 
-    console.log(`✅ Withdrawal approved: ${withdrawalId}`);
+    log.info(`✅ Withdrawal approved: ${withdrawalId}`);
 
     res.json(formatResponse(true, 'Withdrawal approved successfully', {
       withdrawal: {
@@ -2862,14 +3900,14 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
       message: 'Withdrawal processed and user notified'
     }));
   } catch (error) {
-    console.error('Error approving withdrawal:', error);
+    log.error('Error approving withdrawal:', error);
     handleError(res, error, 'Error approving withdrawal');
   }
 });
 
 // Reject withdrawal
 app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
-  body('remarks').notEmpty()
+  body('remarks').notEmpty().trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -2881,18 +3919,18 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
     const adminId = req.user._id;
     const { remarks } = req.body;
 
-    console.log(`❌ Rejecting withdrawal: ${withdrawalId} by admin: ${adminId}`);
+    log.info(`❌ Rejecting withdrawal: ${withdrawalId} by admin: ${adminId}`);
 
     const withdrawal = await Withdrawal.findById(withdrawalId)
       .populate('user');
     
     if (!withdrawal) {
-      console.log(`❌ Withdrawal not found: ${withdrawalId}`);
+      log.warn(`❌ Withdrawal not found: ${withdrawalId}`);
       return res.status(404).json(formatResponse(false, 'Withdrawal not found'));
     }
 
     if (withdrawal.status !== 'pending') {
-      console.log(`❌ Withdrawal not pending: ${withdrawalId}, status: ${withdrawal.status}`);
+      log.warn(`❌ Withdrawal not pending: ${withdrawalId}, status: ${withdrawal.status}`);
       return res.status(400).json(formatResponse(false, 'Withdrawal is not pending approval'));
     }
 
@@ -2903,38 +3941,23 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
     
     await withdrawal.save();
 
-    // Refund user balance (amount was deducted when withdrawal created)
+    // Refund user (amount was deducted when withdrawal created)
     await User.findByIdAndUpdate(withdrawal.user._id, {
       $inc: { balance: withdrawal.amount }
     });
-
-    // Create transaction for refund
-    await createTransaction(
-      withdrawal.user._id,
-      'refund',
-      withdrawal.amount,
-      `Withdrawal refund - ${remarks}`,
-      'completed',
-      { 
-        withdrawal_id: withdrawal._id,
-        payment_method: withdrawal.payment_method,
-        reason: remarks
-      }
-    );
 
     // Create notification
     await createNotification(
       withdrawal.user._id,
       'Withdrawal Rejected',
-      `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been rejected. Reason: ${remarks}. The amount has been refunded to your account.`,
+      `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been rejected. Reason: ${remarks}`,
       'error',
       '/withdrawals',
       { 
         amount: withdrawal.amount,
         payment_method: withdrawal.payment_method,
         rejected_by: req.user.full_name,
-        rejected_at: new Date(),
-        remarks: remarks
+        rejection_reason: remarks
       }
     );
 
@@ -2949,24 +3972,23 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
         payment_method: withdrawal.payment_method,
         user_id: withdrawal.user._id,
         user_name: withdrawal.user.full_name,
-        remarks: remarks,
-        refunded: true
+        remarks: remarks
       },
       req.ip,
       req.headers['user-agent']
     );
 
-    console.log(`✅ Withdrawal rejected: ${withdrawalId}`);
+    log.info(`✅ Withdrawal rejected: ${withdrawalId}`);
 
     res.json(formatResponse(true, 'Withdrawal rejected successfully', {
       withdrawal: {
         ...withdrawal.toObject(),
         rejected_by_admin: req.user.full_name
       },
-      message: 'Withdrawal rejected and amount refunded to user'
+      message: 'Withdrawal rejected and user notified'
     }));
   } catch (error) {
-    console.error('Error rejecting withdrawal:', error);
+    log.error('Error rejecting withdrawal:', error);
     handleError(res, error, 'Error rejecting withdrawal');
   }
 });
@@ -3016,7 +4038,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
       User.countDocuments(query)
     ]);
 
-    console.log(`📋 Found ${total} users for admin view`);
+    log.info(`📋 Found ${total} users for admin view`);
 
     const pagination = {
       page: parseInt(page),
@@ -3036,32 +4058,34 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
       }
     }));
   } catch (error) {
-    console.error('Error fetching users:', error);
+    log.error('Error fetching users:', error);
     handleError(res, error, 'Error fetching users');
   }
 });
 
-// Get user details
+// Get user details for admin
 app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
   try {
     const userId = req.params.id;
+    
+    log.info(`👤 Fetching user details for admin: ${userId}`);
     
     const user = await User.findById(userId)
       .select('-password -two_factor_secret -verification_token -password_reset_token')
       .lean();
     
     if (!user) {
+      log.warn(`❌ User not found: ${userId}`);
       return res.status(404).json(formatResponse(false, 'User not found'));
     }
-
+    
     // Get user's related data
     const [
       investments,
       deposits,
       withdrawals,
       transactions,
-      referrals,
-      kyc
+      referrals
     ] = await Promise.all([
       Investment.find({ user: userId })
         .populate('plan', 'name daily_interest')
@@ -3084,10 +4108,9 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
         .populate('referred_user', 'full_name email')
         .sort({ createdAt: -1 })
         .limit(20)
-        .lean(),
-      KYCSubmission.findOne({ user: userId }).lean()
+        .lean()
     ]);
-
+    
     // Calculate stats
     const totalInvested = investments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
     const totalDeposited = deposits
@@ -3096,133 +4119,391 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
     const totalWithdrawn = withdrawals
       .filter(w => w.status === 'paid')
       .reduce((sum, wdl) => sum + (wdl.amount || 0), 0);
-
+    const totalEarnings = investments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
+    
+    const userStats = {
+      total_invested,
+      total_deposited,
+      total_withdrawn,
+      total_earnings,
+      active_investments: investments.filter(inv => inv.status === 'active').length,
+      pending_deposits: deposits.filter(dep => dep.status === 'pending').length,
+      pending_withdrawals: withdrawals.filter(wdl => wdl.status === 'pending').length,
+      total_referrals: referrals.length,
+      referral_earnings: referrals.reduce((sum, ref) => sum + (ref.earnings || 0), 0)
+    };
+    
+    log.info(`✅ User details retrieved: ${userId}`);
+    
     res.json(formatResponse(true, 'User details retrieved successfully', {
       user,
-      stats: {
-        total_invested: totalInvested,
-        total_deposited: totalDeposited,
-        total_withdrawn: totalWithdrawn,
-        investment_count: investments.length,
-        deposit_count: deposits.length,
-        withdrawal_count: withdrawals.length,
-        referral_count: referrals.length
-      },
-      data: {
+      stats: userStats,
+      activities: {
         investments,
         deposits,
         withdrawals,
         transactions,
-        referrals,
-        kyc
+        referrals
       }
     }));
   } catch (error) {
-    console.error('Error fetching user details:', error);
+    log.error('Error fetching user details:', error);
     handleError(res, error, 'Error fetching user details');
   }
 });
 
-// Update user role
-app.put('/api/admin/users/:id/role', adminAuth, [
-  body('role').isIn(['user', 'admin', 'super_admin'])
+// Update user for admin
+app.put('/api/admin/users/:id', adminAuth, [
+  body('full_name').optional().trim(),
+  body('phone').optional().trim(),
+  body('role').optional().isIn(['user', 'admin', 'super_admin']),
+  body('is_active').optional().isBoolean(),
+  body('kyc_status').optional().isIn(['pending', 'verified', 'rejected', 'not_submitted']),
+  body('balance').optional().isFloat({ min: 0 }),
+  body('remarks').optional().trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-    
+
     const userId = req.params.id;
-    const { role } = req.body;
-    
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { role },
-      { new: true }
-    ).select('-password');
-    
+    const adminId = req.user._id;
+    const updateData = req.body;
+    const { remarks } = req.body;
+
+    log.info(`✏️ Admin updating user: ${userId}`);
+
+    const user = await User.findById(userId);
     if (!user) {
+      log.warn(`❌ User not found: ${userId}`);
       return res.status(404).json(formatResponse(false, 'User not found'));
     }
+
+    // Store old values for audit
+    const oldValues = {
+      full_name: user.full_name,
+      phone: user.phone,
+      role: user.role,
+      is_active: user.is_active,
+      kyc_status: user.kyc_status,
+      balance: user.balance
+    };
+
+    // Update allowed fields
+    const allowedUpdates = ['full_name', 'phone', 'role', 'is_active', 'kyc_status', 'balance'];
+    const updatedFields = {};
     
+    allowedUpdates.forEach(field => {
+      if (updateData[field] !== undefined) {
+        updatedFields[field] = updateData[field];
+        user[field] = updateData[field];
+      }
+    });
+
+    // Handle KYC verification
+    if (updateData.kyc_status === 'verified') {
+      user.kyc_verified = true;
+      user.kyc_verified_at = new Date();
+    } else if (updateData.kyc_status === 'rejected') {
+      user.kyc_verified = false;
+    }
+
+    await user.save();
+
     // Create audit log
     await createAdminAudit(
-      req.user._id,
-      'UPDATE_USER_ROLE',
+      adminId,
+      'UPDATE_USER',
       'user',
       userId,
       {
-        old_role: user.role,
-        new_role: role,
-        user_email: user.email
+        old_values: oldValues,
+        new_values: updatedFields,
+        remarks: remarks,
+        changed_fields: Object.keys(updatedFields)
       },
       req.ip,
       req.headers['user-agent']
     );
-    
-    res.json(formatResponse(true, 'User role updated successfully', { user }));
+
+    // Create notification for user if important changes
+    if (Object.keys(updatedFields).length > 0) {
+      await createNotification(
+        userId,
+        'Account Updated',
+        'Your account information has been updated by an administrator.',
+        'info',
+        '/profile',
+        { updated_fields: Object.keys(updatedFields), updated_by: req.user.full_name }
+      );
+    }
+
+    log.info(`✅ User updated: ${userId}`);
+
+    res.json(formatResponse(true, 'User updated successfully', {
+      user: user.toObject(),
+      updated_fields: Object.keys(updatedFields)
+    }));
   } catch (error) {
-    console.error('Error updating user role:', error);
+    log.error('Error updating user:', error);
+    handleError(res, error, 'Error updating user');
+  }
+});
+
+// Get user dashboard for admin
+app.get('/api/admin/users/:id/dashboard', adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    log.info(`📊 Fetching user dashboard for admin: ${userId}`);
+    
+    const user = await User.findById(userId)
+      .select('-password -two_factor_secret')
+      .lean();
+    
+    if (!user) {
+      log.warn(`❌ User not found: ${userId}`);
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+    
+    // Get comprehensive user data
+    const [
+      investments,
+      deposits,
+      withdrawals,
+      transactions,
+      referrals,
+      notifications
+    ] = await Promise.all([
+      Investment.find({ user: userId })
+        .populate('plan', 'name daily_interest duration')
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      Deposit.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      Withdrawal.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      Transaction.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean(),
+      Referral.find({ referrer: userId })
+        .populate('referred_user', 'full_name email')
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      Notification.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean()
+    ]);
+    
+    // Calculate comprehensive stats
+    const activeInvestments = investments.filter(inv => inv.status === 'active');
+    const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+    const totalEarnings = investments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
+    const referralEarnings = referrals.reduce((sum, ref) => sum + (ref.earnings || 0), 0);
+    
+    const totalDepositsAmount = deposits
+      .filter(d => d.status === 'approved')
+      .reduce((sum, dep) => sum + (dep.amount || 0), 0);
+    
+    const totalWithdrawalsAmount = withdrawals
+      .filter(w => w.status === 'paid')
+      .reduce((sum, wdl) => sum + (wdl.amount || 0), 0);
+    
+    const dailyInterest = activeInvestments.reduce((sum, inv) => {
+      if (inv.plan && inv.plan.daily_interest) {
+        return sum + ((inv.amount || 0) * inv.plan.daily_interest / 100);
+      }
+      return sum;
+    }, 0);
+    
+    const dashboardData = {
+      user: user,
+      summary: {
+        portfolio_value: (user.balance || 0) + totalEarnings + referralEarnings,
+        available_balance: user.balance || 0,
+        total_earnings: totalEarnings,
+        referral_earnings: referralEarnings,
+        daily_interest: dailyInterest,
+        active_investment_value: totalActiveValue,
+        total_deposits: totalDepositsAmount,
+        total_withdrawals: totalWithdrawalsAmount,
+        net_profit: totalEarnings + referralEarnings - totalWithdrawalsAmount
+      },
+      counts: {
+        total_investments: investments.length,
+        active_investments: activeInvestments.length,
+        total_deposits: deposits.filter(d => d.status === 'approved').length,
+        total_withdrawals: withdrawals.filter(w => w.status === 'paid').length,
+        total_referrals: referrals.length,
+        unread_notifications: notifications.filter(n => !n.is_read).length
+      },
+      recent_activities: {
+        investments: investments.slice(0, 5),
+        deposits: deposits.slice(0, 5),
+        withdrawals: withdrawals.slice(0, 5),
+        transactions: transactions.slice(0, 10),
+        referrals: referrals.slice(0, 5),
+        notifications: notifications.slice(0, 5)
+      }
+    };
+    
+    log.info(`✅ User dashboard retrieved: ${userId}`);
+    
+    res.json(formatResponse(true, 'User dashboard retrieved successfully', dashboardData));
+  } catch (error) {
+    log.error('Error fetching user dashboard:', error);
+    handleError(res, error, 'Error fetching user dashboard');
+  }
+});
+
+// Update user role
+app.put('/api/admin/users/:id/role', adminAuth, [
+  body('role').isIn(['user', 'admin', 'super_admin']),
+  body('remarks').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const userId = req.params.id;
+    const adminId = req.user._id;
+    const { role, remarks } = req.body;
+
+    log.info(`👑 Updating user role: ${userId} to ${role}`);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      log.warn(`❌ User not found: ${userId}`);
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+
+    const oldRole = user.role;
+    user.role = role;
+    await user.save();
+
+    // Create audit log
+    await createAdminAudit(
+      adminId,
+      'UPDATE_USER_ROLE',
+      'user',
+      userId,
+      {
+        old_role: oldRole,
+        new_role: role,
+        remarks: remarks
+      },
+      req.ip,
+      req.headers['user-agent']
+    );
+
+    // Create notification for user
+    await createNotification(
+      userId,
+      'Role Updated',
+      `Your account role has been updated to ${role}.`,
+      'info',
+      '/profile',
+      { old_role: oldRole, new_role: role, updated_by: req.user.full_name }
+    );
+
+    log.info(`✅ User role updated: ${userId} from ${oldRole} to ${role}`);
+
+    res.json(formatResponse(true, 'User role updated successfully', {
+      user: {
+        id: user._id,
+        email: user.email,
+        old_role: oldRole,
+        new_role: role
+      }
+    }));
+  } catch (error) {
+    log.error('Error updating user role:', error);
     handleError(res, error, 'Error updating user role');
   }
 });
 
 // Update user status
 app.put('/api/admin/users/:id/status', adminAuth, [
-  body('is_active').isBoolean()
+  body('is_active').isBoolean(),
+  body('remarks').optional().trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-    
+
     const userId = req.params.id;
-    const { is_active } = req.body;
-    
+    const adminId = req.user._id;
+    const { is_active, remarks } = req.body;
+
+    log.info(`🔄 Updating user status: ${userId} to ${is_active ? 'active' : 'inactive'}`);
+
     const user = await User.findById(userId);
     if (!user) {
+      log.warn(`❌ User not found: ${userId}`);
       return res.status(404).json(formatResponse(false, 'User not found'));
     }
-    
+
     const oldStatus = user.is_active;
     user.is_active = is_active;
     await user.save();
-    
-    // Create notification for user
-    await createNotification(
-      userId,
-      'Account Status Updated',
-      `Your account has been ${is_active ? 'activated' : 'deactivated'} by an administrator.`,
-      'system',
-      '/profile'
-    );
-    
+
     // Create audit log
     await createAdminAudit(
-      req.user._id,
+      adminId,
       'UPDATE_USER_STATUS',
       'user',
       userId,
       {
         old_status: oldStatus,
         new_status: is_active,
-        user_email: user.email
+        remarks: remarks
       },
       req.ip,
       req.headers['user-agent']
     );
-    
-    res.json(formatResponse(true, 'User status updated successfully', { 
+
+    // Create notification for user
+    await createNotification(
+      userId,
+      is_active ? 'Account Activated' : 'Account Deactivated',
+      is_active 
+        ? 'Your account has been activated by an administrator.' 
+        : 'Your account has been deactivated by an administrator.',
+      is_active ? 'success' : 'error',
+      '/profile',
+      { 
+        status: is_active ? 'active' : 'inactive',
+        remarks: remarks,
+        updated_by: req.user.full_name 
+      }
+    );
+
+    log.info(`✅ User status updated: ${userId} from ${oldStatus} to ${is_active}`);
+
+    res.json(formatResponse(true, 'User status updated successfully', {
       user: {
-        _id: user._id,
+        id: user._id,
         email: user.email,
-        is_active: user.is_active
+        old_status: oldStatus,
+        new_status: is_active
       }
     }));
   } catch (error) {
-    console.error('Error updating user status:', error);
+    log.error('Error updating user status:', error);
     handleError(res, error, 'Error updating user status');
   }
 });
@@ -3231,123 +4512,7 @@ app.put('/api/admin/users/:id/status', adminAuth, [
 app.put('/api/admin/users/:id/balance', adminAuth, [
   body('amount').isFloat(),
   body('type').isIn(['add', 'subtract', 'set']),
-  body('description').notEmpty()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed'));
-    }
-    
-    const userId = req.params.id;
-    const { amount, type, description } = req.body;
-    
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json(formatResponse(false, 'User not found'));
-    }
-    
-    let newBalance = user.balance;
-    let transactionAmount = 0;
-    
-    if (type === 'add') {
-      newBalance += amount;
-      transactionAmount = amount;
-    } else if (type === 'subtract') {
-      if (amount > user.balance) {
-        return res.status(400).json(formatResponse(false, 'Insufficient balance'));
-      }
-      newBalance -= amount;
-      transactionAmount = -amount;
-    } else if (type === 'set') {
-      transactionAmount = amount - user.balance;
-      newBalance = amount;
-    }
-    
-    user.balance = newBalance;
-    await user.save();
-    
-    // Create transaction
-    await createTransaction(
-      userId,
-      type === 'add' ? 'bonus' : 'adjustment',
-      transactionAmount,
-      `${description} (Admin adjustment)`,
-      'completed',
-      { 
-        adjusted_by: req.user.full_name,
-        adjustment_type: type,
-        previous_balance: user.balance - transactionAmount
-      }
-    );
-    
-    // Create notification
-    await createNotification(
-      userId,
-      'Balance Updated',
-      `Your account balance has been updated by an administrator. New balance: ₦${newBalance.toLocaleString()}`,
-      'system',
-      '/dashboard',
-      { 
-        amount: transactionAmount,
-        new_balance: newBalance,
-        adjusted_by: req.user.full_name
-      }
-    );
-    
-    // Create audit log
-    await createAdminAudit(
-      req.user._id,
-      'UPDATE_USER_BALANCE',
-      'user',
-      userId,
-      {
-        user_email: user.email,
-        adjustment_type: type,
-        amount: transactionAmount,
-        old_balance: user.balance - transactionAmount,
-        new_balance: newBalance,
-        description: description
-      },
-      req.ip,
-      req.headers['user-agent']
-    );
-    
-    res.json(formatResponse(true, 'Balance updated successfully', { 
-      user: {
-        _id: user._id,
-        email: user.email,
-        balance: user.balance
-      }
-    }));
-  } catch (error) {
-    console.error('Error updating balance:', error);
-    handleError(res, error, 'Error updating balance');
-  }
-});
-
-// Get pending KYC
-app.get('/api/admin/pending-kyc', adminAuth, async (req, res) => {
-  try {
-    const pendingKYC = await KYCSubmission.find({ status: 'pending' })
-      .populate('user', 'full_name email phone')
-      .sort({ createdAt: -1 })
-      .lean();
-
-    console.log(`📋 Found ${pendingKYC.length} pending KYC submissions`);
-
-    res.json(formatResponse(true, 'Pending KYC retrieved successfully', {
-      kyc_submissions: pendingKYC,
-      count: pendingKYC.length
-    }));
-  } catch (error) {
-    console.error('Error fetching pending KYC:', error);
-    handleError(res, error, 'Error fetching pending KYC');
-  }
-});
-
-// Approve KYC
-app.post('/api/admin/kyc/:id/approve', adminAuth, [
+  body('description').notEmpty().trim(),
   body('remarks').optional().trim()
 ], async (req, res) => {
   try {
@@ -3355,169 +4520,298 @@ app.post('/api/admin/kyc/:id/approve', adminAuth, [
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-    
-    const kycId = req.params.id;
+
+    const userId = req.params.id;
     const adminId = req.user._id;
-    const { remarks } = req.body;
-    
-    const kyc = await KYCSubmission.findById(kycId)
-      .populate('user');
-    
-    if (!kyc) {
-      return res.status(404).json(formatResponse(false, 'KYC submission not found'));
+    const { amount, type, description, remarks } = req.body;
+
+    log.info(`💰 Admin updating balance for user: ${userId}, type: ${type}, amount: ${amount}`);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      log.warn(`❌ User not found: ${userId}`);
+      return res.status(404).json(formatResponse(false, 'User not found'));
     }
+
+    const oldBalance = user.balance;
+    let newBalance = oldBalance;
     
-    kyc.status = 'approved';
-    kyc.reviewed_by = adminId;
-    kyc.reviewed_at = new Date();
-    kyc.notes = remarks;
-    await kyc.save();
-    
-    // Update user
-    await User.findByIdAndUpdate(kyc.user._id, {
-      kyc_status: 'verified',
-      kyc_verified: true,
-      kyc_verified_at: new Date()
-    });
-    
-    // Create notification
-    await createNotification(
-      kyc.user._id,
-      'KYC Approved',
-      'Your KYC submission has been approved. Your account is now fully verified.',
-      'success',
-      '/profile',
+    if (type === 'add') {
+      newBalance += parseFloat(amount);
+    } else if (type === 'subtract') {
+      newBalance -= parseFloat(amount);
+      if (newBalance < 0) {
+        log.warn(`❌ Insufficient balance for subtraction: ${oldBalance} - ${amount}`);
+        return res.status(400).json(formatResponse(false, 'Insufficient balance for this operation'));
+      }
+    } else if (type === 'set') {
+      newBalance = parseFloat(amount);
+    }
+
+    user.balance = newBalance;
+    await user.save();
+
+    // Create transaction
+    const transactionType = type === 'add' ? 'bonus' : type === 'subtract' ? 'adjustment' : 'balance_update';
+    await createTransaction(
+      userId,
+      transactionType,
+      type === 'subtract' ? -parseFloat(amount) : parseFloat(amount),
+      description,
+      'completed',
       { 
-        approved_by: req.user.full_name,
-        approved_at: new Date()
+        admin_id: adminId,
+        admin_name: req.user.full_name,
+        operation_type: type,
+        old_balance: oldBalance,
+        new_balance: newBalance,
+        remarks: remarks
       }
     );
-    
+
     // Create audit log
     await createAdminAudit(
       adminId,
-      'APPROVE_KYC',
-      'kyc',
-      kycId,
+      'UPDATE_USER_BALANCE',
+      'user',
+      userId,
       {
-        user_id: kyc.user._id,
-        user_name: kyc.user.full_name,
-        id_type: kyc.id_type,
+        old_balance: oldBalance,
+        new_balance: newBalance,
+        amount: amount,
+        operation_type: type,
+        description: description,
         remarks: remarks
       },
       req.ip,
       req.headers['user-agent']
     );
-    
-    res.json(formatResponse(true, 'KYC approved successfully', { kyc }));
+
+    // Create notification for user
+    await createNotification(
+      userId,
+      'Balance Updated',
+      `Your account balance has been updated. ${description}`,
+      type === 'add' ? 'success' : 'info',
+      '/transactions',
+      { 
+        old_balance: oldBalance,
+        new_balance: newBalance,
+        amount: amount,
+        operation: type,
+        description: description,
+        updated_by: req.user.full_name
+      }
+    );
+
+    log.info(`✅ User balance updated: ${userId} from ${oldBalance} to ${newBalance}`);
+
+    res.json(formatResponse(true, 'User balance updated successfully', {
+      user: {
+        id: user._id,
+        email: user.email,
+        old_balance: oldBalance,
+        new_balance: newBalance,
+        change: type === 'set' ? newBalance - oldBalance : parseFloat(amount) * (type === 'add' ? 1 : -1)
+      },
+      transaction: {
+        type: transactionType,
+        amount: type === 'subtract' ? -parseFloat(amount) : parseFloat(amount),
+        description: description
+      }
+    }));
   } catch (error) {
-    console.error('Error approving KYC:', error);
-    handleError(res, error, 'Error approving KYC');
+    log.error('Error updating user balance:', error);
+    handleError(res, error, 'Error updating user balance');
   }
 });
 
-// Reject KYC
-app.post('/api/admin/kyc/:id/reject', adminAuth, [
-  body('rejection_reason').notEmpty()
+// Verify bank details
+app.post('/api/admin/users/:id/verify-bank', adminAuth, [
+  body('verified').isBoolean(),
+  body('remarks').optional().trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-    
-    const kycId = req.params.id;
+
+    const userId = req.params.id;
     const adminId = req.user._id;
-    const { rejection_reason } = req.body;
-    
-    const kyc = await KYCSubmission.findById(kycId)
-      .populate('user');
-    
-    if (!kyc) {
-      return res.status(404).json(formatResponse(false, 'KYC submission not found'));
+    const { verified, remarks } = req.body;
+
+    log.info(`🏦 Admin verifying bank for user: ${userId}, verified: ${verified}`);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      log.warn(`❌ User not found: ${userId}`);
+      return res.status(404).json(formatResponse(false, 'User not found'));
     }
-    
-    kyc.status = 'rejected';
-    kyc.reviewed_by = adminId;
-    kyc.reviewed_at = new Date();
-    kyc.rejection_reason = rejection_reason;
-    await kyc.save();
-    
-    // Update user
-    await User.findByIdAndUpdate(kyc.user._id, {
-      kyc_status: 'rejected'
-    });
-    
-    // Create notification
-    await createNotification(
-      kyc.user._id,
-      'KYC Rejected',
-      `Your KYC submission has been rejected. Reason: ${rejection_reason}. Please submit again with correct documents.`,
-      'error',
-      '/kyc',
-      { 
-        rejected_by: req.user.full_name,
-        rejected_at: new Date(),
-        rejection_reason: rejection_reason
-      }
-    );
-    
+
+    if (!user.bank_details) {
+      log.warn(`❌ User has no bank details: ${userId}`);
+      return res.status(400).json(formatResponse(false, 'User has no bank details'));
+    }
+
+    const oldVerified = user.bank_details.verified || false;
+    user.bank_details.verified = verified;
+    user.bank_details.verified_at = verified ? new Date() : null;
+    await user.save();
+
     // Create audit log
     await createAdminAudit(
       adminId,
-      'REJECT_KYC',
-      'kyc',
-      kycId,
+      'VERIFY_BANK_DETAILS',
+      'user',
+      userId,
       {
-        user_id: kyc.user._id,
-        user_name: kyc.user.full_name,
-        id_type: kyc.id_type,
-        rejection_reason: rejection_reason
+        old_verified: oldVerified,
+        new_verified: verified,
+        bank_details: {
+          bank_name: user.bank_details.bank_name,
+          account_name: user.bank_details.account_name,
+          account_number: user.bank_details.account_number
+        },
+        remarks: remarks
       },
       req.ip,
       req.headers['user-agent']
     );
-    
-    res.json(formatResponse(true, 'KYC rejected successfully', { kyc }));
+
+    // Create notification for user
+    await createNotification(
+      userId,
+      verified ? 'Bank Details Verified' : 'Bank Verification Removed',
+      verified 
+        ? 'Your bank account details have been verified and approved.' 
+        : 'Your bank account verification has been removed.',
+      verified ? 'success' : 'warning',
+      '/profile',
+      { 
+        verified: verified,
+        remarks: remarks,
+        verified_by: req.user.full_name,
+        verified_at: user.bank_details.verified_at
+      }
+    );
+
+    log.info(`✅ Bank verification updated: ${userId} from ${oldVerified} to ${verified}`);
+
+    res.json(formatResponse(true, 'Bank verification updated successfully', {
+      user: {
+        id: user._id,
+        email: user.email,
+        bank_details: user.bank_details
+      }
+    }));
   } catch (error) {
-    console.error('Error rejecting KYC:', error);
-    handleError(res, error, 'Error rejecting KYC');
+    log.error('Error verifying bank details:', error);
+    handleError(res, error, 'Error verifying bank details');
   }
 });
 
-// Get all transactions
+// Delete user (soft delete)
+app.delete('/api/admin/users/:id', adminAuth, [
+  body('remarks').optional().trim()
+], async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const adminId = req.user._id;
+    const { remarks } = req.body;
+
+    log.info(`🗑️ Admin deleting user: ${userId}`);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      log.warn(`❌ User not found: ${userId}`);
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+
+    // Soft delete - mark as inactive instead of actually deleting
+    const oldStatus = user.is_active;
+    user.is_active = false;
+    user.deleted_at = new Date();
+    user.deleted_by = adminId;
+    await user.save();
+
+    // Create audit log
+    await createAdminAudit(
+      adminId,
+      'DELETE_USER',
+      'user',
+      userId,
+      {
+        user_email: user.email,
+        user_name: user.full_name,
+        old_status: oldStatus,
+        new_status: false,
+        remarks: remarks
+      },
+      req.ip,
+      req.headers['user-agent']
+    );
+
+    // Create notification for user
+    await createNotification(
+      userId,
+      'Account Deactivated',
+      'Your account has been deactivated by an administrator.',
+      'error',
+      '/contact',
+      { 
+        deactivated_by: req.user.full_name,
+        deactivated_at: new Date(),
+        remarks: remarks
+      }
+    );
+
+    log.info(`✅ User deactivated: ${userId}`);
+
+    res.json(formatResponse(true, 'User deactivated successfully', {
+      user: {
+        id: user._id,
+        email: user.email,
+        deactivated_at: user.deleted_at,
+        deactivated_by: req.user.full_name
+      }
+    }));
+  } catch (error) {
+    log.error('Error deleting user:', error);
+    handleError(res, error, 'Error deleting user');
+  }
+});
+
+// ==================== ADMIN TRANSACTIONS ENDPOINT ====================
 app.get('/api/admin/transactions', adminAuth, async (req, res) => {
   try {
     const { 
       page = 1, 
       limit = 50,
+      user_id,
       type,
       status,
       start_date,
       end_date,
-      user_id,
       search
     } = req.query;
     
     const query = {};
     
-    // Apply filters
+    if (user_id) query.user = user_id;
     if (type) query.type = type;
     if (status) query.status = status;
-    if (user_id) query.user = user_id;
-    
-    // Date filter
     if (start_date || end_date) {
       query.createdAt = {};
       if (start_date) query.createdAt.$gte = new Date(start_date);
       if (end_date) query.createdAt.$lte = new Date(end_date);
     }
     
-    // Search
+    // Search by reference or description
     if (search) {
       query.$or = [
-        { description: { $regex: search, $options: 'i' } },
-        { reference: { $regex: search, $options: 'i' } }
+        { reference: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
       ];
     }
     
@@ -3525,7 +4819,7 @@ app.get('/api/admin/transactions', adminAuth, async (req, res) => {
     
     const [transactions, total] = await Promise.all([
       Transaction.find(query)
-        .populate('user', 'full_name email')
+        .populate('user', 'full_name email phone')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
@@ -3536,7 +4830,11 @@ app.get('/api/admin/transactions', adminAuth, async (req, res) => {
     // Calculate totals
     const totals = await Transaction.aggregate([
       { $match: query },
-      { $group: { _id: '$type', total: { $sum: '$amount' } } }
+      { $group: { 
+        _id: '$type', 
+        count: { $sum: 1 },
+        total_amount: { $sum: '$amount' }
+      }}
     ]);
 
     const pagination = {
@@ -3546,18 +4844,180 @@ app.get('/api/admin/transactions', adminAuth, async (req, res) => {
       pages: Math.ceil(total / limit)
     };
 
+    log.info(`📋 Found ${total} transactions for admin`);
+
     res.json(formatResponse(true, 'Transactions retrieved successfully', {
       transactions,
       totals,
       pagination
     }));
   } catch (error) {
-    console.error('Error fetching transactions:', error);
+    log.error('Error fetching transactions:', error);
     handleError(res, error, 'Error fetching transactions');
   }
 });
 
-// Get all referrals for admin
+// ==================== ADMIN KYC ENDPOINTS ====================
+
+// Get pending KYC submissions
+app.get('/api/admin/pending-kyc', adminAuth, async (req, res) => {
+  try {
+    const pendingKYC = await KYCSubmission.find({ status: 'pending' })
+      .populate('user', 'full_name email phone')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    log.info(`📋 Found ${pendingKYC.length} pending KYC submissions`);
+
+    res.json(formatResponse(true, 'Pending KYC submissions retrieved', {
+      kyc_submissions: pendingKYC,
+      count: pendingKYC.length
+    }));
+  } catch (error) {
+    log.error('Error fetching pending KYC:', error);
+    handleError(res, error, 'Error fetching pending KYC');
+  }
+});
+
+// Approve KYC submission
+app.post('/api/admin/kyc/:id/approve', adminAuth, [
+  body('remarks').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const kycId = req.params.id;
+    const adminId = req.user._id;
+    const { remarks } = req.body;
+
+    log.info(`✅ Approving KYC: ${kycId} by admin: ${adminId}`);
+
+    const kyc = await KYCSubmission.findById(kycId).populate('user');
+    if (!kyc) {
+      log.warn(`❌ KYC submission not found: ${kycId}`);
+      return res.status(404).json(formatResponse(false, 'KYC submission not found'));
+    }
+
+    kyc.status = 'approved';
+    kyc.reviewed_by = adminId;
+    kyc.reviewed_at = new Date();
+    kyc.notes = remarks;
+    await kyc.save();
+
+    // Update user KYC status
+    await User.findByIdAndUpdate(kyc.user._id, {
+      kyc_status: 'verified',
+      kyc_verified: true,
+      kyc_verified_at: new Date()
+    });
+
+    // Create notification for user
+    await createNotification(
+      kyc.user._id,
+      'KYC Approved',
+      'Your KYC submission has been approved. You can now enjoy full platform access.',
+      'success',
+      '/profile'
+    );
+
+    // Create audit log
+    await createAdminAudit(
+      adminId,
+      'APPROVE_KYC',
+      'kyc',
+      kycId,
+      {
+        user_id: kyc.user._id,
+        user_name: kyc.user.full_name,
+        id_type: kyc.id_type,
+        id_number: kyc.id_number,
+        remarks: remarks
+      },
+      req.ip,
+      req.headers['user-agent']
+    );
+
+    log.info(`✅ KYC approved: ${kycId}`);
+
+    res.json(formatResponse(true, 'KYC approved successfully', { kyc }));
+  } catch (error) {
+    log.error('Error approving KYC:', error);
+    handleError(res, error, 'Error approving KYC');
+  }
+});
+
+// Reject KYC submission
+app.post('/api/admin/kyc/:id/reject', adminAuth, [
+  body('rejection_reason').notEmpty().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const kycId = req.params.id;
+    const adminId = req.user._id;
+    const { rejection_reason } = req.body;
+
+    log.info(`❌ Rejecting KYC: ${kycId} by admin: ${adminId}`);
+
+    const kyc = await KYCSubmission.findById(kycId).populate('user');
+    if (!kyc) {
+      log.warn(`❌ KYC submission not found: ${kycId}`);
+      return res.status(404).json(formatResponse(false, 'KYC submission not found'));
+    }
+
+    kyc.status = 'rejected';
+    kyc.reviewed_by = adminId;
+    kyc.reviewed_at = new Date();
+    kyc.rejection_reason = rejection_reason;
+    await kyc.save();
+
+    // Update user KYC status
+    await User.findByIdAndUpdate(kyc.user._id, {
+      kyc_status: 'rejected'
+    });
+
+    // Create notification for user
+    await createNotification(
+      kyc.user._id,
+      'KYC Rejected',
+      `Your KYC submission was rejected. Reason: ${rejection_reason}. Please resubmit with correct documents.`,
+      'error',
+      '/kyc'
+    );
+
+    // Create audit log
+    await createAdminAudit(
+      adminId,
+      'REJECT_KYC',
+      'kyc',
+      kycId,
+      {
+        user_id: kyc.user._id,
+        user_name: kyc.user.full_name,
+        id_type: kyc.id_type,
+        id_number: kyc.id_number,
+        rejection_reason: rejection_reason
+      },
+      req.ip,
+      req.headers['user-agent']
+    );
+
+    log.info(`✅ KYC rejected: ${kycId}`);
+
+    res.json(formatResponse(true, 'KYC rejected successfully', { kyc }));
+  } catch (error) {
+    log.error('Error rejecting KYC:', error);
+    handleError(res, error, 'Error rejecting KYC');
+  }
+});
+
+// ==================== ADMIN REFERRALS ENDPOINT ====================
 app.get('/api/admin/referrals', adminAuth, async (req, res) => {
   try {
     const { 
@@ -3616,182 +5076,28 @@ app.get('/api/admin/referrals', adminAuth, async (req, res) => {
       pages: Math.ceil(total / limit)
     };
 
+    log.info(`📋 Found ${total} referrals for admin`);
+
     res.json(formatResponse(true, 'All referrals retrieved successfully', {
       referrals,
       platform_stats: platformStats[0] || {},
       pagination
     }));
   } catch (error) {
-    console.error('Error fetching all referrals:', error);
+    log.error('Error fetching all referrals:', error);
     handleError(res, error, 'Error fetching all referrals');
   }
 });
 
-// Get referral stats for admin
-app.get('/api/admin/referrals/stats', adminAuth, async (req, res) => {
-  try {
-    const [totalReferrals, totalEarnings] = await Promise.all([
-      Referral.countDocuments({}),
-      Referral.aggregate([
-        { $group: { _id: null, total: { $sum: '$earnings' } } }
-      ])
-    ]);
-    
-    // Get top referrers
-    const topReferrers = await Referral.aggregate([
-      {
-        $group: {
-          _id: '$referrer',
-          total_referrals: { $sum: 1 },
-          total_earnings: { $sum: '$earnings' }
-        }
-      },
-      { $sort: { total_referrals: -1 } },
-      { $limit: 10 },
-      {
-        $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'user'
-        }
-      },
-      { $unwind: '$user' },
-      {
-        $project: {
-          user_id: '$_id',
-          user_name: '$user.full_name',
-          user_email: '$user.email',
-          total_referrals: 1,
-          total_earnings: 1
-        }
-      }
-    ]);
-
-    res.json(formatResponse(true, 'Referral stats retrieved successfully', {
-      stats: {
-        total_referrals: totalReferrals,
-        total_earnings: totalEarnings[0]?.total || 0
-      },
-      top_referrers: topReferrers
-    }));
-  } catch (error) {
-    console.error('Error fetching referral stats:', error);
-    handleError(res, error, 'Error fetching referral stats');
-  }
-});
-
-// Send notifications
-app.post('/api/admin/notifications/send', adminAuth, [
-  body('title').notEmpty(),
-  body('message').notEmpty(),
-  body('type').optional(),
-  body('user_id').optional(),
-  body('role').optional()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(formatResponse(false, 'Validation failed'));
-    }
-    
-    const { title, message, type = 'info', user_id, role } = req.body;
-    
-    let users = [];
-    if (user_id) {
-      // Send to specific user
-      const user = await User.findById(user_id);
-      if (user) users = [user];
-    } else if (role) {
-      // Send to all users with role
-      users = await User.find({ role });
-    } else {
-      // Send to all active users
-      users = await User.find({ is_active: true });
-    }
-    
-    // Create notifications
-    const notifications = [];
-    for (const user of users) {
-      const notification = new Notification({
-        user: user._id,
-        title,
-        message,
-        type,
-        is_email_sent: false
-      });
-      notifications.push(notification);
-      
-      // Emit real-time notification
-      io.to(`user:${user._id}`).emit('notification', {
-        title,
-        message,
-        type,
-        timestamp: new Date()
-      });
-    }
-    
-    await Notification.insertMany(notifications);
-    
-    // Send emails if configured
-    if (config.emailEnabled) {
-      for (const user of users) {
-        if (user.email_notifications) {
-          await sendEmail(
-            user.email,
-            title,
-            `<h2>${title}</h2>
-             <p>${message}</p>
-             <p>Best regards,<br>Raw Wealthy Team</p>`
-          );
-        }
-      }
-    }
-    
-    // Create audit log
-    await createAdminAudit(
-      req.user._id,
-      'SEND_NOTIFICATIONS',
-      'system',
-      null,
-      {
-        title,
-        message,
-        type,
-        target_user_count: users.length,
-        target_type: user_id ? 'specific_user' : role ? 'role_based' : 'all_users'
-      },
-      req.ip,
-      req.headers['user-agent']
-    );
-    
-    res.json(formatResponse(true, 'Notifications sent successfully', {
-      sent_count: users.length
-    }));
-  } catch (error) {
-    console.error('Error sending notifications:', error);
-    handleError(res, error, 'Error sending notifications');
-  }
-});
-
-// Get audit logs
+// ==================== ADMIN AUDIT LOGS ENDPOINT ====================
 app.get('/api/admin/audit', adminAuth, async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 50,
-      admin_id,
-      action,
-      target_type,
-      start_date,
-      end_date
-    } = req.query;
+    const { page = 1, limit = 50, admin_id, action, start_date, end_date } = req.query;
     
     const query = {};
     
     if (admin_id) query.admin_id = admin_id;
     if (action) query.action = { $regex: action, $options: 'i' };
-    if (target_type) query.target_type = target_type;
     if (start_date || end_date) {
       query.createdAt = {};
       if (start_date) query.createdAt.$gte = new Date(start_date);
@@ -3817,243 +5123,134 @@ app.get('/api/admin/audit', adminAuth, async (req, res) => {
       pages: Math.ceil(total / limit)
     };
 
+    log.info(`📋 Found ${total} audit logs`);
+
     res.json(formatResponse(true, 'Audit logs retrieved successfully', {
       logs,
       pagination
     }));
   } catch (error) {
-    console.error('Error fetching audit logs:', error);
+    log.error('Error fetching audit logs:', error);
     handleError(res, error, 'Error fetching audit logs');
   }
 });
 
-// Get investment plans for admin
-app.get('/api/admin/plans', adminAuth, async (req, res) => {
-  try {
-    const plans = await InvestmentPlan.find({})
-      .sort({ display_order: 1 })
-      .lean();
-    
-    res.json(formatResponse(true, 'Investment plans retrieved successfully', {
-      plans
-    }));
-  } catch (error) {
-    console.error('Error fetching investment plans:', error);
-    handleError(res, error, 'Error fetching investment plans');
-  }
-});
-
-// Create investment plan
-app.post('/api/admin/plans', adminAuth, [
-  body('name').notEmpty(),
-  body('description').notEmpty(),
-  body('min_amount').isFloat({ min: config.minInvestment }),
-  body('max_amount').optional().isFloat({ min: config.minInvestment }),
-  body('daily_interest').isFloat({ min: 0.1, max: 100 }),
-  body('total_interest').isFloat({ min: 1, max: 1000 }),
-  body('duration').isInt({ min: 1 }),
-  body('risk_level').isIn(['low', 'medium', 'high']),
-  body('raw_material').notEmpty(),
-  body('category').isIn(['agriculture', 'mining', 'energy', 'metals', 'crypto', 'real_estate', 'precious_stones'])
+// ==================== ADMIN NOTIFICATIONS SEND ENDPOINT ====================
+app.post('/api/admin/notifications/send', adminAuth, [
+  body('title').notEmpty().trim(),
+  body('message').notEmpty().trim(),
+  body('type').optional().isIn(['info', 'success', 'warning', 'error', 'promotional']),
+  body('user_ids').optional().isArray(),
+  body('send_to_all').optional().isBoolean(),
+  body('role').optional().isIn(['user', 'admin', 'super_admin'])
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
-    
-    const planData = req.body;
-    
-    // Check if plan with same name exists
-    const existingPlan = await InvestmentPlan.findOne({ name: planData.name });
-    if (existingPlan) {
-      return res.status(400).json(formatResponse(false, 'Investment plan with this name already exists'));
+
+    const { title, message, type = 'info', user_ids, send_to_all, role } = req.body;
+
+    let users = [];
+
+    if (user_ids && user_ids.length > 0) {
+      // Send to specific users
+      users = await User.find({ _id: { $in: user_ids } });
+    } else if (send_to_all) {
+      // Send to all users
+      users = await User.find({});
+    } else if (role) {
+      // Send to users with specific role
+      users = await User.find({ role });
+    } else {
+      return res.status(400).json(formatResponse(false, 'Please specify recipients'));
     }
-    
-    const plan = new InvestmentPlan({
-      ...planData,
-      is_active: planData.is_active || true,
-      display_order: planData.display_order || 0
-    });
-    
-    await plan.save();
-    
-    // Update config
-    config.investmentPlans = await InvestmentPlan.find({ is_active: true })
-      .sort({ display_order: 1 })
-      .lean();
-    
-    // Create audit log
-    await createAdminAudit(
-      req.user._id,
-      'CREATE_INVESTMENT_PLAN',
-      'plan',
-      plan._id,
-      {
-        name: plan.name,
-        min_amount: plan.min_amount,
-        max_amount: plan.max_amount,
-        daily_interest: plan.daily_interest,
-        total_interest: plan.total_interest,
-        duration: plan.duration,
-        risk_level: plan.risk_level,
-        raw_material: plan.raw_material,
-        category: plan.category
-      },
-      req.ip,
-      req.headers['user-agent']
-    );
-    
-    res.status(201).json(formatResponse(true, 'Investment plan created successfully', { plan }));
-  } catch (error) {
-    console.error('Error creating investment plan:', error);
-    handleError(res, error, 'Error creating investment plan');
-  }
-});
 
-// Update investment plan
-app.put('/api/admin/plans/:id', adminAuth, async (req, res) => {
-  try {
-    const planId = req.params.id;
-    const updateData = req.body;
-    
-    const plan = await InvestmentPlan.findByIdAndUpdate(
-      planId,
-      updateData,
-      { new: true, runValidators: true }
-    );
-    
-    if (!plan) {
-      return res.status(404).json(formatResponse(false, 'Investment plan not found'));
-    }
-    
-    // Update config
-    config.investmentPlans = await InvestmentPlan.find({ is_active: true })
-      .sort({ display_order: 1 })
-      .lean();
-    
-    // Create audit log
-    await createAdminAudit(
-      req.user._id,
-      'UPDATE_INVESTMENT_PLAN',
-      'plan',
-      planId,
-      {
-        updates: updateData,
-        plan_name: plan.name
-      },
-      req.ip,
-      req.headers['user-agent']
-    );
-    
-    res.json(formatResponse(true, 'Investment plan updated successfully', { plan }));
-  } catch (error) {
-    console.error('Error updating investment plan:', error);
-    handleError(res, error, 'Error updating investment plan');
-  }
-});
+    // Create notifications for each user
+    const notifications = users.map(user => ({
+      user: user._id,
+      title,
+      message,
+      type,
+      is_email_sent: false
+    }));
 
-// Delete investment plan
-app.delete('/api/admin/plans/:id', adminAuth, async (req, res) => {
-  try {
-    const planId = req.params.id;
-    
-    const plan = await InvestmentPlan.findById(planId);
-    if (!plan) {
-      return res.status(404).json(formatResponse(false, 'Investment plan not found'));
-    }
-    
-    // Check if plan has active investments
-    const activeInvestments = await Investment.countDocuments({ 
-      plan: planId, 
-      status: 'active' 
-    });
-    
-    if (activeInvestments > 0) {
-      return res.status(400).json(formatResponse(false, 
-        `Cannot delete plan with ${activeInvestments} active investments. Deactivate instead.`));
-    }
-    
-    await InvestmentPlan.findByIdAndDelete(planId);
-    
-    // Update config
-    config.investmentPlans = await InvestmentPlan.find({ is_active: true })
-      .sort({ display_order: 1 })
-      .lean();
-    
-    // Create audit log
-    await createAdminAudit(
-      req.user._id,
-      'DELETE_INVESTMENT_PLAN',
-      'plan',
-      planId,
-      {
-        plan_name: plan.name,
-        plan_details: plan
-      },
-      req.ip,
-      req.headers['user-agent']
-    );
-    
-    res.json(formatResponse(true, 'Investment plan deleted successfully'));
-  } catch (error) {
-    console.error('Error deleting investment plan:', error);
-    handleError(res, error, 'Error deleting investment plan');
-  }
-});
+    await Notification.insertMany(notifications);
 
-// Get support tickets for admin
-app.get('/api/admin/support/tickets', adminAuth, async (req, res) => {
-  try {
-    const { 
-      page = 1, 
-      limit = 50,
-      status,
-      priority,
-      category,
-      assigned_to
-    } = req.query;
-    
-    const query = {};
-    
-    if (status) query.status = status;
-    if (priority) query.priority = priority;
-    if (category) query.category = category;
-    if (assigned_to) query.assigned_to = assigned_to;
-    
-    const skip = (page - 1) * limit;
-    
-    const [tickets, total] = await Promise.all([
-      SupportTicket.find(query)
-        .populate('user', 'full_name email phone')
-        .populate('assigned_to', 'full_name email')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean(),
-      SupportTicket.countDocuments(query)
-    ]);
-
-    const pagination = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    };
-
-    res.json(formatResponse(true, 'Support tickets retrieved successfully', {
-      tickets,
-      pagination,
-      summary: {
-        open: tickets.filter(t => t.status === 'open').length,
-        in_progress: tickets.filter(t => t.status === 'in_progress').length,
-        resolved: tickets.filter(t => t.status === 'resolved').length,
-        closed: tickets.filter(t => t.status === 'closed').length
+    // Optionally, send emails (if email is configured and user has email notifications enabled)
+    if (config.emailEnabled) {
+      for (const user of users) {
+        if (user.email_notifications) {
+          await sendEmail(
+            user.email,
+            title,
+            `<h2>${title}</h2><p>${message}</p>`
+          );
+        }
       }
+    }
+
+    // Create audit log
+    await createAdminAudit(
+      req.user._id,
+      'SEND_NOTIFICATIONS',
+      'system',
+      null,
+      {
+        title,
+        message,
+        type,
+        recipient_count: users.length,
+        recipient_type: user_ids ? 'specific_users' : send_to_all ? 'all_users' : 'role_based',
+        role: role
+      },
+      req.ip,
+      req.headers['user-agent']
+    );
+
+    log.info(`📢 Admin sent notifications to ${users.length} users`);
+
+    res.json(formatResponse(true, 'Notifications sent successfully', {
+      sent_count: users.length
     }));
   } catch (error) {
-    console.error('Error fetching support tickets:', error);
-    handleError(res, error, 'Error fetching support tickets');
+    log.error('Error sending notifications:', error);
+    handleError(res, error, 'Error sending notifications');
+  }
+});
+
+// ==================== FILE UPLOAD ENDPOINT ====================
+
+app.post('/api/upload', auth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json(formatResponse(false, 'No file uploaded'));
+    }
+
+    const userId = req.user._id;
+    const folder = req.body.folder || 'general';
+    const purpose = req.body.purpose || 'general';
+
+    log.info(`📁 Uploading file for user ${userId}, folder: ${folder}, purpose: ${purpose}`);
+
+    const uploadResult = await handleFileUpload(req.file, folder, userId);
+
+    log.info(`✅ File uploaded: ${uploadResult.filename}`);
+
+    res.json(formatResponse(true, 'File uploaded successfully', {
+      fileUrl: uploadResult.url,
+      fileName: uploadResult.filename,
+      originalName: uploadResult.originalName,
+      size: uploadResult.size,
+      mimeType: uploadResult.mimeType,
+      folder,
+      purpose,
+      uploadedAt: uploadResult.uploadedAt
+    }));
+  } catch (error) {
+    log.error('Error uploading file:', error);
+    handleError(res, error, 'Error uploading file');
   }
 });
 
@@ -4062,7 +5259,7 @@ app.get('/api/admin/support/tickets', adminAuth, async (req, res) => {
 // Calculate daily earnings for active investments
 cron.schedule('0 0 * * *', async () => {
   try {
-    console.log('🔄 Running daily earnings calculation...');
+    log.info('🔄 Running daily earnings calculation...');
     
     const activeInvestments = await Investment.find({ 
       status: 'active',
@@ -4128,37 +5325,14 @@ cron.schedule('0 0 * * *', async () => {
         processedCount++;
         
       } catch (error) {
-        console.error(`Error processing investment ${investment._id}:`, error);
-        debugSystem.logError(error, null);
+        log.error(`Error processing investment ${investment._id}:`, error);
       }
     }
     
-    console.log(`✅ Daily earnings calculated: Processed ${processedCount} investments, Total: ₦${totalEarnings.toLocaleString()}`);
+    log.info(`✅ Daily earnings calculated: Processed ${processedCount} investments, Total: ₦${totalEarnings.toLocaleString()}`);
     
   } catch (error) {
-    console.error('Error in daily earnings cron job:', error);
-    debugSystem.logError(error, null);
-  }
-});
-
-// Cleanup old debug logs (run daily at 2 AM)
-cron.schedule('0 2 * * *', async () => {
-  try {
-    console.log('🧹 Cleaning up old debug logs...');
-    
-    // Keep only last 1000 errors
-    if (debugSystem.errors.length > 1000) {
-      debugSystem.errors = debugSystem.errors.slice(-1000);
-    }
-    
-    // Keep only last 1000 database queries
-    if (debugSystem.databaseQueries.length > 1000) {
-      debugSystem.databaseQueries = debugSystem.databaseQueries.slice(-1000);
-    }
-    
-    console.log('✅ Debug logs cleaned up');
-  } catch (error) {
-    console.error('Error cleaning up debug logs:', error);
+    log.error('Error in daily earnings cron job:', error);
   }
 });
 
@@ -4166,36 +5340,43 @@ cron.schedule('0 2 * * *', async () => {
 
 // 404 handler
 app.use((req, res) => {
-  console.log(`❌ 404 Not Found: ${req.method} ${req.url}`);
-  res.status(404).json(formatResponse(false, 'Endpoint not found'));
+  log.warn(`❌ 404 Not Found: ${req.method} ${req.url}`);
+  res.status(404).json(formatResponse(false, 'Endpoint not found', {
+    requested_url: req.url,
+    method: req.method,
+    available_endpoints: [
+      '/api/auth/*',
+      '/api/profile',
+      '/api/investments/*',
+      '/api/deposits/*',
+      '/api/withdrawals/*',
+      '/api/plans',
+      '/api/referrals/*',
+      '/api/admin/*',
+      '/api/upload',
+      '/health',
+      '/debug/*'
+    ]
+  }));
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error('🔥 Unhandled error:', {
+  const errorId = crypto.randomBytes(8).toString('hex');
+  
+  log.error('🔥 Unhandled error:', {
+    errorId,
     error: err.message,
     stack: err.stack,
     url: req.url,
     method: req.method,
-    ip: req.ip
+    ip: req.ip,
+    user: req.user?._id
   });
   
-  // Log to debug system
-  debugSystem.logError(err, req);
-  
-  // Emit to debug room
-  if (config.enableWebSocketDebug) {
-    io.to('debug-room').emit('error', {
-      message: err.message,
-      stack: err.stack,
-      url: req.url,
-      method: req.method,
-      timestamp: new Date().toISOString()
-    });
-  }
-  
   res.status(500).json(formatResponse(false, 
-    config.nodeEnv === 'production' ? 'Internal server error' : err.message
+    config.nodeEnv === 'production' ? 'Internal server error' : err.message,
+    config.debug ? { errorId, stack: err.stack } : { errorId }
   ));
 });
 
@@ -4208,9 +5389,9 @@ const startServer = async () => {
     
     // Start server
     server.listen(config.port, () => {
-      console.log('\n' + '='.repeat(60));
-      console.log('🚀 RAW WEALTHY BACKEND v48.0 - ULTIMATE ENTERPRISE EDITION');
-      console.log('='.repeat(60));
+      console.log('\n' + '='.repeat(80));
+      console.log('🚀 RAW WEALTHY BACKEND v47.1 - ENTERPRISE EDITION');
+      console.log('='.repeat(80));
       console.log(`✅ Server running on port: ${config.port}`);
       console.log(`🌍 Environment: ${config.nodeEnv}`);
       console.log(`🔗 Client URL: ${config.clientURL}`);
@@ -4218,66 +5399,53 @@ const startServer = async () => {
       console.log(`📊 Database: ${mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected'}`);
       console.log(`🔧 Debug Mode: ${config.debug}`);
       console.log(`📅 Started at: ${new Date().toISOString()}`);
-      
-      if (config.enableWebSocketDebug) {
-        console.log(`🔌 WebSocket Debug: Enabled (ws://localhost:${config.port}/debug-ws)`);
-      }
-      
-      console.log('\n📋 Available Admin Endpoints:');
-      console.log('  • /api/admin/dashboard');
-      console.log('  • /api/admin/pending-investments');
-      console.log('  • /api/admin/pending-deposits');
-      console.log('  • /api/admin/pending-withdrawals');
-      console.log('  • /api/admin/pending-kyc');
-      console.log('  • /api/admin/users');
-      console.log('  • /api/admin/transactions');
-      console.log('  • /api/admin/referrals');
-      console.log('  • /api/admin/audit');
-      console.log('  • /api/admin/plans');
-      console.log('  • /api/admin/support/tickets');
-      
-      console.log('\n🐛 Debug Endpoints:');
-      console.log('  • /api/debug/dashboard');
-      console.log('  • /api/debug/requests');
-      console.log('  • /api/debug/errors');
-      console.log('  • /api/debug/queries');
-      console.log('  • /api/debug/test-endpoints');
-      console.log('  • /health');
-      
-      console.log('='.repeat(60) + '\n');
+      console.log('='.repeat(80));
+      console.log('\n📋 AVAILABLE ENDPOINTS:');
+      console.log('  • /health - Health check');
+      console.log('  • /debug/* - Debug endpoints');
+      console.log('  • /api/auth/* - Authentication');
+      console.log('  • /api/profile - User profile');
+      console.log('  • /api/investments/* - Investments');
+      console.log('  • /api/deposits/* - Deposits');
+      console.log('  • /api/withdrawals/* - Withdrawals');
+      console.log('  • /api/plans - Investment plans');
+      console.log('  • /api/referrals/* - Referrals');
+      console.log('  • /api/admin/* - Admin panel');
+      console.log('  • /api/upload - File upload');
+      console.log('='.repeat(80) + '\n');
       
       // Emit server start event
       io.emit('server_start', {
         timestamp: new Date(),
-        version: '48.0.0',
+        version: '47.1.0',
         status: 'running'
       });
     });
     
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    log.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 };
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received. Shutting down gracefully...');
+  log.info('🛑 SIGTERM received. Shutting down gracefully...');
   server.close(() => {
-    console.log('✅ HTTP server closed');
+    log.info('✅ HTTP server closed');
     mongoose.connection.close(false, () => {
-      console.log('✅ MongoDB connection closed');
+      log.info('✅ MongoDB connection closed');
       process.exit(0);
     });
   });
 });
 
 process.on('SIGINT', () => {
-  console.log('🛑 SIGINT received. Shutting down gracefully...');
+  log.info('🛑 SIGINT received. Shutting down gracefully...');
   server.close(() => {
-    console.log('✅ HTTP server closed');
+    log.info('✅ HTTP server closed');
     mongoose.connection.close(false, () => {
-      console.log('✅ MongoDB connection closed');
+      log.info('✅ MongoDB connection closed');
       process.exit(0);
     });
   });
