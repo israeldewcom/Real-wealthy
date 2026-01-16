@@ -10,12 +10,12 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_EMAIL
-        value: admin@rawwealthy.com
+        value: admin@rawwealthty.com
       - key: ADMIN_PASSWORD
         value: Admin123456
       - key: NODE_ENV
       - key: ADMIN_URL
-      - value: https://rawwealthyadmin.netlify.app/
+      - value: https://uuuuu-rawwealthy.vercel.app/
         value: production
       - key: CLIENT_URL
         value: https://i-rawwealthy.vercel.app/
