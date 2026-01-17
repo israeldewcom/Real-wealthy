@@ -1282,92 +1282,51 @@ const createDefaultInvestmentPlans = async () => {
   }
 };
 
-const createAdminUser = async () => {
+   const createAdminUser = async () => {
   try {
-    console.log('🚀 NUCLEAR ADMIN FIX STARTING...');
+    console.log('🚀 FORCING ADMIN CREATION...');
     
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
     
-    console.log(`🔑 Using: ${adminEmail} / ${adminPassword}`);
+    // DELETE existing admin first
+    await User.deleteOne({ email: adminEmail });
+    console.log('✅ Deleted existing admin');
     
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: adminEmail });
-    if (existingAdmin) {
-      console.log('✅ Admin already exists');
-      
-      // Update admin password if it's the default
-      if (adminPassword === 'Admin123456') {
-        const salt = await bcrypt.genSalt(12);
-        const hash = await bcrypt.hash(adminPassword, salt);
-        existingAdmin.password = hash;
-        await existingAdmin.save();
-        console.log('✅ Admin password updated');
-      }
-      
-      return;
-    }
-    
-    // 1. Generate FRESH hash
+    // Create fresh admin
     const salt = await bcrypt.genSalt(12);
     const hash = await bcrypt.hash(adminPassword, salt);
     
-    console.log('📝 Generated fresh hash');
-    
-    // 2. Create admin WITHOUT Mongoose hooks
     const adminData = {
-      _id: new mongoose.Types.ObjectId(),
       full_name: 'Raw Wealthy Admin',
       email: adminEmail,
       phone: '09161806424',
       password: hash,
       role: 'super_admin',
       balance: 1000000,
-      total_earnings: 0,
-      referral_earnings: 0,
-      risk_tolerance: 'medium',
-      investment_strategy: 'balanced',
-      country: 'ng',
-      currency: 'NGN',
-      referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase(),
       kyc_verified: true,
       kyc_status: 'verified',
       is_active: true,
-      is_verified: true,
-      two_factor_enabled: false,
-      notifications_enabled: true,
-      email_notifications: true,
-      sms_notifications: false,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      is_verified: true
     };
     
-    // Insert directly
-    await mongoose.connection.collection('users').insertOne(adminData);
-    console.log('✅ Admin created in database');
+    const admin = new User(adminData);
+    await admin.save();
     
-    // 3. Verify IMMEDIATELY
-    const verifyUser = await mongoose.connection.collection('users').findOne({ email: adminEmail });
+    console.log('✅ ADMIN CREATED SUCCESSFULLY');
+    console.log(`📧 Email: ${adminEmail}`);
+    console.log(`🔑 Password: ${adminPassword}`);
+    console.log(`🔗 Login at: ${config.clientURL}/admin`);
     
-    const match = await bcrypt.compare(adminPassword, verifyUser.password);
-    console.log('🔑 Password match test:', match ? '✅ PASS' : '❌ FAIL');
-    
-    if (match) {
-      console.log('🎉 ADMIN READY FOR LOGIN!');
-      console.log(`📧 Email: ${adminEmail}`);
-      console.log(`🔑 Password: ${adminPassword}`);
-      console.log('👉 Login at: /api/auth/login');
-    } else {
-      console.error('❌ PASSWORD MISMATCH DETECTED!');
-    }
-    
-    console.log('🚀 NUCLEAR ADMIN FIX COMPLETE');
+    // Verify password works
+    const testUser = await User.findOne({ email: adminEmail }).select('+password');
+    const isValid = await bcrypt.compare(adminPassword, testUser.password);
+    console.log(`🔐 Password verification: ${isValid ? '✅ SUCCESS' : '❌ FAILED'}`);
     
   } catch (error) {
-    console.error('❌ NUCLEAR FIX ERROR:', error.message);
-    console.error(error.stack);
+    console.error('❌ Admin creation error:', error);
   }
-};
+};   
 
 const createDatabaseIndexes = async () => {
   try {
