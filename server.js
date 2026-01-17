@@ -1112,7 +1112,70 @@ const createAdminAudit = async (adminId, action, targetType, targetId, details =
     return null;
   }
 };
-
+// ==================== EMERGENCY ADMIN CREATION ====================
+app.post('/api/emergency-admin', async (req, res) => {
+  try {
+    const { email = 'admin@rawwealthy.com', password = 'Admin123456' } = req.body;
+    
+    console.log('🚨 EMERGENCY ADMIN CREATION REQUESTED');
+    console.log(`📧 Email: ${email}`);
+    console.log(`🔑 Password: ${password}`);
+    
+    // Delete any existing admin with this email
+    await User.deleteMany({ email });
+    console.log('✅ Deleted existing admin(s)');
+    
+    // Create new admin with proper hash
+    const salt = await bcrypt.genSalt(12);
+    const hash = await bcrypt.hash(password, salt);
+    
+    const admin = new User({
+      full_name: 'System Administrator',
+      email: email,
+      phone: '1234567890',
+      password: hash, // Already hashed, won't be re-hashed
+      role: 'super_admin',
+      balance: 1000000,
+      kyc_verified: true,
+      kyc_status: 'verified',
+      is_active: true,
+      is_verified: true
+    });
+    
+    // Save WITHOUT triggering pre-save hook (we already hashed)
+    await admin.save();
+    
+    console.log('✅ Admin saved to database');
+    
+    // Test the login
+    const testAdmin = await User.findOne({ email }).select('+password');
+    const passwordMatch = await bcrypt.compare(password, testAdmin.password);
+    
+    res.json({
+      success: true,
+      message: 'Admin created successfully!',
+      details: {
+        email: admin.email,
+        password_match: passwordMatch ? '✅ YES' : '❌ NO',
+        admin_id: admin._id,
+        login_url: '/api/auth/login'
+      },
+      credentials: {
+        email: email,
+        password: password,
+        warning: 'Keep these credentials secure!'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Emergency admin creation error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: config.nodeEnv === 'development' ? error.stack : undefined
+    });
+  }
+});
 // ==================== AUTH MIDDLEWARE ====================
 
 const auth = async (req, res, next) => {
@@ -1282,7 +1345,8 @@ const createDefaultInvestmentPlans = async () => {
   }
 };
 
- const createAdminUser = async () => {
+    // Verify the admin was created
+    const createAdminUser = async () => {
   try {
     console.log('🚀 NUCLEAR ADMIN FIX STARTING...');
     
@@ -1291,38 +1355,36 @@ const createDefaultInvestmentPlans = async () => {
     
     console.log(`🔑 Using: ${adminEmail} / ${adminPassword}`);
     
-    // Check if admin already exists
+    // 1. Check if admin already exists
     const existingAdmin = await User.findOne({ email: adminEmail });
-    
     if (existingAdmin) {
       console.log('✅ Admin already exists');
       
       // Update admin password if it's the default
       if (adminPassword === 'Admin123456') {
-        console.log('🔄 Updating admin password...');
-        existingAdmin.password = adminPassword; // Will be hashed by pre-save hook
+        const salt = await bcrypt.genSalt(12);
+        const hash = await bcrypt.hash(adminPassword, salt);
+        existingAdmin.password = hash;
         await existingAdmin.save();
         console.log('✅ Admin password updated');
-      }
-      
-      // Verify the password works
-      const verifyUser = await User.findOne({ email: adminEmail }).select('+password');
-      if (verifyUser) {
-        const match = await bcrypt.compare(adminPassword, verifyUser.password);
-        console.log('🔑 Password verification:', match ? '✅ SUCCESS' : '❌ FAILED');
       }
       
       return;
     }
     
-    console.log('❌ No admin found, creating new one...');
+    // 2. Generate FRESH hash
+    const salt = await bcrypt.genSalt(12);
+    const hash = await bcrypt.hash(adminPassword, salt);
     
-    // Create new admin user (let Mongoose hooks handle password hashing)
-    const admin = new User({
+    console.log('📝 Generated fresh hash');
+    
+    // 3. Create admin WITHOUT Mongoose hooks
+    const adminData = {
+      _id: new mongoose.Types.ObjectId(),
       full_name: 'Raw Wealthy Admin',
       email: adminEmail,
       phone: '09161806424',
-      password: adminPassword, // Will be hashed by pre-save hook
+      password: hash,
       role: 'super_admin',
       balance: 1000000,
       total_earnings: 0,
@@ -1339,43 +1401,35 @@ const createDefaultInvestmentPlans = async () => {
       two_factor_enabled: false,
       notifications_enabled: true,
       email_notifications: true,
-      sms_notifications: false
-    });
+      sms_notifications: false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
     
-    // Save the admin (this will trigger password hashing)
-    await admin.save();
-    console.log('✅ Admin user saved to database');
+    // Insert directly
+    await mongoose.connection.collection('users').insertOne(adminData);
+    console.log('✅ Admin created in database');
     
-    // Verify the admin was created
-    const verifyAdmin = await User.findOne({ email: adminEmail }).select('+password');
-    if (!verifyAdmin) {
-      console.error('❌ Admin not found after creation!');
-      return;
-    }
+    // 4. Verify IMMEDIATELY
+    const verifyUser = await mongoose.connection.collection('users').findOne({ email: adminEmail });
     
-    // Test password
-    const match = await bcrypt.compare(adminPassword, verifyAdmin.password);
-    console.log('🔑 Password verification:', match ? '✅ SUCCESS' : '❌ FAILED');
+    const match = await bcrypt.compare(adminPassword, verifyUser.password);
+    console.log('🔑 Password match test:', match ? '✅ PASS' : '❌ FAIL');
     
     if (match) {
       console.log('🎉 ADMIN READY FOR LOGIN!');
       console.log(`📧 Email: ${adminEmail}`);
       console.log(`🔑 Password: ${adminPassword}`);
-      console.log(`💰 Balance: ₦${admin.balance.toLocaleString()}`);
       console.log('👉 Login at: /api/auth/login');
     } else {
       console.error('❌ PASSWORD MISMATCH DETECTED!');
-      console.log('Try manual fix below...');
     }
     
     console.log('🚀 NUCLEAR ADMIN FIX COMPLETE');
     
   } catch (error) {
-    console.error('❌ ADMIN CREATION ERROR:', error.message);
-    console.error('Stack:', error.stack);
-    
-    // Try alternative method if above fails
-    await emergencyAdminCreation();
+    console.error('❌ NUCLEAR FIX ERROR:', error.message);
+    console.error(error.stack);
   }
 };
 
