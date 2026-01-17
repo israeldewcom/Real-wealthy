@@ -1282,51 +1282,159 @@ const createDefaultInvestmentPlans = async () => {
   }
 };
 
-   const createAdminUser = async () => {
+ const createAdminUser = async () => {
   try {
-    console.log('🚀 FORCING ADMIN CREATION...');
+    console.log('🚀 NUCLEAR ADMIN FIX STARTING...');
     
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
     
-    // DELETE existing admin first
-    await User.deleteOne({ email: adminEmail });
-    console.log('✅ Deleted existing admin');
+    console.log(`🔑 Using: ${adminEmail} / ${adminPassword}`);
     
-    // Create fresh admin
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ email: adminEmail });
+    
+    if (existingAdmin) {
+      console.log('✅ Admin already exists');
+      
+      // Update admin password if it's the default
+      if (adminPassword === 'Admin123456') {
+        console.log('🔄 Updating admin password...');
+        existingAdmin.password = adminPassword; // Will be hashed by pre-save hook
+        await existingAdmin.save();
+        console.log('✅ Admin password updated');
+      }
+      
+      // Verify the password works
+      const verifyUser = await User.findOne({ email: adminEmail }).select('+password');
+      if (verifyUser) {
+        const match = await bcrypt.compare(adminPassword, verifyUser.password);
+        console.log('🔑 Password verification:', match ? '✅ SUCCESS' : '❌ FAILED');
+      }
+      
+      return;
+    }
+    
+    console.log('❌ No admin found, creating new one...');
+    
+    // Create new admin user (let Mongoose hooks handle password hashing)
+    const admin = new User({
+      full_name: 'Raw Wealthy Admin',
+      email: adminEmail,
+      phone: '09161806424',
+      password: adminPassword, // Will be hashed by pre-save hook
+      role: 'super_admin',
+      balance: 1000000,
+      total_earnings: 0,
+      referral_earnings: 0,
+      risk_tolerance: 'medium',
+      investment_strategy: 'balanced',
+      country: 'ng',
+      currency: 'NGN',
+      referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase(),
+      kyc_verified: true,
+      kyc_status: 'verified',
+      is_active: true,
+      is_verified: true,
+      two_factor_enabled: false,
+      notifications_enabled: true,
+      email_notifications: true,
+      sms_notifications: false
+    });
+    
+    // Save the admin (this will trigger password hashing)
+    await admin.save();
+    console.log('✅ Admin user saved to database');
+    
+    // Verify the admin was created
+    const verifyAdmin = await User.findOne({ email: adminEmail }).select('+password');
+    if (!verifyAdmin) {
+      console.error('❌ Admin not found after creation!');
+      return;
+    }
+    
+    // Test password
+    const match = await bcrypt.compare(adminPassword, verifyAdmin.password);
+    console.log('🔑 Password verification:', match ? '✅ SUCCESS' : '❌ FAILED');
+    
+    if (match) {
+      console.log('🎉 ADMIN READY FOR LOGIN!');
+      console.log(`📧 Email: ${adminEmail}`);
+      console.log(`🔑 Password: ${adminPassword}`);
+      console.log(`💰 Balance: ₦${admin.balance.toLocaleString()}`);
+      console.log('👉 Login at: /api/auth/login');
+    } else {
+      console.error('❌ PASSWORD MISMATCH DETECTED!');
+      console.log('Try manual fix below...');
+    }
+    
+    console.log('🚀 NUCLEAR ADMIN FIX COMPLETE');
+    
+  } catch (error) {
+    console.error('❌ ADMIN CREATION ERROR:', error.message);
+    console.error('Stack:', error.stack);
+    
+    // Try alternative method if above fails
+    await emergencyAdminCreation();
+  }
+};
+
+// EMERGENCY ADMIN CREATION - DIRECT DATABASE INSERT
+const emergencyAdminCreation = async () => {
+  try {
+    console.log('🚨 EMERGENCY ADMIN CREATION...');
+    
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
+    
+    // Generate password hash manually
     const salt = await bcrypt.genSalt(12);
     const hash = await bcrypt.hash(adminPassword, salt);
     
     const adminData = {
+      _id: new mongoose.Types.ObjectId(),
       full_name: 'Raw Wealthy Admin',
       email: adminEmail,
       phone: '09161806424',
       password: hash,
       role: 'super_admin',
       balance: 1000000,
+      total_earnings: 0,
+      referral_earnings: 0,
+      risk_tolerance: 'medium',
+      investment_strategy: 'balanced',
+      country: 'ng',
+      currency: 'NGN',
+      referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase(),
       kyc_verified: true,
       kyc_status: 'verified',
       is_active: true,
-      is_verified: true
+      is_verified: true,
+      two_factor_enabled: false,
+      notifications_enabled: true,
+      email_notifications: true,
+      sms_notifications: false,
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
     
-    const admin = new User(adminData);
-    await admin.save();
+    // Insert directly into collection
+    await mongoose.connection.collection('users').insertOne(adminData);
+    console.log('✅ Emergency admin created via direct DB insert');
     
-    console.log('✅ ADMIN CREATED SUCCESSFULLY');
-    console.log(`📧 Email: ${adminEmail}`);
-    console.log(`🔑 Password: ${adminPassword}`);
-    console.log(`🔗 Login at: ${config.clientURL}/admin`);
+    // Verify
+    const verify = await mongoose.connection.collection('users').findOne({ email: adminEmail });
+    console.log('🔍 Verification:', verify ? 'Found' : 'Not found');
     
-    // Verify password works
-    const testUser = await User.findOne({ email: adminEmail }).select('+password');
-    const isValid = await bcrypt.compare(adminPassword, testUser.password);
-    console.log(`🔐 Password verification: ${isValid ? '✅ SUCCESS' : '❌ FAILED'}`);
+    if (verify) {
+      const match = await bcrypt.compare(adminPassword, verify.password);
+      console.log('🔑 Password match:', match ? '✅ YES' : '❌ NO');
+    }
     
   } catch (error) {
-    console.error('❌ Admin creation error:', error);
+    console.error('❌ EMERGENCY CREATION FAILED:', error.message);
   }
-};   
+};  
 
 const createDatabaseIndexes = async () => {
   try {
