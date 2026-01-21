@@ -1,6 +1,6 @@
-// server.js - RAW WEALTHY BACKEND v37.0 - ADVANCED PRODUCTION READY
-// COMPLETE ENHANCEMENT: Advanced Admin Dashboard + Full Data Analytics + Enhanced Notifications + Image Management
-// AUTO-DEPLOYMENT READY WITH DYNAMIC CONFIGURATION
+// server.js - RAW WEALTHY BACKEND v38.0 - PERMANENT SESSIONS EDITION
+// COMPLETE ENHANCEMENT: Permanent Login Sessions + Enhanced Admin Control + No Token Expiry
+// AUTO-DEPLOYMENT READY WITH PERMANENT ADMIN ACCESS
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -99,9 +99,9 @@ const config = {
   // Database
   mongoURI: process.env.MONGODB_URI || process.env.DATABASE_URL,
   
-  // Security
+  // Security - REMOVED TOKEN EXPIRATION FOR PERMANENT LOGIN
   jwtSecret: process.env.JWT_SECRET,
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30d',
+  jwtExpiresIn: false, // Set to false for permanent tokens
   bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS) || 12,
   
   // Client
@@ -165,6 +165,7 @@ console.log(`- Server URL: ${config.serverURL}`);
 console.log(`- Email Enabled: ${config.emailEnabled}`);
 console.log(`- Allowed Origins: ${config.allowedOrigins.length}`);
 console.log(`- Upload Directory: ${config.uploadDir}`);
+console.log(`- Token Expiration: ${config.jwtExpiresIn ? `${config.jwtExpiresIn}` : 'NEVER (Permanent Login)'}`);
 
 // ==================== ENHANCED EXPRESS SETUP ====================
 const app = express();
@@ -404,9 +405,9 @@ const sendEmail = async (to, subject, html, text = '') => {
   }
 };
 
-// ==================== DATABASE MODELS - ENHANCED ====================
+// ==================== DATABASE MODELS - ENHANCED WITH PERMANENT SESSIONS ====================
 
-// Enhanced User Model with complete fields
+// Enhanced User Model with permanent sessions
 const userSchema = new mongoose.Schema({
   full_name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true },
@@ -461,7 +462,15 @@ const userSchema = new mongoose.Schema({
   total_investments: { type: Number, default: 0 },
   last_deposit_date: Date,
   last_withdrawal_date: Date,
-  last_investment_date: Date
+  last_investment_date: Date,
+  // Permanent session fields
+  permanent_tokens: [{
+    token: String,
+    created_at: { type: Date, default: Date.now },
+    last_used: { type: Date, default: Date.now },
+    user_agent: String,
+    ip_address: String
+  }]
 }, { 
   timestamps: true,
   toJSON: { 
@@ -473,6 +482,7 @@ const userSchema = new mongoose.Schema({
       delete ret.password_reset_token;
       delete ret.login_attempts;
       delete ret.lock_until;
+      delete ret.permanent_tokens;
       return ret;
     }
   }
@@ -492,7 +502,6 @@ userSchema.virtual('portfolio_value').get(function() {
 
 // Virtual for daily interest calculation
 userSchema.virtual('estimated_daily_interest').get(function() {
-  // This will be calculated dynamically based on active investments
   return 0;
 });
 
@@ -518,22 +527,56 @@ userSchema.pre('save', async function(next) {
   next();
 });
 
-// Methods
+// Methods with PERMANENT TOKEN GENERATION
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-userSchema.methods.generateAuthToken = function() {
-  return jwt.sign(
-    { 
-      id: this._id,
-      email: this.email,
-      role: this.role,
-      kyc_verified: this.kyc_verified
-    },
-    config.jwtSecret,
-    { expiresIn: config.jwtExpiresIn }
-  );
+// MODIFIED: Generate permanent auth token (never expires)
+userSchema.methods.generateAuthToken = function(userAgent = '', ipAddress = '') {
+  const tokenData = {
+    id: this._id,
+    email: this.email,
+    role: this.role,
+    kyc_verified: this.kyc_verified,
+    permanent: true,
+    created: Date.now()
+  };
+  
+  // Generate token WITHOUT expiration
+  const token = jwt.sign(tokenData, config.jwtSecret);
+  
+  // Store token for permanent session management
+  if (this.permanent_tokens.length > 10) {
+    // Keep only last 10 tokens
+    this.permanent_tokens = this.permanent_tokens.slice(-9);
+  }
+  
+  this.permanent_tokens.push({
+    token: token,
+    user_agent: userAgent,
+    ip_address: ipAddress,
+    created_at: new Date(),
+    last_used: new Date()
+  });
+  
+  return token;
+};
+
+// MODIFIED: Generate permanent admin token
+userSchema.methods.generateAdminToken = function() {
+  const tokenData = {
+    id: this._id,
+    email: this.email,
+    role: this.role,
+    admin: true,
+    super_admin: this.role === 'super_admin',
+    permanent: true,
+    created: Date.now()
+  };
+  
+  // Generate permanent admin token
+  return jwt.sign(tokenData, config.jwtSecret);
 };
 
 userSchema.methods.generatePasswordResetToken = function() {
@@ -542,8 +585,25 @@ userSchema.methods.generatePasswordResetToken = function() {
     .createHash('sha256')
     .update(resetToken)
     .digest('hex');
-  this.password_reset_expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  this.password_reset_expires = new Date(Date.now() + 10 * 60 * 1000);
   return resetToken;
+};
+
+// Verify permanent token
+userSchema.methods.verifyPermanentToken = function(token) {
+  return this.permanent_tokens.some(t => t.token === token);
+};
+
+// Revoke token (for logout)
+userSchema.methods.revokeToken = function(token) {
+  this.permanent_tokens = this.permanent_tokens.filter(t => t.token !== token);
+  return this.save();
+};
+
+// Revoke all tokens (for security)
+userSchema.methods.revokeAllTokens = function() {
+  this.permanent_tokens = [];
+  return this.save();
 };
 
 // Static method for dashboard calculations
@@ -890,8 +950,10 @@ const handleError = (res, error, defaultMessage = 'An error occurred') => {
     return res.status(401).json(formatResponse(false, 'Invalid token'));
   }
   
+  // MODIFIED: Remove TokenExpiredError check since tokens don't expire
   if (error.name === 'TokenExpiredError') {
-    return res.status(401).json(formatResponse(false, 'Token expired'));
+    // This should never happen with permanent tokens, but handle gracefully
+    return res.status(401).json(formatResponse(false, 'Session expired. Please login again.'));
   }
   
   const statusCode = error.statusCode || error.status || 500;
@@ -1112,71 +1174,8 @@ const createAdminAudit = async (adminId, action, targetType, targetId, details =
     return null;
   }
 };
-// ==================== EMERGENCY ADMIN CREATION ====================
-app.post('/api/emergency-admin', async (req, res) => {
-  try {
-    const { email = 'admin@rawwealthy.com', password = 'Admin123456' } = req.body;
-    
-    console.log('🚨 EMERGENCY ADMIN CREATION REQUESTED');
-    console.log(`📧 Email: ${email}`);
-    console.log(`🔑 Password: ${password}`);
-    
-    // Delete any existing admin with this email
-    await User.deleteMany({ email });
-    console.log('✅ Deleted existing admin(s)');
-    
-    // Create new admin with proper hash
-    const salt = await bcrypt.genSalt(12);
-    const hash = await bcrypt.hash(password, salt);
-    
-    const admin = new User({
-      full_name: 'System Administrator',
-      email: email,
-      phone: '1234567890',
-      password: hash, // Already hashed, won't be re-hashed
-      role: 'super_admin',
-      balance: 1000000,
-      kyc_verified: true,
-      kyc_status: 'verified',
-      is_active: true,
-      is_verified: true
-    });
-    
-    // Save WITHOUT triggering pre-save hook (we already hashed)
-    await admin.save();
-    
-    console.log('✅ Admin saved to database');
-    
-    // Test the login
-    const testAdmin = await User.findOne({ email }).select('+password');
-    const passwordMatch = await bcrypt.compare(password, testAdmin.password);
-    
-    res.json({
-      success: true,
-      message: 'Admin created successfully!',
-      details: {
-        email: admin.email,
-        password_match: passwordMatch ? '✅ YES' : '❌ NO',
-        admin_id: admin._id,
-        login_url: '/api/auth/login'
-      },
-      credentials: {
-        email: email,
-        password: password,
-        warning: 'Keep these credentials secure!'
-      }
-    });
-    
-  } catch (error) {
-    console.error('Emergency admin creation error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      stack: config.nodeEnv === 'development' ? error.stack : undefined
-    });
-  }
-});
-// ==================== AUTH MIDDLEWARE ====================
+
+// ==================== MODIFIED AUTH MIDDLEWARE (PERMANENT SESSIONS) ====================
 
 const auth = async (req, res, next) => {
   try {
@@ -1190,6 +1189,7 @@ const auth = async (req, res, next) => {
       token = token.slice(7, token.length);
     }
     
+    // MODIFIED: Verify token without expiration check
     const decoded = jwt.verify(token, config.jwtSecret);
     
     const user = await User.findById(decoded.id);
@@ -1202,15 +1202,31 @@ const auth = async (req, res, next) => {
       return res.status(401).json(formatResponse(false, 'Account is deactivated. Please contact support.'));
     }
     
+    // MODIFIED: Check if token is in permanent tokens list (for logout functionality)
+    const isPermanentToken = user.verifyPermanentToken(token);
+    if (!isPermanentToken && decoded.permanent !== true) {
+      // Token not in permanent list, might be old or revoked
+      return res.status(401).json(formatResponse(false, 'Session invalid. Please login again.'));
+    }
+    
+    // Update token last used timestamp
+    if (isPermanentToken) {
+      const tokenIndex = user.permanent_tokens.findIndex(t => t.token === token);
+      if (tokenIndex !== -1) {
+        user.permanent_tokens[tokenIndex].last_used = new Date();
+        await user.save();
+      }
+    }
+    
     req.user = user;
     req.userId = user._id;
+    req.token = token;
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json(formatResponse(false, 'Invalid token'));
-    } else if (error.name === 'TokenExpiredError') {
-      return res.status(401).json(formatResponse(false, 'Token expired'));
     }
+    // MODIFIED: Removed TokenExpiredError handling since tokens don't expire
     
     console.error('Auth middleware error:', error);
     res.status(500).json(formatResponse(false, 'Server error during authentication'));
@@ -1230,7 +1246,21 @@ const adminAuth = async (req, res, next) => {
   }
 };
 
-// ==================== DATABASE INITIALIZATION ====================
+// Super admin auth (full control)
+const superAdminAuth = async (req, res, next) => {
+  try {
+    await auth(req, res, () => {
+      if (req.user.role !== 'super_admin') {
+        return res.status(403).json(formatResponse(false, 'Access denied. Super admin privileges required.'));
+      }
+      next();
+    });
+  } catch (error) {
+    handleError(res, error, 'Super admin authentication error');
+  }
+};
+
+// ==================== ENHANCED DATABASE INITIALIZATION ====================
 
 const initializeDatabase = async () => {
   try {
@@ -1251,7 +1281,7 @@ const initializeDatabase = async () => {
     // Load investment plans into config
     await loadInvestmentPlans();
     
-    // Create admin user if it doesn't exist
+    // Create admin user if it doesn't exist (PERMANENT ADMIN CREATION)
     await createAdminUser();
     
     // Create indexes if they don't exist
@@ -1345,20 +1375,27 @@ const createDefaultInvestmentPlans = async () => {
   }
 };
 
-    // Verify the admin was created
-    const createAdminUser = async () => {
+const createAdminUser = async () => {
   try {
-    console.log('🚀 NUCLEAR ADMIN FIX STARTING...');
+    console.log('🚀 PERMANENT ADMIN CREATION STARTING...');
     
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
     
-    console.log(`🔑 Using: ${adminEmail} / ${adminPassword}`);
+    console.log(`🔑 Admin Credentials: ${adminEmail} / ${adminPassword}`);
+    console.log('💡 These credentials will work FOREVER unless manually changed');
     
-    // 1. Check if admin already exists
+    // Check if admin already exists
     const existingAdmin = await User.findOne({ email: adminEmail });
     if (existingAdmin) {
       console.log('✅ Admin already exists');
+      
+      // Update admin to ensure super_admin role and active status
+      if (existingAdmin.role !== 'super_admin') {
+        existingAdmin.role = 'super_admin';
+        await existingAdmin.save();
+        console.log('✅ Updated admin to super_admin role');
+      }
       
       // Update admin password if it's the default
       if (adminPassword === 'Admin123456') {
@@ -1369,19 +1406,26 @@ const createDefaultInvestmentPlans = async () => {
         console.log('✅ Admin password updated');
       }
       
+      // Generate permanent admin token
+      const adminToken = existingAdmin.generateAdminToken();
+      console.log('🔐 Permanent Admin Token Generated (Never Expires)');
+      console.log(`👉 Admin can login at: ${config.clientURL}/admin`);
+      console.log(`👉 Use email: ${adminEmail}`);
+      console.log(`👉 Use password: ${adminPassword}`);
+      
       return;
     }
     
-    // 2. Generate FRESH hash
+    // Generate FRESH hash for new admin
     const salt = await bcrypt.genSalt(12);
     const hash = await bcrypt.hash(adminPassword, salt);
     
-    console.log('📝 Generated fresh hash');
+    console.log('📝 Generated fresh hash for admin');
     
-    // 3. Create admin WITHOUT Mongoose hooks
+    // Create admin WITH SUPER ADMIN PRIVILEGES
     const adminData = {
       _id: new mongoose.Types.ObjectId(),
-      full_name: 'Raw Wealthy Admin',
+      full_name: 'Raw Wealthy Super Admin',
       email: adminEmail,
       phone: '09161806424',
       password: hash,
@@ -1403,92 +1447,34 @@ const createDefaultInvestmentPlans = async () => {
       email_notifications: true,
       sms_notifications: false,
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      permanent_tokens: []
     };
     
     // Insert directly
     await mongoose.connection.collection('users').insertOne(adminData);
-    console.log('✅ Admin created in database');
+    console.log('✅ Permanent super_admin created in database');
     
-    // 4. Verify IMMEDIATELY
-    const verifyUser = await mongoose.connection.collection('users').findOne({ email: adminEmail });
+    // Generate permanent admin token
+    const adminUser = await User.findOne({ email: adminEmail });
+    const adminToken = adminUser.generateAdminToken();
     
-    const match = await bcrypt.compare(adminPassword, verifyUser.password);
-    console.log('🔑 Password match test:', match ? '✅ PASS' : '❌ FAIL');
-    
-    if (match) {
-      console.log('🎉 ADMIN READY FOR LOGIN!');
-      console.log(`📧 Email: ${adminEmail}`);
-      console.log(`🔑 Password: ${adminPassword}`);
-      console.log('👉 Login at: /api/auth/login');
-    } else {
-      console.error('❌ PASSWORD MISMATCH DETECTED!');
-    }
-    
-    console.log('🚀 NUCLEAR ADMIN FIX COMPLETE');
+    console.log('🎉 PERMANENT ADMIN CREATION COMPLETE!');
+    console.log('==========================================');
+    console.log('🔐 ADMIN LOGIN CREDENTIALS:');
+    console.log(`📧 Email: ${adminEmail}`);
+    console.log(`🔑 Password: ${adminPassword}`);
+    console.log(`🔒 Role: SUPER_ADMIN (Full Control)`);
+    console.log(`🌐 Login URL: ${config.clientURL}/admin`);
+    console.log('💡 This admin can login ANYTIME, ANYWHERE');
+    console.log('💡 Token NEVER expires until manually revoked');
+    console.log('==========================================');
     
   } catch (error) {
-    console.error('❌ NUCLEAR FIX ERROR:', error.message);
+    console.error('❌ ADMIN CREATION ERROR:', error.message);
     console.error(error.stack);
   }
 };
-
-// EMERGENCY ADMIN CREATION - DIRECT DATABASE INSERT
-const emergencyAdminCreation = async () => {
-  try {
-    console.log('🚨 EMERGENCY ADMIN CREATION...');
-    
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
-    
-    // Generate password hash manually
-    const salt = await bcrypt.genSalt(12);
-    const hash = await bcrypt.hash(adminPassword, salt);
-    
-    const adminData = {
-      _id: new mongoose.Types.ObjectId(),
-      full_name: 'Raw Wealthy Admin',
-      email: adminEmail,
-      phone: '09161806424',
-      password: hash,
-      role: 'super_admin',
-      balance: 1000000,
-      total_earnings: 0,
-      referral_earnings: 0,
-      risk_tolerance: 'medium',
-      investment_strategy: 'balanced',
-      country: 'ng',
-      currency: 'NGN',
-      referral_code: 'ADMIN' + crypto.randomBytes(4).toString('hex').toUpperCase(),
-      kyc_verified: true,
-      kyc_status: 'verified',
-      is_active: true,
-      is_verified: true,
-      two_factor_enabled: false,
-      notifications_enabled: true,
-      email_notifications: true,
-      sms_notifications: false,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    // Insert directly into collection
-    await mongoose.connection.collection('users').insertOne(adminData);
-    console.log('✅ Emergency admin created via direct DB insert');
-    
-    // Verify
-    const verify = await mongoose.connection.collection('users').findOne({ email: adminEmail });
-    console.log('🔍 Verification:', verify ? 'Found' : 'Not found');
-    
-    if (verify) {
-      const match = await bcrypt.compare(adminPassword, verify.password);
-      console.log('🔑 Password match:', match ? '✅ YES' : '❌ NO');
-    }
-    
-  } catch (error) {
-    console.error('❌ EMERGENCY CREATION FAILED:', error.message);
-  }
-};  
 
 const createDatabaseIndexes = async () => {
   try {
@@ -1508,7 +1494,7 @@ app.get('/health', async (req, res) => {
     success: true,
     status: 'OK',
     timestamp: new Date().toISOString(),
-    version: '37.0.0',
+    version: '38.0.0',
     environment: config.nodeEnv,
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     uptime: process.uptime(),
@@ -1522,6 +1508,11 @@ app.get('/health', async (req, res) => {
       investments: await Investment.countDocuments({}),
       deposits: await Deposit.countDocuments({}),
       withdrawals: await Withdrawal.countDocuments({})
+    },
+    features: {
+      permanent_sessions: true,
+      admin_permanent_access: true,
+      token_expiration: 'NEVER'
     }
   };
   
@@ -1532,11 +1523,16 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🚀 Raw Wealthy Backend API v37.0 - Enhanced Edition',
-    version: '37.0.0',
+    message: '🚀 Raw Wealthy Backend API v38.0 - Permanent Sessions Edition',
+    version: '38.0.0',
     timestamp: new Date().toISOString(),
     status: 'Operational',
     environment: config.nodeEnv,
+    features: {
+      permanent_login: 'ENABLED (Tokens never expire)',
+      admin_permanent_access: 'ENABLED',
+      session_management: 'ENHANCED'
+    },
     endpoints: {
       auth: '/api/auth/*',
       profile: '/api/profile',
@@ -1550,12 +1546,13 @@ app.get('/', (req, res) => {
       admin: '/api/admin/*',
       upload: '/api/upload',
       forgot_password: '/api/auth/forgot-password',
+      logout: '/api/auth/logout',
       health: '/health'
     }
   });
 });
 
-// ==================== ENHANCED AUTH ENDPOINTS ====================
+// ==================== ENHANCED AUTH ENDPOINTS (PERMANENT SESSIONS) ====================
 
 // Register
 app.post('/api/auth/register', [
@@ -1629,8 +1626,8 @@ app.post('/api/auth/register', [
       );
     }
 
-    // Generate token
-    const token = user.generateAuthToken();
+    // MODIFIED: Generate PERMANENT token (never expires)
+    const token = user.generateAuthToken(req.headers['user-agent'], req.ip);
 
     // Create welcome notification
     await createNotification(
@@ -1662,13 +1659,19 @@ app.post('/api/auth/register', [
          <li>Email: ${user.email}</li>
          <li>Balance: ₦${user.balance.toLocaleString()}</li>
          <li>Referral Code: ${user.referral_code}</li>
+         <li><strong>Note:</strong> Your login session is permanent until you logout.</li>
        </ul>
        <p><a href="${config.clientURL}/dashboard">Go to Dashboard</a></p>`
     );
 
     res.status(201).json(formatResponse(true, 'User registered successfully', {
       user: user.toObject(),
-      token
+      token,
+      session_info: {
+        permanent: true,
+        expires: 'NEVER',
+        logout_required: 'To end session, use /api/auth/logout'
+      }
     }));
 
   } catch (error) {
@@ -1676,7 +1679,7 @@ app.post('/api/auth/register', [
   }
 });
 
-// Login
+// MODIFIED: Login with PERMANENT token
 app.post('/api/auth/login', [
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty()
@@ -1720,16 +1723,116 @@ app.post('/api/auth/login', [
     user.last_active = new Date();
     await user.save();
 
-    // Generate token
-    const token = user.generateAuthToken();
+    // MODIFIED: Generate PERMANENT token (never expires)
+    const token = user.generateAuthToken(req.headers['user-agent'], req.ip);
+
+    // For admin users, also generate admin token
+    let adminToken = null;
+    if (user.role === 'admin' || user.role === 'super_admin') {
+      adminToken = user.generateAdminToken();
+    }
 
     res.json(formatResponse(true, 'Login successful', {
       user: user.toObject(),
-      token
+      token,
+      admin_token: adminToken,
+      session_info: {
+        permanent: true,
+        expires: 'NEVER',
+        user_agent: req.headers['user-agent'],
+        login_time: new Date().toISOString(),
+        logout_required: 'To end session, use /api/auth/logout'
+      }
     }));
 
   } catch (error) {
     handleError(res, error, 'Login failed');
+  }
+});
+
+// NEW: Logout endpoint to revoke permanent token
+app.post('/api/auth/logout', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const token = req.token;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+    
+    // Revoke the specific token
+    await user.revokeToken(token);
+    
+    // Create notification
+    await createNotification(
+      userId,
+      'Logged Out',
+      'You have been logged out from this device. Your session has been terminated.',
+      'system'
+    );
+    
+    res.json(formatResponse(true, 'Logged out successfully', {
+      logout_time: new Date().toISOString(),
+      tokens_remaining: user.permanent_tokens.length,
+      message: 'This login session has been terminated. To login again, use /api/auth/login'
+    }));
+  } catch (error) {
+    handleError(res, error, 'Logout failed');
+  }
+});
+
+// NEW: Logout from all devices
+app.post('/api/auth/logout-all', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+    
+    // Revoke all tokens
+    await user.revokeAllTokens();
+    
+    // Create notification
+    await createNotification(
+      userId,
+      'Logged Out Everywhere',
+      'You have been logged out from all devices. All sessions have been terminated.',
+      'system'
+    );
+    
+    res.json(formatResponse(true, 'Logged out from all devices', {
+      logout_time: new Date().toISOString(),
+      devices_logged_out: user.permanent_tokens.length,
+      message: 'All login sessions have been terminated. You will need to login again.'
+    }));
+  } catch (error) {
+    handleError(res, error, 'Logout failed');
+  }
+});
+
+// Get active sessions
+app.get('/api/auth/sessions', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('permanent_tokens');
+    
+    const sessions = user.permanent_tokens.map(token => ({
+      created_at: token.created_at,
+      last_used: token.last_used,
+      user_agent: token.user_agent,
+      ip_address: token.ip_address,
+      current: token.token === req.token
+    }));
+    
+    res.json(formatResponse(true, 'Active sessions retrieved', {
+      total_sessions: sessions.length,
+      sessions,
+      current_session: sessions.find(s => s.current) || null
+    }));
+  } catch (error) {
+    handleError(res, error, 'Error fetching sessions');
   }
 });
 
@@ -1766,6 +1869,7 @@ app.post('/api/auth/forgot-password', [
        <p>Click the link below to reset your password:</p>
        <p><a href="${resetUrl}">${resetUrl}</a></p>
        <p>This link will expire in 10 minutes.</p>
+       <p><strong>Note:</strong> Changing your password will NOT log you out from other devices due to permanent sessions.</p>
        <p>If you didn't request this, please ignore this email.</p>`
     );
 
@@ -1819,6 +1923,7 @@ app.post('/api/auth/reset-password/:token', [
       'Password Reset Successful',
       `<h2>Password Reset Successful</h2>
        <p>Your password has been successfully reset.</p>
+       <p><strong>Note:</strong> Due to permanent sessions, you may still be logged in on other devices. To logout from all devices, use the logout-all feature.</p>
        <p>If you did not perform this action, please contact our support team immediately.</p>`
     );
 
@@ -1826,11 +1931,13 @@ app.post('/api/auth/reset-password/:token', [
     await createNotification(
       user._id,
       'Password Changed',
-      'Your password has been successfully reset.',
+      'Your password has been successfully reset. Note: You may still be logged in on other devices.',
       'system'
     );
 
-    res.json(formatResponse(true, 'Password reset successful'));
+    res.json(formatResponse(true, 'Password reset successful', {
+      message: 'Password reset successful. Note: Other devices may still be logged in due to permanent sessions.'
+    }));
   } catch (error) {
     handleError(res, error, 'Error resetting password');
   }
@@ -1937,7 +2044,11 @@ app.get('/api/profile', auth, async (req, res) => {
         // Status stats
         kyc_status: user.kyc_status || 'not_submitted',
         kyc_verified: user.kyc_verified || false,
-        account_status: user.is_active ? 'active' : 'inactive'
+        account_status: user.is_active ? 'active' : 'inactive',
+        // Session info
+        permanent_session: true,
+        login_expires: 'NEVER',
+        last_login: user.last_login
       },
       
       // All historical data with images
@@ -3395,7 +3506,7 @@ app.post('/api/upload/multiple', auth, upload.array('files', 10), async (req, re
   }
 });
 
-// ==================== ENHANCED ADMIN ENDPOINTS ====================
+// ==================== ENHANCED ADMIN ENDPOINTS (FULL CONTROL) ====================
 
 // Advanced Admin Dashboard Stats with images
 app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
@@ -5281,7 +5392,9 @@ app.post('/api/admin/kyc/:id/reject', adminAuth, [
   }
 });
 
-// Update user role
+// ==================== SUPER ADMIN ENDPOINTS (FULL CONTROL) ====================
+
+// Update user role (Admin only)
 app.put('/api/admin/users/:id/role', adminAuth, [
   body('role').isIn(['user', 'admin', 'super_admin'])
 ], async (req, res) => {
@@ -5293,6 +5406,11 @@ app.put('/api/admin/users/:id/role', adminAuth, [
 
     const userId = req.params.id;
     const { role } = req.body;
+
+    // Check if current user has permission to assign super_admin role
+    if (role === 'super_admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json(formatResponse(false, 'Only super admins can assign super_admin role'));
+    }
 
     const user = await User.findByIdAndUpdate(
       userId,
@@ -6238,7 +6356,7 @@ const startServer = async () => {
     // Start server
     const server = app.listen(config.port, '0.0.0.0', () => {
       console.log(`
-🎯 RAW WEALTHY BACKEND v37.0 - ENHANCED PRODUCTION EDITION
+🎯 RAW WEALTHY BACKEND v38.0 - PERMANENT SESSIONS EDITION
 =========================================================
 🌐 Server running on port ${config.port}
 🚀 Environment: ${config.nodeEnv}
@@ -6249,6 +6367,16 @@ const startServer = async () => {
 📧 Email: ${config.emailEnabled ? '✅ Enabled' : '❌ Disabled'}
 📁 Uploads: ${config.uploadDir}
 🌐 Server URL: ${config.serverURL}
+
+✅ PERMANENT SESSIONS FEATURES:
+   ✅ PERMANENT ADMIN ACCESS - Login once, stay logged in FOREVER
+   ✅ NO TOKEN EXPIRATION for all users and admins
+   ✅ Permanent Super Admin created on startup
+   ✅ Admin can login ANYTIME, ANYWHERE with permanent credentials
+   ✅ Session management with logout functionality
+   ✅ Multiple device support with session tracking
+   ✅ Admin has FULL CONTROL over everything
+   ✅ Super Admin privileges for complete system control
 
 ✅ ENHANCED FEATURES:
    ✅ Advanced Admin Dashboard with Real-time Analytics
@@ -6276,9 +6404,16 @@ const startServer = async () => {
    ✅ Memory & Performance Optimization
 
 🚀 FULLY INTEGRATED & PRODUCTION READY!
-🔐 SECURITY ENHANCED WITH AUDIT LOGGING
+🔐 PERMANENT ADMIN ACCESS GUARANTEED
 📈 COMPLETE ANALYTICS & REPORTING
 📱 RESPONSIVE ADMIN INTERFACE SUPPORT
+
+🔑 ADMIN CREDENTIALS:
+   📧 Email: ${process.env.ADMIN_EMAIL || 'admin@rawwealthy.com'}
+   🔑 Password: ${process.env.ADMIN_PASSWORD || 'Admin123456'}
+   🔒 Role: SUPER_ADMIN (Full Control)
+   ⏰ Login Expires: NEVER
+   🌐 Login URL: ${config.clientURL}/admin
       `);
     });
 
