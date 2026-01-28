@@ -268,11 +268,20 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage,
-  fileFilter,
-  limits: { 
-    fileSize: config.maxFileSize,
-    files: 10
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB (Render.com limit)
+    files: 1
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow all image types
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images and PDFs are allowed'), false);
+    }
   }
 });
 
