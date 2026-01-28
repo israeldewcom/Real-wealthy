@@ -1475,6 +1475,192 @@ app.get('/api/profile', auth, async (req, res) => {
   }
 });
 
+// Update user profile
+app.put('/api/profile', auth, [
+  body('full_name').optional().trim().isLength({ min: 2, max: 100 }),
+  body('phone').optional().trim(),
+  body('country').optional().trim(),
+  body('risk_tolerance').optional().isIn(['low', 'medium', 'high']),
+  body('investment_strategy').optional().isIn(['conservative', 'balanced', 'aggressive']),
+  body('email_notifications').optional().isBoolean(),
+  body('sms_notifications').optional().isBoolean()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const updates = {};
+    const allowedFields = ['full_name', 'phone', 'country', 'risk_tolerance', 'investment_strategy', 'email_notifications', 'sms_notifications'];
+    
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    });
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      updates,
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+
+    res.json(formatResponse(true, 'Profile updated successfully', { user }));
+  } catch (error) {
+    handleError(res, error, 'Error updating profile');
+  }
+});
+
+// Update bank details
+app.put('/api/profile/bank', auth, [
+  body('bank_name').notEmpty().trim(),
+  body('account_name').notEmpty().trim(),
+  body('account_number').notEmpty().trim(),
+  body('bank_code').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const { bank_name, account_name, account_number, bank_code } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        bank_details: {
+          bank_name,
+          account_name,
+          account_number,
+          bank_code: bank_code || '',
+          verified: false,
+          last_updated: new Date()
+        }
+      },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+
+    // Create notification
+    await createNotification(
+      req.user._id,
+      'Bank Details Updated',
+      'Your bank details have been updated successfully.',
+      'info',
+      '/profile'
+    );
+
+    res.json(formatResponse(true, 'Bank details updated successfully', { 
+      user,
+      bank_details: user.bank_details
+    }));
+  } catch (error) {
+    handleError(res, error, 'Error updating bank details');
+  }
+});
+
+// Forgot password
+app.post('/api/auth/forgot-password', [
+  body('email').isEmail().normalizeEmail()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const { email } = req.body;
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+
+    // Generate reset token
+    const resetToken = user.generatePasswordResetToken();
+    await user.save();
+
+    // Send email with reset link
+    const resetUrl = `${config.clientURL}/reset-password/${resetToken}`;
+    
+    if (config.emailEnabled) {
+      await sendEmail(
+        user.email,
+        'Password Reset Request',
+        `<h2>Password Reset Request</h2>
+         <p>You requested a password reset. Click the link below to reset your password:</p>
+         <p><a href="${resetUrl}">${resetUrl}</a></p>
+         <p>This link will expire in 10 minutes.</p>
+         <p>If you didn't request this, please ignore this email.</p>`
+      );
+    }
+
+    res.json(formatResponse(true, 'Password reset email sent', {
+      resetToken: config.emailEnabled ? 'Email sent' : resetToken
+    }));
+  } catch (error) {
+    handleError(res, error, 'Error processing forgot password');
+  }
+});
+
+// Reset password
+app.post('/api/auth/reset-password/:token', [
+  body('password').isLength({ min: 6 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(formatResponse(false, 'Validation failed'));
+    }
+
+    const { token } = req.params;
+    const { password } = req.body;
+
+    // Hash token
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    const user = await User.findOne({
+      password_reset_token: hashedToken,
+      password_reset_expires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json(formatResponse(false, 'Invalid or expired token'));
+    }
+
+    // Update password
+    user.password = password;
+    user.password_reset_token = undefined;
+    user.password_reset_expires = undefined;
+    await user.save();
+
+    // Create notification
+    await createNotification(
+      user._id,
+      'Password Updated',
+      'Your password has been updated successfully.',
+      'success',
+      '/profile'
+    );
+
+    res.json(formatResponse(true, 'Password reset successful'));
+  } catch (error) {
+    handleError(res, error, 'Error resetting password');
+  }
+});
+
 // ==================== INVESTMENT PLANS ENDPOINTS ====================
 
 // Get all investment plans
@@ -3204,6 +3390,10 @@ const startServer = async () => {
       console.log('  • POST   /api/auth/register');
       console.log('  • POST   /api/auth/login');
       console.log('  • GET    /api/profile');
+      console.log('  • PUT    /api/profile');
+      console.log('  • PUT    /api/profile/bank');
+      console.log('  • POST   /api/auth/forgot-password');
+      console.log('  • POST   /api/auth/reset-password/:token');
       console.log('  • GET    /api/plans');
       console.log('  • GET    /api/investments');
       console.log('  • POST   /api/investments');
@@ -3221,7 +3411,27 @@ const startServer = async () => {
       console.log('  • POST   /api/upload');
       console.log('  • GET    /api/admin/dashboard');
       console.log('  • GET    /api/admin/users');
+      console.log('  • GET    /api/admin/pending-investments');
+      console.log('  • POST   /api/admin/investments/:id/approve');
+      console.log('  • GET    /api/admin/pending-deposits');
+      console.log('  • POST   /api/admin/deposits/:id/approve');
+      console.log('  • GET    /api/admin/pending-withdrawals');
+      console.log('  • POST   /api/admin/withdrawals/:id/approve');
+      console.log('  • GET    /api/admin/pending-kyc');
+      console.log('  • POST   /api/admin/kyc/:id/approve');
+      console.log('  • GET    /api/admin/transactions');
+      console.log('  • PUT    /api/admin/users/:id/role');
+      console.log('  • PUT    /api/admin/users/:id/status');
       console.log('  • GET    /health');
+      console.log('============================================\n');
+      console.log('🚀 FRONTEND INTEGRATION READY');
+      console.log('✅ All endpoints match frontend v37.0');
+      console.log('✅ CORS configured for frontend origins');
+      console.log('✅ File upload system ready');
+      console.log('✅ Admin dashboard operational');
+      console.log('✅ Automated daily interest calculation');
+      console.log('✅ Production error handling');
+      console.log('✅ Enhanced security headers');
       console.log('============================================\n');
     });
   } catch (error) {
