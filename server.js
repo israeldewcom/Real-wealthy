@@ -1,6 +1,7 @@
-// server.js - RAW WEALTHY BACKEND v40.0 - ADVANCED DEBUGGING & PRODUCTION READY
-
-// COMPLETE DEBUGGING WITH ENHANCED ADMIN & DASHBOARD SUPPORT
+// server.js - RAW WEALTHY BACKEND v38.0 - ENHANCED PRODUCTION READY
+// FULLY INTEGRATED WITH FRONTEND v37.0 - COMPLETE ERROR FIXES
+// AUTO-DEPLOYMENT READY WITH COMPLETE IMAGE MANAGEMENT
+// ENHANCED ADMIN DEBUGGING SYSTEM
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -41,7 +42,6 @@ const requiredEnvVars = [
 
 console.log('🔍 Environment Configuration:');
 console.log('============================');
-
 const missingEnvVars = requiredEnvVars.filter(envVar => {
   if (!process.env[envVar]) {
     console.error(`❌ Missing: ${envVar}`);
@@ -186,11 +186,13 @@ const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
+    
     if (config.allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       // Check if origin matches pattern (for preview deployments)
       const isPreviewDeployment = origin.includes('vercel.app') || origin.includes('onrender.com');
+      
       if (isPreviewDeployment) {
         console.log(`🌐 Allowed preview deployment: ${origin}`);
         callback(null, true);
@@ -254,7 +256,6 @@ app.use('/api/', rateLimiters.api);
 
 // ==================== ENHANCED FILE UPLOAD CONFIGURATION ====================
 const storage = multer.memoryStorage();
-
 const fileFilter = (req, file, cb) => {
   if (!config.allowedMimeTypes[file.mimetype]) {
     return cb(new Error(`Invalid file type: ${file.mimetype}`), false);
@@ -339,7 +340,6 @@ app.use('/uploads', express.static(config.uploadDir, {
 
 // ==================== DYNAMIC EMAIL CONFIGURATION ====================
 let emailTransporter = null;
-
 if (config.emailEnabled) {
   try {
     emailTransporter = nodemailer.createTransport({
@@ -440,17 +440,13 @@ const userSchema = new mongoose.Schema({
   email_notifications: { type: Boolean, default: true },
   sms_notifications: { type: Boolean, default: false },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
-  
   // Enhanced fields for dashboard
   total_deposits: { type: Number, default: 0 },
   total_withdrawals: { type: Number, default: 0 },
   total_investments: { type: Number, default: 0 },
   last_deposit_date: Date,
   last_withdrawal_date: Date,
-  last_investment_date: Date,
-  
-  // DEBUG: Add debug fields
-  debug_info: { type: mongoose.Schema.Types.Mixed, default: {} }
+  last_investment_date: Date
 }, {
   timestamps: true,
   toJSON: {
@@ -479,17 +475,17 @@ userSchema.virtual('portfolio_value').get(function() {
 
 // Pre-save hooks
 userSchema.pre('save', async function(next) {
-  // Debug logging
-  console.log(`🔍 User pre-save: ${this.email}, Role: ${this.role}, Active: ${this.is_active}`);
+  console.log(`🔍 User pre-save hook triggered for: ${this.email}, isModified('password'): ${this.isModified('password')}`);
   
   if (this.isModified('password')) {
-    console.log(`🔑 Hashing password for: ${this.email}`);
+    console.log(`🔐 Hashing password with ${config.bcryptRounds} rounds`);
     this.password = await bcrypt.hash(this.password, config.bcryptRounds);
+    console.log(`✅ Password hashed successfully (length: ${this.password.length})`);
   }
   
   if (!this.referral_code) {
     this.referral_code = crypto.randomBytes(6).toString('hex').toUpperCase();
-    console.log(`🎯 Generated referral code: ${this.referral_code} for ${this.email}`);
+    console.log(`🎫 Generated referral code: ${this.referral_code}`);
   }
   
   if (this.isModified('email') && !this.is_verified) {
@@ -504,22 +500,25 @@ userSchema.pre('save', async function(next) {
   next();
 });
 
-// Post-save hooks for debugging
-userSchema.post('save', function(doc) {
-  console.log(`✅ User saved: ${doc.email}, ID: ${doc._id}, Role: ${doc.role}, Active: ${doc.is_active}`);
-});
-
 // Methods
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  console.log(`🔐 Comparing password for: ${this.email}`);
-  const result = await bcrypt.compare(candidatePassword, this.password);
-  console.log(`🔐 Password match for ${this.email}: ${result}`);
-  return result;
+  console.log(`🔑 Comparing password for user: ${this.email}`);
+  console.log(`🔑 Candidate password length: ${candidatePassword ? candidatePassword.length : 0}`);
+  console.log(`🔑 Hashed password length: ${this.password ? this.password.length : 0}`);
+  
+  try {
+    const isMatch = await bcrypt.compare(candidatePassword, this.password);
+    console.log(`🔑 Password match result: ${isMatch}`);
+    return isMatch;
+  } catch (error) {
+    console.error('🔑 Password comparison error:', error);
+    return false;
+  }
 };
 
 userSchema.methods.generateAuthToken = function() {
-  console.log(`🎫 Generating token for: ${this.email}, Role: ${this.role}`);
-  const token = jwt.sign(
+  console.log(`🎫 Generating auth token for user: ${this.email}, role: ${this.role}`);
+  return jwt.sign(
     {
       id: this._id,
       email: this.email,
@@ -529,8 +528,6 @@ userSchema.methods.generateAuthToken = function() {
     config.jwtSecret,
     { expiresIn: config.jwtExpiresIn }
   );
-  console.log(`🎫 Token generated for ${this.email}: ${token.substring(0, 50)}...`);
-  return token;
 };
 
 userSchema.methods.generatePasswordResetToken = function() {
@@ -541,20 +538,6 @@ userSchema.methods.generatePasswordResetToken = function() {
     .digest('hex');
   this.password_reset_expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
   return resetToken;
-};
-
-// Debug method
-userSchema.methods.debugInfo = function() {
-  return {
-    id: this._id,
-    email: this.email,
-    role: this.role,
-    is_active: this.is_active,
-    balance: this.balance,
-    total_earnings: this.total_earnings,
-    referral_earnings: this.referral_earnings,
-    kyc_verified: this.kyc_verified
-  };
 };
 
 const User = mongoose.model('User', userSchema);
@@ -835,7 +818,7 @@ const formatResponse = (success, message, data = null, pagination = null) => {
 };
 
 const handleError = (res, error, defaultMessage = 'An error occurred') => {
-  console.error('❌ Error:', error);
+  console.error('Error:', error);
   
   if (error.name === 'ValidationError') {
     const messages = Object.values(error.errors).map(val => val.message);
@@ -872,8 +855,6 @@ const generateReference = (prefix = 'REF') => {
 // Enhanced createNotification
 const createNotification = async (userId, title, message, type = 'info', actionUrl = null, metadata = {}) => {
   try {
-    console.log(`🔔 Creating notification for user ${userId}: ${title}`);
-    
     const notification = new Notification({
       user: userId,
       title,
@@ -928,7 +909,6 @@ const createNotification = async (userId, title, message, type = 'info', actionU
       await sendEmail(user.email, emailSubject, emailHtml);
     }
     
-    console.log(`✅ Notification created for user ${userId}: ${title}`);
     return notification;
   } catch (error) {
     console.error('Error creating notification:', error);
@@ -936,39 +916,25 @@ const createNotification = async (userId, title, message, type = 'info', actionU
   }
 };
 
-// Enhanced createTransaction with debugging
+// Enhanced createTransaction
 const createTransaction = async (userId, type, amount, description, status = 'completed', metadata = {}, proofUrl = null) => {
   try {
-    console.log(`💳 Creating transaction: ${type} for user ${userId}, Amount: ${amount}`);
-    
     const user = await User.findById(userId);
-    if (!user) {
-      console.error(`❌ User ${userId} not found for transaction`);
-      return null;
-    }
+    if (!user) return null;
     
     // Update user balance based on transaction type
     let newBalance = user.balance;
-    let updateFields = {};
     
     if (type === 'deposit' && status === 'completed') {
       newBalance += amount;
-      updateFields.total_deposits = (user.total_deposits || 0) + amount;
-      updateFields.last_deposit_date = new Date();
     } else if (type === 'withdrawal' && status === 'completed') {
       newBalance -= Math.abs(amount);
-      updateFields.total_withdrawals = (user.total_withdrawals || 0) + Math.abs(amount);
-      updateFields.last_withdrawal_date = new Date();
     } else if (type === 'investment' && status === 'completed') {
       newBalance -= Math.abs(amount);
-      updateFields.total_investments = (user.total_investments || 0) + Math.abs(amount);
-      updateFields.last_investment_date = new Date();
     } else if (type === 'earning' && status === 'completed') {
       newBalance += amount;
-      updateFields.total_earnings = (user.total_earnings || 0) + amount;
     } else if (type === 'referral' && status === 'completed') {
       newBalance += amount;
-      updateFields.referral_earnings = (user.referral_earnings || 0) + amount;
     } else if (type === 'bonus' && status === 'completed') {
       newBalance += amount;
     }
@@ -990,16 +956,34 @@ const createTransaction = async (userId, type, amount, description, status = 'co
     
     await transaction.save();
     
-    // Update user balance and stats
-    await User.findByIdAndUpdate(userId, {
-      balance: newBalance,
-      ...updateFields
-    });
+    // Update user balance
+    await User.findByIdAndUpdate(userId, { balance: newBalance });
     
-    console.log(`✅ Transaction created: ${type} for user ${userId}, New Balance: ${newBalance}`);
+    // Update user statistics based on transaction type
+    const updateFields = {};
+    
+    if (type === 'deposit' && status === 'completed') {
+      updateFields.total_deposits = (user.total_deposits || 0) + amount;
+      updateFields.last_deposit_date = new Date();
+    } else if (type === 'withdrawal' && status === 'completed') {
+      updateFields.total_withdrawals = (user.total_withdrawals || 0) + Math.abs(amount);
+      updateFields.last_withdrawal_date = new Date();
+    } else if (type === 'investment' && status === 'completed') {
+      updateFields.total_investments = (user.total_investments || 0) + Math.abs(amount);
+      updateFields.last_investment_date = new Date();
+    } else if (type === 'earning' && status === 'completed') {
+      updateFields.total_earnings = (user.total_earnings || 0) + amount;
+    } else if (type === 'referral' && status === 'completed') {
+      updateFields.referral_earnings = (user.referral_earnings || 0) + amount;
+    }
+    
+    if (Object.keys(updateFields).length > 0) {
+      await User.findByIdAndUpdate(userId, updateFields);
+    }
+    
     return transaction;
   } catch (error) {
-    console.error('❌ Error creating transaction:', error);
+    console.error('Error creating transaction:', error);
     return null;
   }
 };
@@ -1031,12 +1015,9 @@ const createAdminAudit = async (adminId, action, targetType, targetId, details =
 // ==================== AUTH MIDDLEWARE ====================
 const auth = async (req, res, next) => {
   try {
-    console.log(`🔐 Auth middleware triggered for ${req.method} ${req.path}`);
-    
     let token = req.header('Authorization');
     
     if (!token) {
-      console.log('❌ No token provided');
       return res.status(401).json(formatResponse(false, 'No token, authorization denied'));
     }
     
@@ -1044,34 +1025,24 @@ const auth = async (req, res, next) => {
       token = token.slice(7, token.length);
     }
     
-    console.log(`🔐 Token received: ${token.substring(0, 50)}...`);
-    
     const decoded = jwt.verify(token, config.jwtSecret);
-    console.log(`🔐 Token decoded: ${JSON.stringify(decoded)}`);
-    
     const user = await User.findById(decoded.id);
     
     if (!user) {
-      console.log(`❌ User not found for ID: ${decoded.id}`);
       return res.status(401).json(formatResponse(false, 'Token is not valid'));
     }
     
     if (!user.is_active) {
-      console.log(`❌ User account deactivated: ${user.email}`);
       return res.status(401).json(formatResponse(false, 'Account is deactivated. Please contact support.'));
     }
-    
-    console.log(`✅ Auth successful: ${user.email}, Role: ${user.role}`);
     
     req.user = user;
     req.userId = user._id;
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
-      console.log('❌ JWT Error:', error.message);
       return res.status(401).json(formatResponse(false, 'Invalid token'));
     } else if (error.name === 'TokenExpiredError') {
-      console.log('❌ Token expired');
       return res.status(401).json(formatResponse(false, 'Token expired'));
     }
     
@@ -1082,21 +1053,13 @@ const auth = async (req, res, next) => {
 
 const adminAuth = async (req, res, next) => {
   try {
-    console.log(`🔐 Admin auth middleware triggered for ${req.method} ${req.path}`);
-    
     await auth(req, res, () => {
-      console.log(`🔐 Checking admin role for: ${req.user.email}, Role: ${req.user.role}`);
-      
       if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-        console.log(`❌ Access denied: ${req.user.email} is not admin (role: ${req.user.role})`);
         return res.status(403).json(formatResponse(false, 'Access denied. Admin privileges required.'));
       }
-      
-      console.log(`✅ Admin auth successful: ${req.user.email}, Role: ${req.user.role}`);
       next();
     });
   } catch (error) {
-    console.error('❌ Admin auth middleware error:', error);
     handleError(res, error, 'Admin authentication error');
   }
 };
@@ -1106,7 +1069,7 @@ const initializeDatabase = async () => {
   try {
     console.log('🔄 Initializing database...');
     
-    // Connect to MongoDB with enhanced options
+    // Connect to MongoDB
     await mongoose.connect(config.mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
@@ -1191,7 +1154,6 @@ const createDefaultInvestmentPlans = async () => {
       
       if (!existingPlan) {
         await InvestmentPlan.create(planData);
-        console.log(`✅ Created default plan: ${planData.name}`);
       }
     }
     
@@ -1201,90 +1163,313 @@ const createDefaultInvestmentPlans = async () => {
   }
 };
 
+// ==================== ENHANCED ADMIN CREATION WITH DEBUGGING ====================
 const createAdminUser = async () => {
   try {
-    console.log('🚀 ADMIN USER SETUP STARTING...');
+    console.log('\n🚀 =========== ADMIN USER SETUP STARTING ===========');
     
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
     
-    console.log(`🔑 Attempting to create/admin with: ${adminEmail} / ${adminPassword}`);
+    console.log(`📧 Admin Email: ${adminEmail}`);
+    console.log(`🔑 Admin Password: ${adminPassword ? '***' : 'NOT SET'}`);
+    console.log(`🔑 Bcrypt Rounds: ${config.bcryptRounds}`);
+    console.log(`📁 Environment: ${config.nodeEnv}`);
     
     // Check if admin already exists
+    console.log('🔍 Checking if admin already exists...');
     const existingAdmin = await User.findOne({ email: adminEmail });
     
     if (existingAdmin) {
-      console.log('✅ Admin already exists');
-      console.log(`📋 Admin Details: 
-        - ID: ${existingAdmin._id}
-        - Email: ${existingAdmin.email}
-        - Role: ${existingAdmin.role}
-        - Active: ${existingAdmin.is_active}
-        - Password set: ${existingAdmin.password ? 'Yes' : 'No'}
-      `);
+      console.log('✅ Admin already exists in database');
+      console.log(`👤 Admin ID: ${existingAdmin._id}`);
+      console.log(`🎭 Admin Role: ${existingAdmin.role}`);
+      console.log(`✅ Admin Active: ${existingAdmin.is_active}`);
+      console.log(`✅ Admin Verified: ${existingAdmin.is_verified}`);
+      
+      // Test password for debugging
+      console.log('🔑 Testing admin password...');
+      const testAdmin = await User.findOne({ email: adminEmail }).select('+password');
+      
+      if (testAdmin && testAdmin.password) {
+        console.log(`🔑 Password hash exists: ${testAdmin.password.substring(0, 20)}...`);
+        console.log(`🔑 Password hash length: ${testAdmin.password.length}`);
+        
+        // Test password match
+        const testMatch = await testAdmin.comparePassword(adminPassword);
+        console.log(`🔑 Password match test: ${testMatch ? '✅ SUCCESS' : '❌ FAILED'}`);
+        
+        if (!testMatch) {
+          console.log('⚠️ Password mismatch detected! Updating admin password...');
+          testAdmin.password = adminPassword;
+          await testAdmin.save();
+          console.log('✅ Admin password updated successfully');
+        }
+      } else {
+        console.log('❌ Admin password field is missing!');
+        console.log('🔄 Recreating admin user...');
+        await User.deleteOne({ email: adminEmail });
+        existingAdmin = null;
+      }
       
       // Ensure admin has correct role
-      if (existingAdmin.role !== 'super_admin') {
+      if (existingAdmin && existingAdmin.role !== 'super_admin') {
+        console.log(`⚠️ Admin role is ${existingAdmin.role}, updating to super_admin...`);
         existingAdmin.role = 'super_admin';
         await existingAdmin.save();
         console.log('✅ Admin role updated to super_admin');
       }
       
-      // Ensure admin is active
-      if (!existingAdmin.is_active) {
-        existingAdmin.is_active = true;
-        await existingAdmin.save();
-        console.log('✅ Admin activated');
-      }
-      
+      console.log('✅ Admin setup completed (existing user)');
       return;
     }
     
-    console.log('🆕 Creating new admin user...');
-    
-    // Hash password
-    const hashedPassword = await bcrypt.hash(adminPassword, config.bcryptRounds);
-    
     // Create new admin user
+    console.log('🔄 Creating new admin user...');
+    
     const adminData = {
       full_name: 'Raw Wealthy Admin',
       email: adminEmail,
       phone: '09161806424',
-      password: hashedPassword,
+      password: adminPassword,
       role: 'super_admin',
       balance: 1000000,
       kyc_verified: true,
       kyc_status: 'verified',
       is_active: true,
       is_verified: true,
-      total_earnings: 0,
-      referral_earnings: 0,
-      debug_info: {
-        created_by: 'system',
-        created_at: new Date(),
-        version: '40.0'
-      }
+      email_notifications: true
     };
+    
+    console.log('📝 Admin data prepared:', {
+      ...adminData,
+      password: '***'
+    });
     
     const admin = new User(adminData);
     await admin.save();
     
-    console.log('✅ Admin created successfully!');
-    console.log('🎉 ADMIN READY FOR LOGIN!');
-    console.log(`📧 Email: ${adminEmail}`);
-    console.log(`🔑 Password: ${adminPassword}`);
-    console.log(`🆔 User ID: ${admin._id}`);
-    console.log('👉 Login at: /api/auth/login');
-    console.log('👉 Test with curl:');
-    console.log(`curl -X POST http://localhost:${config.port}/api/auth/login \\`);
-    console.log(`     -H "Content-Type: application/json" \\`);
-    console.log(`     -d '{"email":"${adminEmail}","password":"${adminPassword}"}'`);
+    console.log('✅ Admin created successfully');
+    console.log(`👤 Admin ID: ${admin._id}`);
+    console.log(`🎭 Admin Role: ${admin.role}`);
+    console.log(`💰 Admin Balance: ₦${admin.balance.toLocaleString()}`);
+    
+    // Verify the admin was saved correctly
+    const savedAdmin = await User.findOne({ email: adminEmail }).select('+password');
+    console.log('🔍 Verifying admin in database...');
+    console.log(`✅ Admin exists in DB: ${!!savedAdmin}`);
+    
+    if (savedAdmin && savedAdmin.password) {
+      console.log(`🔑 Password hash: ${savedAdmin.password.substring(0, 20)}...`);
+      console.log(`🔑 Password hash length: ${savedAdmin.password.length}`);
+      
+      // Test password match
+      const passwordMatch = await savedAdmin.comparePassword(adminPassword);
+      console.log(`🔑 Password verification: ${passwordMatch ? '✅ SUCCESS' : '❌ FAILED'}`);
+      
+      if (!passwordMatch) {
+        console.log('❌ CRITICAL: Password verification failed!');
+        console.log('🔄 Attempting to fix password...');
+        savedAdmin.password = adminPassword;
+        await savedAdmin.save();
+        
+        const fixedAdmin = await User.findOne({ email: adminEmail }).select('+password');
+        const fixedMatch = await fixedAdmin.comparePassword(adminPassword);
+        console.log(`🔑 Fixed password verification: ${fixedMatch ? '✅ SUCCESS' : '❌ STILL FAILED'}`);
+      }
+    }
+    
+    // Create welcome notification
+    await createNotification(
+      admin._id,
+      'Welcome Admin!',
+      'Your admin account has been successfully created. You can now access the admin dashboard.',
+      'success',
+      '/admin/dashboard'
+    );
+    
+    console.log('\n🎉 =========== ADMIN SETUP COMPLETED ===========');
+    console.log(`📧 Login Email: ${adminEmail}`);
+    console.log(`🔑 Login Password: ${adminPassword}`);
+    console.log(`👉 Login at: ${config.clientURL}/admin/login`);
+    console.log(`👉 API Login: POST ${config.serverURL}/api/auth/login`);
+    console.log('============================================\n');
     
   } catch (error) {
-    console.error('❌ ADMIN CREATION ERROR:', error.message);
-    console.error(error.stack);
+    console.error('\n❌ =========== ADMIN CREATION ERROR ===========');
+    console.error('Error:', error.message);
+    console.error('Stack:', error.stack);
+    
+    if (error.code === 11000) {
+      console.error('Duplicate key error - admin already exists with this email');
+    }
+    
+    console.error('============================================\n');
+    
+    // Try alternative approach
+    try {
+      console.log('🔄 Attempting alternative admin creation...');
+      const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
+      const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
+      
+      // Hash password manually
+      const hashedPassword = await bcrypt.hash(adminPassword, config.bcryptRounds);
+      
+      await User.updateOne(
+        { email: adminEmail },
+        {
+          $set: {
+            full_name: 'Raw Wealthy Admin',
+            password: hashedPassword,
+            role: 'super_admin',
+            is_active: true,
+            is_verified: true,
+            kyc_verified: true
+          },
+          $setOnInsert: {
+            phone: '09161806424',
+            balance: 1000000
+          }
+        },
+        { upsert: true }
+      );
+      
+      console.log('✅ Admin created/updated via alternative method');
+    } catch (retryError) {
+      console.error('❌ Alternative method also failed:', retryError.message);
+    }
   }
 };
+
+// ==================== DEBUG ENDPOINTS FOR ADMIN ====================
+// Admin debug endpoint (only in development)
+if (config.nodeEnv !== 'production') {
+  app.get('/api/debug/admin-status', async (req, res) => {
+    try {
+      const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
+      const admin = await User.findOne({ email: adminEmail }).select('+password');
+      
+      if (!admin) {
+        return res.json({
+          success: false,
+          message: 'Admin not found in database',
+          email: adminEmail,
+          exists: false
+        });
+      }
+      
+      // Test password
+      const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
+      const passwordMatch = await admin.comparePassword(adminPassword);
+      
+      res.json({
+        success: true,
+        message: 'Admin debug information',
+        admin: {
+          id: admin._id,
+          email: admin.email,
+          role: admin.role,
+          is_active: admin.is_active,
+          is_verified: admin.is_verified,
+          kyc_verified: admin.kyc_verified,
+          balance: admin.balance,
+          created_at: admin.createdAt,
+          password_hash_exists: !!admin.password,
+          password_hash_length: admin.password ? admin.password.length : 0,
+          password_hash_preview: admin.password ? admin.password.substring(0, 20) + '...' : null,
+          password_match_test: passwordMatch
+        },
+        environment: {
+          node_env: config.nodeEnv,
+          bcrypt_rounds: config.bcryptRounds,
+          admin_email_set: !!process.env.ADMIN_EMAIL,
+          admin_password_set: !!process.env.ADMIN_PASSWORD
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Debug error',
+        error: error.message
+      });
+    }
+  });
+  
+  // Force admin creation endpoint
+  app.post('/api/debug/create-admin', async (req, res) => {
+    try {
+      const { email = 'admin@rawwealthy.com', password = 'Admin123456' } = req.body;
+      
+      console.log('🔄 Manual admin creation requested');
+      console.log(`📧 Email: ${email}`);
+      console.log(`🔑 Password: ${password}`);
+      
+      // Delete existing admin
+      await User.deleteOne({ email: email });
+      console.log('✅ Cleared existing admin');
+      
+      // Create new admin
+      const admin = new User({
+        full_name: 'Raw Wealthy Admin',
+        email: email,
+        phone: '09161806424',
+        password: password,
+        role: 'super_admin',
+        balance: 1000000,
+        kyc_verified: true,
+        kyc_status: 'verified',
+        is_active: true,
+        is_verified: true
+      });
+      
+      await admin.save();
+      console.log('✅ Admin created manually');
+      
+      // Verify
+      const savedAdmin = await User.findOne({ email: email }).select('+password');
+      const passwordMatch = await savedAdmin.comparePassword(password);
+      
+      res.json({
+        success: true,
+        message: 'Admin created manually',
+        admin: {
+          id: savedAdmin._id,
+          email: savedAdmin.email,
+          role: savedAdmin.role,
+          password_match: passwordMatch
+        }
+      });
+    } catch (error) {
+      console.error('Manual admin creation error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Manual admin creation failed',
+        error: error.message
+      });
+    }
+  });
+  
+  // List all admins
+  app.get('/api/debug/admins', async (req, res) => {
+    try {
+      const admins = await User.find({ 
+        $or: [{ role: 'admin' }, { role: 'super_admin' }] 
+      }).select('-password');
+      
+      res.json({
+        success: true,
+        count: admins.length,
+        admins: admins
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Error fetching admins',
+        error: error.message
+      });
+    }
+  });
+}
 
 // ==================== HEALTH CHECK ====================
 app.get('/health', async (req, res) => {
@@ -1292,7 +1477,7 @@ app.get('/health', async (req, res) => {
     success: true,
     status: 'OK',
     timestamp: new Date().toISOString(),
-    version: '40.0.0',
+    version: '38.0.0',
     environment: config.nodeEnv,
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     uptime: process.uptime(),
@@ -1306,77 +1491,21 @@ app.get('/health', async (req, res) => {
       investments: await Investment.countDocuments({}),
       deposits: await Deposit.countDocuments({}),
       withdrawals: await Withdrawal.countDocuments({})
-    },
-    debug: {
-      admin_exists: await User.exists({ role: { $in: ['admin', 'super_admin'] } }),
-      admin_count: await User.countDocuments({ role: { $in: ['admin', 'super_admin'] } })
     }
   };
   
   res.json(health);
 });
 
-// ==================== DEBUG ENDPOINTS ====================
-app.get('/api/debug/admin-check', async (req, res) => {
-  try {
-    const admins = await User.find({ role: { $in: ['admin', 'super_admin'] } })
-      .select('-password -two_factor_secret');
-    
-    const debugInfo = admins.map(admin => ({
-      id: admin._id,
-      email: admin.email,
-      role: admin.role,
-      is_active: admin.is_active,
-      created_at: admin.createdAt,
-      last_login: admin.last_login,
-      debug: admin.debug_info || {}
-    }));
-    
-    res.json(formatResponse(true, 'Admin debug info', { admins: debugInfo }));
-  } catch (error) {
-    handleError(res, error, 'Debug error');
-  }
-});
-
-app.post('/api/debug/create-test-admin', async (req, res) => {
-  try {
-    const { email = 'admin@test.com', password = 'Admin123456' } = req.body;
-    
-    const hashedPassword = await bcrypt.hash(password, config.bcryptRounds);
-    
-    const testAdmin = new User({
-      full_name: 'Test Admin',
-      email,
-      phone: '1234567890',
-      password: hashedPassword,
-      role: 'super_admin',
-      is_active: true,
-      is_verified: true,
-      kyc_verified: true
-    });
-    
-    await testAdmin.save();
-    
-    res.json(formatResponse(true, 'Test admin created', {
-      email,
-      password,
-      id: testAdmin._id
-    }));
-  } catch (error) {
-    handleError(res, error, 'Debug error');
-  }
-});
-
 // ==================== ROOT ENDPOINT ====================
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🚀 Raw Wealthy Backend API v40.0 - Advanced Debugging Edition',
-    version: '40.0.0',
+    message: '🚀 Raw Wealthy Backend API v38.0 - Enhanced Edition',
+    version: '38.0.0',
     timestamp: new Date().toISOString(),
     status: 'Operational',
     environment: config.nodeEnv,
-    debug_mode: true,
     endpoints: {
       auth: '/api/auth/*',
       profile: '/api/profile',
@@ -1390,18 +1519,12 @@ app.get('/', (req, res) => {
       admin: '/api/admin/*',
       upload: '/api/upload',
       forgot_password: '/api/auth/forgot-password',
-      health: '/health',
-      debug: '/api/debug/*'
-    },
-    admin_info: {
-      default_email: process.env.ADMIN_EMAIL || 'admin@rawwealthy.com',
-      default_password: 'Admin123456',
-      note: 'Check /api/debug/admin-check for admin status'
+      health: '/health'
     }
   });
 });
 
-// ==================== ENHANCED AUTH ENDPOINTS ====================
+// ==================== ENHANCED AUTH ENDPOINTS WITH DEBUGGING ====================
 // Register
 app.post('/api/auth/register', [
   body('full_name').notEmpty().trim().isLength({ min: 2, max: 100 }),
@@ -1442,8 +1565,6 @@ app.post('/api/auth/register', [
       phone: phone.trim(),
       password,
       balance: config.welcomeBonus,
-      total_earnings: 0,
-      referral_earnings: 0,
       referred_by: referredBy ? referredBy._id : null
     });
     
@@ -1521,51 +1642,59 @@ app.post('/api/auth/register', [
   }
 });
 
-// Login - ENHANCED WITH DEBUGGING
+// Login with enhanced debugging
 app.post('/api/auth/login', [
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty()
 ], async (req, res) => {
   try {
-    console.log(`🔐 Login attempt for: ${req.body.email}`);
-    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('❌ Login validation failed');
       return res.status(400).json(formatResponse(false, 'Validation failed'));
     }
     
     const { email, password } = req.body;
-    const lowerEmail = email.toLowerCase();
     
-    console.log(`🔍 Looking for user: ${lowerEmail}`);
+    console.log(`🔍 Login attempt for: ${email}`);
+    console.log(`🔍 Password length: ${password ? password.length : 0}`);
     
     // Find user with password
-    const user = await User.findOne({ email: lowerEmail }).select('+password');
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
     
     if (!user) {
-      console.log(`❌ User not found: ${lowerEmail}`);
+      console.log(`❌ User not found: ${email}`);
       return res.status(400).json(formatResponse(false, 'Invalid credentials'));
     }
     
-    console.log(`🔍 User found: ${user.email}, Role: ${user.role}, Active: ${user.is_active}`);
+    console.log(`✅ User found: ${user.email}`);
+    console.log(`🎭 User role: ${user.role}`);
+    console.log(`✅ User active: ${user.is_active}`);
+    console.log(`✅ User verified: ${user.is_verified}`);
+    console.log(`🔑 Password field exists: ${!!user.password}`);
+    console.log(`🔑 Password hash length: ${user.password ? user.password.length : 0}`);
     
     // Check if account is active
     if (!user.is_active) {
-      console.log(`❌ Account deactivated: ${user.email}`);
+      console.log(`❌ Account deactivated: ${email}`);
       return res.status(401).json(formatResponse(false, 'Account is deactivated. Please contact support.'));
     }
     
-    // Check password
-    console.log(`🔐 Comparing password for: ${user.email}`);
+    // Check password with detailed debugging
+    console.log('🔑 Starting password comparison...');
     const isMatch = await user.comparePassword(password);
+    console.log(`🔑 Password match result: ${isMatch}`);
     
     if (!isMatch) {
-      console.log(`❌ Password mismatch for: ${user.email}`);
+      console.log(`❌ Invalid password for: ${email}`);
+      
+      // Debug: Show what we're comparing
+      console.log(`🔑 Provided password: "${password}"`);
+      console.log(`🔑 Password length comparison: ${password.length} chars`);
+      
       return res.status(400).json(formatResponse(false, 'Invalid credentials'));
     }
     
-    console.log(`✅ Password correct for: ${user.email}`);
+    console.log(`✅ Login successful for: ${email}`);
     
     // Update last login
     user.last_login = new Date();
@@ -1574,47 +1703,34 @@ app.post('/api/auth/login', [
     
     // Generate token
     const token = user.generateAuthToken();
-    
-    console.log(`✅ Login successful: ${user.email}, Role: ${user.role}`);
+    console.log(`🎫 Token generated for: ${email}`);
     
     res.json(formatResponse(true, 'Login successful', {
       user: user.toObject(),
-      token,
-      debug: {
-        role: user.role,
-        token_length: token.length,
-        token_preview: token.substring(0, 50) + '...'
-      }
+      token
     }));
   } catch (error) {
-    console.error('❌ Login error:', error);
+    console.error('Login error:', error);
     handleError(res, error, 'Login failed');
   }
 });
 
-// Get current user profile - ENHANCED FOR DASHBOARD
+// Get current user profile
 app.get('/api/profile', auth, async (req, res) => {
   try {
     const userId = req.user._id;
-    console.log(`📊 Fetching profile for user: ${req.user.email}`);
-    
     const user = await User.findById(userId).select('-password');
+    
     if (!user) {
       return res.status(404).json(formatResponse(false, 'User not found'));
     }
     
     // Get additional stats
-    const [investments, deposits, withdrawals, referrals, earningsHistory] = await Promise.all([
+    const [investments, deposits, withdrawals, referrals] = await Promise.all([
       Investment.countDocuments({ user: userId }),
       Deposit.countDocuments({ user: userId, status: 'approved' }),
       Withdrawal.countDocuments({ user: userId, status: 'paid' }),
-      Referral.countDocuments({ referrer: userId }),
-      Transaction.find({
-        user: userId,
-        type: 'earning',
-        status: 'completed',
-        createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-      }).sort({ createdAt: 1 }).lean()
+      Referral.countDocuments({ referrer: userId })
     ]);
     
     const activeInvestments = await Investment.find({
@@ -1632,41 +1748,9 @@ app.get('/api/profile', auth, async (req, res) => {
       }
     });
     
-    // Format earnings history for charts
-    const formattedEarnings = earningsHistory.map(txn => ({
-      date: txn.createdAt.toISOString().split('T')[0],
-      amount: txn.amount
-    }));
-    
-    // Get last 7 days earnings (fill missing days with 0)
-    const last7Days = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
-      const earnings = formattedEarnings.find(e => e.date === dateStr);
-      last7Days.push({
-        date: dateStr,
-        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
-        earnings: earnings ? earnings.amount : 0
-      });
-    }
-    
-    // Get portfolio allocation
-    const portfolioAllocation = {};
-    activeInvestments.forEach(inv => {
-      const planName = inv.plan?.name || 'Unknown';
-      portfolioAllocation[planName] = (portfolioAllocation[planName] || 0) + inv.amount;
-    });
-    
     const profileData = {
-      user: {
-        ...user.toObject(),
-        total_earnings: user.total_earnings || 0,
-        referral_earnings: user.referral_earnings || 0,
-        portfolio_value: user.portfolio_value || user.balance
-      },
-      dashboard_stats: {
+      user: user.toObject(),
+      stats: {
         total_investments: investments,
         active_investments: activeInvestments.length,
         total_deposits: deposits,
@@ -1674,28 +1758,12 @@ app.get('/api/profile', auth, async (req, res) => {
         referral_count: referrals,
         daily_interest: dailyInterest,
         active_investment_value: activeInvestmentValue,
-        portfolio_value: user.portfolio_value || user.balance,
-        total_earnings: user.total_earnings || 0,
-        referral_earnings: user.referral_earnings || 0
-      },
-      charts: {
-        earnings_history: last7Days,
-        portfolio_allocation: Object.entries(portfolioAllocation).map(([name, value]) => ({
-          name,
-          value
-        }))
+        portfolio_value: user.portfolio_value
       }
     };
     
-    console.log(`✅ Profile fetched for ${req.user.email}:`, {
-      balance: user.balance,
-      total_earnings: user.total_earnings,
-      portfolio_value: profileData.dashboard_stats.portfolio_value
-    });
-    
     res.json(formatResponse(true, 'Profile retrieved successfully', profileData));
   } catch (error) {
-    console.error('❌ Error fetching profile:', error);
     handleError(res, error, 'Error fetching profile');
   }
 });
@@ -2057,30 +2125,6 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
       'investment',
       '/investments'
     );
-    
-    // If investment is active (no proof required), add referral commission
-    if (!proofUrl && req.user.referred_by) {
-      const commission = investmentAmount * (config.referralCommissionPercent / 100);
-      
-      await User.findByIdAndUpdate(req.user.referred_by, {
-        $inc: {
-          referral_earnings: commission,
-          balance: commission
-        }
-      });
-      
-      await createTransaction(
-        req.user.referred_by,
-        'referral',
-        commission,
-        `Referral commission from ${req.user.full_name}'s investment`,
-        'completed',
-        {
-          investment_id: investment._id,
-          referred_user_id: userId
-        }
-      );
-    }
     
     res.status(201).json(formatResponse(true, 'Investment created successfully!', {
       investment: {
@@ -2554,6 +2598,7 @@ app.post('/api/support', auth, upload.array('attachments', 5), [
     
     // Handle file uploads
     const attachments = [];
+    
     for (const file of files) {
       try {
         const uploadResult = await handleFileUpload(file, 'support-attachments', userId);
@@ -2653,33 +2698,27 @@ app.get('/api/referrals/stats', auth, async (req, res) => {
     const userId = req.user._id;
     
     const referrals = await Referral.find({ referrer: userId })
-      .populate('referred_user', 'full_name email createdAt balance is_active')
+      .populate('referred_user', 'full_name email createdAt balance')
       .sort({ createdAt: -1 })
       .lean();
     
     const totalReferrals = referrals.length;
-    const activeReferrals = referrals.filter(r => 
-      r.referred_user && r.referred_user.is_active
-    ).length;
+    const activeReferrals = referrals.filter(r => r.status === 'active').length;
+    const totalEarnings = referrals.reduce((sum, r) => sum + (r.earnings || 0), 0);
     
-    // Get user's current referral earnings from user document
+    // Get user referral code
     const user = await User.findById(userId);
     
     res.json(formatResponse(true, 'Referral stats retrieved successfully', {
       stats: {
         total_referrals: totalReferrals,
         active_referrals: activeReferrals,
-        total_earnings: user.referral_earnings || 0,
+        total_earnings: totalEarnings,
         referral_code: user.referral_code,
         referral_link: `${config.clientURL}/register?ref=${user.referral_code}`,
         commission_rate: `${config.referralCommissionPercent}%`
       },
-      referrals: referrals.slice(0, 10).map(r => ({
-        referred_user: r.referred_user,
-        earnings: r.earnings || 0,
-        status: r.status,
-        createdAt: r.createdAt
-      }))
+      referrals: referrals.slice(0, 10)
     }));
   } catch (error) {
     handleError(res, error, 'Error fetching referral stats');
@@ -2796,8 +2835,6 @@ app.post('/api/upload', auth, upload.single('file'), async (req, res) => {
 // Admin dashboard stats
 app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
   try {
-    console.log(`📊 Admin dashboard request from: ${req.user.email}`);
-    
     // Get comprehensive statistics
     const [
       totalUsers,
@@ -2837,19 +2874,6 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
     
     const totalEarnings = earningsResult[0]?.total || 0;
     
-    // Get recent activities
-    const recentTransactions = await Transaction.find()
-      .populate('user', 'full_name email')
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .lean();
-    
-    const recentUsers = await User.find()
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .select('-password')
-      .lean();
-    
     const stats = {
       overview: {
         total_users: totalUsers,
@@ -2859,10 +2883,7 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         active_investments: activeInvestments,
         total_deposits: totalDeposits,
         total_withdrawals: totalWithdrawals,
-        total_earnings: totalEarnings,
-        platform_balance: await User.aggregate([
-          { $group: { _id: null, total: { $sum: '$balance' } } }
-        ]).then(res => res[0]?.total || 0)
+        total_earnings: totalEarnings
       },
       pending_actions: {
         pending_investments: pendingInvestments,
@@ -2870,20 +2891,11 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         pending_withdrawals: pendingWithdrawals,
         pending_kyc: pendingKYC,
         total_pending: pendingInvestments + pendingDeposits + pendingWithdrawals + pendingKYC
-      },
-      recent_activities: {
-        transactions: recentTransactions,
-        users: recentUsers
       }
     };
     
     res.json(formatResponse(true, 'Admin dashboard stats retrieved successfully', {
       stats,
-      admin_info: {
-        email: req.user.email,
-        role: req.user.role,
-        last_login: req.user.last_login
-      },
       quick_links: {
         pending_investments: '/api/admin/pending-investments',
         pending_deposits: '/api/admin/pending-deposits',
@@ -2974,8 +2986,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
         total_users: total,
         active_users: enhancedUsers.filter(u => u.is_active).length,
         verified_users: enhancedUsers.filter(u => u.kyc_verified).length,
-        total_balance: enhancedUsers.reduce((sum, u) => sum + u.balance, 0),
-        admin_count: enhancedUsers.filter(u => ['admin', 'super_admin'].includes(u.role)).length
+        total_balance: enhancedUsers.reduce((sum, u) => sum + u.balance, 0)
       }
     }));
   } catch (error) {
@@ -3016,11 +3027,8 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
     const adminId = req.user._id;
     const { remarks } = req.body;
     
-    console.log(`✅ Approving investment ${investmentId} by admin ${adminId}`);
-    
     const investment = await Investment.findById(investmentId)
-      .populate('user')
-      .populate('plan');
+      .populate('user plan');
     
     if (!investment) {
       return res.status(404).json(formatResponse(false, 'Investment not found'));
@@ -3036,48 +3044,7 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
     investment.approved_by = adminId;
     investment.payment_verified = true;
     investment.remarks = remarks;
-    
     await investment.save();
-    
-    // Check if user has referrer and add commission
-    if (investment.user.referred_by) {
-      const commission = investment.amount * (config.referralCommissionPercent / 100);
-      
-      console.log(`💰 Adding referral commission: ${commission} to referrer ${investment.user.referred_by}`);
-      
-      await User.findByIdAndUpdate(investment.user.referred_by, {
-        $inc: {
-          referral_earnings: commission,
-          balance: commission
-        }
-      });
-      
-      // Update referral record
-      await Referral.findOneAndUpdate(
-        { referred_user: investment.user._id },
-        {
-          $inc: { earnings: commission },
-          earnings_paid: true,
-          paid_at: new Date(),
-          status: 'completed',
-          investment_amount: investment.amount
-        }
-      );
-      
-      // Create transaction for referrer
-      await createTransaction(
-        investment.user.referred_by,
-        'referral',
-        commission,
-        `Referral commission from ${investment.user.full_name}'s investment`,
-        'completed',
-        {
-          investment_id: investment._id,
-          referred_user_id: investment.user._id,
-          referred_user_name: investment.user.full_name
-        }
-      );
-    }
     
     // Create notification for user
     await createNotification(
@@ -3155,7 +3122,6 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
     deposit.approved_at = new Date();
     deposit.approved_by = adminId;
     deposit.admin_notes = remarks;
-    
     await deposit.save();
     
     // Update user balance
@@ -3259,7 +3225,6 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
     withdrawal.paid_at = new Date();
     withdrawal.transaction_id = transaction_id;
     withdrawal.admin_notes = remarks;
-    
     await withdrawal.save();
     
     // Update user withdrawal stats
@@ -3353,7 +3318,6 @@ app.post('/api/admin/kyc/:id/approve', adminAuth, [
     kyc.reviewed_by = adminId;
     kyc.reviewed_at = new Date();
     kyc.notes = remarks;
-    
     await kyc.save();
     
     // Update user
@@ -3407,6 +3371,7 @@ app.get('/api/admin/transactions', adminAuth, async (req, res) => {
     } = req.query;
     
     const query = {};
+    
     if (type) query.type = type;
     if (status) query.status = status;
     if (user_id) query.user = user_id;
@@ -3566,7 +3531,7 @@ cron.schedule('0 0 * * *', async () => {
         investment.last_earning_date = new Date();
         await investment.save();
         
-        // Update user balance AND total_earnings
+        // Update user balance
         await User.findByIdAndUpdate(investment.user._id, {
           $inc: {
             balance: dailyEarning,
@@ -3649,9 +3614,11 @@ app.use((err, req, res, next) => {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json(formatResponse(false, 'File too large. Maximum size is 10MB'));
     }
+    
     if (err.code === 'LIMIT_FILE_COUNT') {
       return res.status(400).json(formatResponse(false, 'Too many files. Maximum is 10 files'));
     }
+    
     return res.status(400).json(formatResponse(false, `File upload error: ${err.message}`));
   }
   
@@ -3688,22 +3655,13 @@ const startServer = async () => {
     // Start server
     app.listen(config.port, () => {
       console.log('\n🚀 ============================================');
-      console.log(`✅ Raw Wealthy Backend v40.0 is running!`);
+      console.log(`✅ Raw Wealthy Backend v38.0 is running!`);
       console.log(`🌐 Environment: ${config.nodeEnv}`);
       console.log(`📍 Port: ${config.port}`);
       console.log(`🔗 Server URL: ${config.serverURL}`);
       console.log(`🔗 Client URL: ${config.clientURL}`);
       console.log(`📁 Uploads Directory: ${config.uploadDir}`);
       console.log(`📊 Database: ${config.mongoURI}`);
-      console.log('============================================\n');
-      
-      console.log('🔧 DEBUGGING FEATURES:');
-      console.log(' • Enhanced admin login debugging');
-      console.log(' • Dashboard data validation');
-      console.log(' • Real-time earnings tracking');
-      console.log(' • Referral commission system');
-      console.log(' • Admin user auto-creation');
-      console.log(' • Database health monitoring');
       console.log('============================================\n');
       
       console.log('📋 Available Endpoints:');
@@ -3742,14 +3700,15 @@ const startServer = async () => {
       console.log(' • GET /api/admin/transactions');
       console.log(' • PUT /api/admin/users/:id/role');
       console.log(' • PUT /api/admin/users/:id/status');
-      console.log(' • GET /health');
-      console.log(' • GET /api/debug/admin-check');
-      console.log('============================================\n');
       
-      console.log('🔐 ADMIN LOGIN INFORMATION:');
-      console.log('Default Admin Credentials:');
-      console.log(`Email: ${process.env.ADMIN_EMAIL || 'admin@rawwealthy.com'}`);
-      console.log('Password: Admin123456');
+      // Debug endpoints in non-production
+      if (config.nodeEnv !== 'production') {
+        console.log(' • GET /api/debug/admin-status');
+        console.log(' • POST /api/debug/create-admin');
+        console.log(' • GET /api/debug/admins');
+      }
+      
+      console.log(' • GET /health');
       console.log('============================================\n');
       
       console.log('🚀 FRONTEND INTEGRATION READY');
@@ -3760,13 +3719,7 @@ const startServer = async () => {
       console.log('✅ Automated daily interest calculation');
       console.log('✅ Production error handling');
       console.log('✅ Enhanced security headers');
-      console.log('============================================\n');
-      
-      console.log('⚠️  DEBUG TIPS:');
-      console.log('1. Check admin status: GET /api/debug/admin-check');
-      console.log('2. Test admin login with curl command above');
-      console.log('3. Monitor logs for authentication debugging');
-      console.log('4. Check database connection in /health endpoint');
+      console.log('✅ ADVANCED ADMIN DEBUGGING ENABLED');
       console.log('============================================\n');
     });
   } catch (error) {
