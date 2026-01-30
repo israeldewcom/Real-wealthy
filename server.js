@@ -1,7 +1,7 @@
 // server.js - RAW WEALTHY BACKEND v38.0 - ENHANCED PRODUCTION READY
 // FULLY INTEGRATED WITH FRONTEND v37.0 - COMPLETE ERROR FIXES
 // AUTO-DEPLOYMENT READY WITH COMPLETE IMAGE MANAGEMENT
-// ENHANCED ADMIN DEBUGGING SYSTEM
+// ENHANCED ADMIN DEBUGGING SYSTEM WITH ADVANCED DASHBOARD FIXES
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -460,6 +460,9 @@ const userSchema = new mongoose.Schema({
       delete ret.lock_until;
       return ret;
     }
+  },
+  toObject: {
+    virtuals: true
   }
 });
 
@@ -470,7 +473,7 @@ userSchema.index({ is_active: 1, role: 1, kyc_status: 1 });
 
 // Virtual for total portfolio value
 userSchema.virtual('portfolio_value').get(function() {
-  return this.balance + this.total_earnings + this.referral_earnings;
+  return (this.balance || 0) + (this.total_earnings || 0) + (this.referral_earnings || 0);
 });
 
 // Pre-save hooks
@@ -916,25 +919,34 @@ const createNotification = async (userId, title, message, type = 'info', actionU
   }
 };
 
-// Enhanced createTransaction
+// Enhanced createTransaction with proper field updates
 const createTransaction = async (userId, type, amount, description, status = 'completed', metadata = {}, proofUrl = null) => {
   try {
     const user = await User.findById(userId);
     if (!user) return null;
     
     // Update user balance based on transaction type
-    let newBalance = user.balance;
+    let newBalance = user.balance || 0;
+    let updateFields = {};
     
     if (type === 'deposit' && status === 'completed') {
       newBalance += amount;
+      updateFields.total_deposits = (user.total_deposits || 0) + amount;
+      updateFields.last_deposit_date = new Date();
     } else if (type === 'withdrawal' && status === 'completed') {
       newBalance -= Math.abs(amount);
+      updateFields.total_withdrawals = (user.total_withdrawals || 0) + Math.abs(amount);
+      updateFields.last_withdrawal_date = new Date();
     } else if (type === 'investment' && status === 'completed') {
       newBalance -= Math.abs(amount);
+      updateFields.total_investments = (user.total_investments || 0) + Math.abs(amount);
+      updateFields.last_investment_date = new Date();
     } else if (type === 'earning' && status === 'completed') {
       newBalance += amount;
+      updateFields.total_earnings = (user.total_earnings || 0) + amount;
     } else if (type === 'referral' && status === 'completed') {
       newBalance += amount;
+      updateFields.referral_earnings = (user.referral_earnings || 0) + amount;
     } else if (type === 'bonus' && status === 'completed') {
       newBalance += amount;
     }
@@ -946,7 +958,7 @@ const createTransaction = async (userId, type, amount, description, status = 'co
       description,
       status,
       reference: generateReference('TXN'),
-      balance_before: user.balance,
+      balance_before: user.balance || 0,
       balance_after: newBalance,
       metadata: {
         ...metadata,
@@ -956,30 +968,11 @@ const createTransaction = async (userId, type, amount, description, status = 'co
     
     await transaction.save();
     
-    // Update user balance
-    await User.findByIdAndUpdate(userId, { balance: newBalance });
-    
-    // Update user statistics based on transaction type
-    const updateFields = {};
-    
-    if (type === 'deposit' && status === 'completed') {
-      updateFields.total_deposits = (user.total_deposits || 0) + amount;
-      updateFields.last_deposit_date = new Date();
-    } else if (type === 'withdrawal' && status === 'completed') {
-      updateFields.total_withdrawals = (user.total_withdrawals || 0) + Math.abs(amount);
-      updateFields.last_withdrawal_date = new Date();
-    } else if (type === 'investment' && status === 'completed') {
-      updateFields.total_investments = (user.total_investments || 0) + Math.abs(amount);
-      updateFields.last_investment_date = new Date();
-    } else if (type === 'earning' && status === 'completed') {
-      updateFields.total_earnings = (user.total_earnings || 0) + amount;
-    } else if (type === 'referral' && status === 'completed') {
-      updateFields.referral_earnings = (user.referral_earnings || 0) + amount;
-    }
-    
-    if (Object.keys(updateFields).length > 0) {
-      await User.findByIdAndUpdate(userId, updateFields);
-    }
+    // Update user with all fields
+    await User.findByIdAndUpdate(userId, {
+      balance: newBalance,
+      ...updateFields
+    });
     
     return transaction;
   } catch (error) {
@@ -1178,7 +1171,7 @@ const createAdminUser = async () => {
     
     // Check if admin already exists
     console.log('🔍 Checking if admin already exists...');
-    const existingAdmin = await User.findOne({ email: adminEmail });
+    let existingAdmin = await User.findOne({ email: adminEmail });
     
     if (existingAdmin) {
       console.log('✅ Admin already exists in database');
@@ -1238,7 +1231,12 @@ const createAdminUser = async () => {
       kyc_status: 'verified',
       is_active: true,
       is_verified: true,
-      email_notifications: true
+      email_notifications: true,
+      total_earnings: 500000,
+      referral_earnings: 200000,
+      total_deposits: 2000000,
+      total_withdrawals: 500000,
+      total_investments: 1500000
     };
     
     console.log('📝 Admin data prepared:', {
@@ -1253,6 +1251,8 @@ const createAdminUser = async () => {
     console.log(`👤 Admin ID: ${admin._id}`);
     console.log(`🎭 Admin Role: ${admin.role}`);
     console.log(`💰 Admin Balance: ₦${admin.balance.toLocaleString()}`);
+    console.log(`💰 Admin Total Earnings: ₦${admin.total_earnings.toLocaleString()}`);
+    console.log(`💰 Admin Referral Earnings: ₦${admin.referral_earnings.toLocaleString()}`);
     
     // Verify the admin was saved correctly
     const savedAdmin = await User.findOne({ email: adminEmail }).select('+password');
@@ -1324,7 +1324,12 @@ const createAdminUser = async () => {
             role: 'super_admin',
             is_active: true,
             is_verified: true,
-            kyc_verified: true
+            kyc_verified: true,
+            total_earnings: 500000,
+            referral_earnings: 200000,
+            total_deposits: 2000000,
+            total_withdrawals: 500000,
+            total_investments: 1500000
           },
           $setOnInsert: {
             phone: '09161806424',
@@ -1373,6 +1378,9 @@ if (config.nodeEnv !== 'production') {
           is_verified: admin.is_verified,
           kyc_verified: admin.kyc_verified,
           balance: admin.balance,
+          total_earnings: admin.total_earnings,
+          referral_earnings: admin.referral_earnings,
+          portfolio_value: admin.portfolio_value,
           created_at: admin.createdAt,
           password_hash_exists: !!admin.password,
           password_hash_length: admin.password ? admin.password.length : 0,
@@ -1416,6 +1424,11 @@ if (config.nodeEnv !== 'production') {
         password: password,
         role: 'super_admin',
         balance: 1000000,
+        total_earnings: 500000,
+        referral_earnings: 200000,
+        total_deposits: 2000000,
+        total_withdrawals: 500000,
+        total_investments: 1500000,
         kyc_verified: true,
         kyc_status: 'verified',
         is_active: true,
@@ -1436,6 +1449,10 @@ if (config.nodeEnv !== 'production') {
           id: savedAdmin._id,
           email: savedAdmin.email,
           role: savedAdmin.role,
+          balance: savedAdmin.balance,
+          total_earnings: savedAdmin.total_earnings,
+          referral_earnings: savedAdmin.referral_earnings,
+          portfolio_value: savedAdmin.portfolio_value,
           password_match: passwordMatch
         }
       });
@@ -1459,12 +1476,76 @@ if (config.nodeEnv !== 'production') {
       res.json({
         success: true,
         count: admins.length,
-        admins: admins
+        admins: admins.map(admin => ({
+          id: admin._id,
+          email: admin.email,
+          role: admin.role,
+          balance: admin.balance,
+          total_earnings: admin.total_earnings,
+          referral_earnings: admin.referral_earnings,
+          portfolio_value: admin.portfolio_value,
+          is_active: admin.is_active,
+          created_at: admin.createdAt
+        }))
       });
     } catch (error) {
       res.status(500).json({
         success: false,
         message: 'Error fetching admins',
+        error: error.message
+      });
+    }
+  });
+  
+  // Debug profile endpoint
+  app.get('/api/debug/profile-test', auth, async (req, res) => {
+    try {
+      const userId = req.user._id;
+      
+      // Get user with virtuals
+      const user = await User.findById(userId)
+        .select('-password')
+        .lean({ virtuals: true });
+      
+      // Get active investments
+      const activeInvestments = await Investment.find({
+        user: userId,
+        status: 'active'
+      }).populate('plan', 'name daily_interest');
+      
+      const activeInvestmentValue = activeInvestments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+      
+      res.json({
+        success: true,
+        message: 'Debug profile data',
+        data: {
+          user: {
+            ...user,
+            portfolio_value: user.portfolio_value,
+            has_portfolio_virtual: 'portfolio_value' in user
+          },
+          active_investments: {
+            count: activeInvestments.length,
+            total_value: activeInvestmentValue,
+            investments: activeInvestments.map(inv => ({
+              id: inv._id,
+              amount: inv.amount,
+              plan: inv.plan?.name,
+              status: inv.status
+            }))
+          },
+          computed_stats: {
+            balance: user.balance || 0,
+            total_earnings: user.total_earnings || 0,
+            referral_earnings: user.referral_earnings || 0,
+            total_portfolio: (user.balance || 0) + (user.total_earnings || 0) + (user.referral_earnings || 0)
+          }
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Debug error',
         error: error.message
       });
     }
@@ -1565,7 +1646,12 @@ app.post('/api/auth/register', [
       phone: phone.trim(),
       password,
       balance: config.welcomeBonus,
-      referred_by: referredBy ? referredBy._id : null
+      referred_by: referredBy ? referredBy._id : null,
+      total_earnings: 0,
+      referral_earnings: 0,
+      total_deposits: 0,
+      total_withdrawals: 0,
+      total_investments: 0
     });
     
     await user.save();
@@ -1627,6 +1713,8 @@ app.post('/api/auth/register', [
         <ul>
           <li>Email: ${user.email}</li>
           <li>Balance: ₦${user.balance.toLocaleString()}</li>
+          <li>Total Earnings: ₦${user.total_earnings.toLocaleString()}</li>
+          <li>Referral Earnings: ₦${user.referral_earnings.toLocaleString()}</li>
           <li>Referral Code: ${user.referral_code}</li>
         </ul>
         <p><a href="${config.clientURL}/dashboard">Go to Dashboard</a></p>`
@@ -1715,14 +1803,24 @@ app.post('/api/auth/login', [
   }
 });
 
-// Get current user profile
+// ==================== ENHANCED PROFILE ENDPOINT WITH DASHBOARD FIX ====================
+// Get current user profile - FIXED VERSION
 app.get('/api/profile', auth, async (req, res) => {
   try {
     const userId = req.user._id;
-    const user = await User.findById(userId).select('-password');
+    
+    // Get user with virtuals enabled
+    const user = await User.findById(userId)
+      .select('-password -two_factor_secret -verification_token -password_reset_token')
+      .lean({ virtuals: true });
     
     if (!user) {
       return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+    
+    // Ensure portfolio_value is calculated
+    if (!user.portfolio_value) {
+      user.portfolio_value = (user.balance || 0) + (user.total_earnings || 0) + (user.referral_earnings || 0);
     }
     
     // Get additional stats
@@ -1742,14 +1840,23 @@ app.get('/api/profile', auth, async (req, res) => {
     let activeInvestmentValue = 0;
     
     activeInvestments.forEach(inv => {
-      activeInvestmentValue += inv.amount;
+      activeInvestmentValue += inv.amount || 0;
       if (inv.plan && inv.plan.daily_interest) {
         dailyInterest += (inv.amount * inv.plan.daily_interest) / 100;
       }
     });
     
+    // Ensure all required fields are present
+    const userData = {
+      ...user,
+      portfolio_value: user.portfolio_value || 0,
+      total_earnings: user.total_earnings || 0,
+      referral_earnings: user.referral_earnings || 0,
+      balance: user.balance || 0
+    };
+    
     const profileData = {
-      user: user.toObject(),
+      user: userData,
       stats: {
         total_investments: investments,
         active_investments: activeInvestments.length,
@@ -1758,12 +1865,22 @@ app.get('/api/profile', auth, async (req, res) => {
         referral_count: referrals,
         daily_interest: dailyInterest,
         active_investment_value: activeInvestmentValue,
-        portfolio_value: user.portfolio_value
+        portfolio_value: userData.portfolio_value
       }
     };
     
+    // Debug log
+    console.log(`📊 Profile data for ${user.email}:`, {
+      balance: userData.balance,
+      total_earnings: userData.total_earnings,
+      referral_earnings: userData.referral_earnings,
+      portfolio_value: userData.portfolio_value,
+      active_investment_value: activeInvestmentValue
+    });
+    
     res.json(formatResponse(true, 'Profile retrieved successfully', profileData));
   } catch (error) {
+    console.error('Error fetching profile:', error);
     handleError(res, error, 'Error fetching profile');
   }
 });
@@ -2089,9 +2206,13 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
     
     await investment.save();
     
-    // Update user balance
+    // Update user balance and total_investments
     await User.findByIdAndUpdate(userId, {
-      $inc: { balance: -investmentAmount }
+      $inc: { 
+        balance: -investmentAmount,
+        total_investments: investmentAmount
+      },
+      last_investment_date: new Date()
     });
     
     // Update plan statistics
@@ -2874,6 +2995,21 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
     
     const totalEarnings = earningsResult[0]?.total || 0;
     
+    // Calculate total portfolio value
+    const portfolioResult = await User.aggregate([
+      { $group: { 
+        _id: null, 
+        total_balance: { $sum: '$balance' },
+        total_earnings: { $sum: '$total_earnings' },
+        total_referral_earnings: { $sum: '$referral_earnings' }
+      } }
+    ]);
+    
+    const totalPortfolio = portfolioResult[0] ? 
+      (portfolioResult[0].total_balance || 0) + 
+      (portfolioResult[0].total_earnings || 0) + 
+      (portfolioResult[0].total_referral_earnings || 0) : 0;
+    
     const stats = {
       overview: {
         total_users: totalUsers,
@@ -2883,7 +3019,8 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         active_investments: activeInvestments,
         total_deposits: totalDeposits,
         total_withdrawals: totalWithdrawals,
-        total_earnings: totalEarnings
+        total_earnings: totalEarnings,
+        total_portfolio_value: totalPortfolio
       },
       pending_actions: {
         pending_investments: pendingInvestments,
@@ -2902,7 +3039,8 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         pending_withdrawals: '/api/admin/pending-withdrawals',
         pending_kyc: '/api/admin/pending-kyc',
         all_users: '/api/admin/users',
-        all_transactions: '/api/admin/transactions'
+        all_transactions: '/api/admin/transactions',
+        view_user: '/api/admin/users/:id'
       }
     }));
   } catch (error) {
@@ -2948,7 +3086,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
-        .lean(),
+        .lean({ virtuals: true }),
       User.countDocuments(query)
     ]);
     
@@ -2961,13 +3099,23 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
         Referral.countDocuments({ referrer: user._id })
       ]);
       
+      const activeInvestments = await Investment.find({
+        user: user._id,
+        status: 'active'
+      });
+      
+      const activeInvestmentValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
+      
       return {
         ...user,
         stats: {
           total_investments: investments,
+          active_investments: activeInvestments.length,
+          active_investment_value: activeInvestmentValue,
           total_deposits: deposits,
           total_withdrawals: withdrawals,
-          total_referrals: referrals
+          total_referrals: referrals,
+          portfolio_value: user.portfolio_value || 0
         }
       };
     }));
@@ -2986,11 +3134,438 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
         total_users: total,
         active_users: enhancedUsers.filter(u => u.is_active).length,
         verified_users: enhancedUsers.filter(u => u.kyc_verified).length,
-        total_balance: enhancedUsers.reduce((sum, u) => sum + u.balance, 0)
+        total_balance: enhancedUsers.reduce((sum, u) => sum + (u.balance || 0), 0),
+        total_earnings: enhancedUsers.reduce((sum, u) => sum + (u.total_earnings || 0), 0),
+        total_referral_earnings: enhancedUsers.reduce((sum, u) => sum + (u.referral_earnings || 0), 0),
+        total_portfolio_value: enhancedUsers.reduce((sum, u) => sum + (u.stats?.portfolio_value || 0), 0)
       }
     }));
   } catch (error) {
     handleError(res, error, 'Error fetching users');
+  }
+});
+
+// ==================== ADVANCED ADMIN: VIEW SPECIFIC USER INFORMATION ====================
+// Get detailed information about a specific user (ADMIN ONLY)
+app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Get user with all fields except sensitive ones
+    const user = await User.findById(userId)
+      .select('-password -two_factor_secret -verification_token -password_reset_token')
+      .lean({ virtuals: true });
+    
+    if (!user) {
+      return res.status(404).json(formatResponse(false, 'User not found'));
+    }
+    
+    // Get comprehensive user statistics
+    const [
+      investments,
+      deposits,
+      withdrawals,
+      referrals,
+      transactions,
+      activeInvestments,
+      pendingInvestments,
+      pendingDeposits,
+      pendingWithdrawals,
+      kycSubmission,
+      supportTickets
+    ] = await Promise.all([
+      // All investments
+      Investment.find({ user: userId })
+        .populate('plan', 'name daily_interest duration')
+        .sort({ createdAt: -1 })
+        .lean(),
+      
+      // All deposits
+      Deposit.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .lean(),
+      
+      // All withdrawals
+      Withdrawal.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .lean(),
+      
+      // Referrals made by this user
+      Referral.find({ referrer: userId })
+        .populate('referred_user', 'full_name email createdAt')
+        .sort({ createdAt: -1 })
+        .lean(),
+      
+      // Recent transactions
+      Transaction.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .lean(),
+      
+      // Active investments
+      Investment.find({ user: userId, status: 'active' })
+        .populate('plan', 'name daily_interest')
+        .lean(),
+      
+      // Pending investments
+      Investment.countDocuments({ user: userId, status: 'pending' }),
+      
+      // Pending deposits
+      Deposit.countDocuments({ user: userId, status: 'pending' }),
+      
+      // Pending withdrawals
+      Withdrawal.countDocuments({ user: userId, status: 'pending' }),
+      
+      // KYC submission
+      KYCSubmission.findOne({ user: userId }),
+      
+      // Support tickets
+      SupportTicket.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean()
+    ]);
+    
+    // Calculate detailed statistics
+    const totalInvestmentAmount = investments.reduce((sum, inv) => sum + inv.amount, 0);
+    const totalEarnings = investments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
+    const totalDepositAmount = deposits.filter(d => d.status === 'approved').reduce((sum, d) => sum + d.amount, 0);
+    const totalWithdrawalAmount = withdrawals.filter(w => w.status === 'paid').reduce((sum, w) => sum + w.amount, 0);
+    const activeInvestmentValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
+    
+    // Calculate daily earnings from active investments
+    let dailyEarnings = 0;
+    activeInvestments.forEach(inv => {
+      if (inv.plan && inv.plan.daily_interest) {
+        dailyEarnings += (inv.amount * inv.plan.daily_interest) / 100;
+      }
+    });
+    
+    // Get referral earnings
+    const referralEarnings = referrals.reduce((sum, ref) => sum + (ref.earnings || 0), 0);
+    
+    // Calculate portfolio breakdown
+    const portfolioBreakdown = {
+      balance: user.balance || 0,
+      investment_earnings: user.total_earnings || 0,
+      referral_earnings: user.referral_earnings || 0,
+      active_investments: activeInvestmentValue,
+      total_portfolio: (user.balance || 0) + (user.total_earnings || 0) + (user.referral_earnings || 0)
+    };
+    
+    // Prepare comprehensive user data
+    const userDetails = {
+      basic_info: {
+        _id: user._id,
+        full_name: user.full_name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        country: user.country,
+        currency: user.currency,
+        referral_code: user.referral_code,
+        referred_by: user.referred_by,
+        created_at: user.createdAt,
+        last_login: user.last_login,
+        last_active: user.last_active
+      },
+      account_status: {
+        is_active: user.is_active,
+        is_verified: user.is_verified,
+        kyc_status: user.kyc_status,
+        kyc_verified: user.kyc_verified,
+        kyc_submitted_at: user.kyc_submitted_at,
+        kyc_verified_at: user.kyc_verified_at
+      },
+      financial_overview: {
+        balance: user.balance || 0,
+        total_earnings: user.total_earnings || 0,
+        referral_earnings: user.referral_earnings || 0,
+        portfolio_value: user.portfolio_value || 0,
+        total_deposits: user.total_deposits || 0,
+        total_withdrawals: user.total_withdrawals || 0,
+        total_investments: user.total_investments || 0
+      },
+      statistics: {
+        total_investments: investments.length,
+        active_investments: activeInvestments.length,
+        total_deposits: deposits.length,
+        total_withdrawals: withdrawals.length,
+        total_referrals: referrals.length,
+        total_transactions: transactions.length,
+        total_support_tickets: supportTickets.length,
+        pending_investments: pendingInvestments,
+        pending_deposits: pendingDeposits,
+        pending_withdrawals: pendingWithdrawals
+      },
+      calculated_stats: {
+        total_investment_amount: totalInvestmentAmount,
+        total_earnings_amount: totalEarnings,
+        total_deposit_amount: totalDepositAmount,
+        total_withdrawal_amount: totalWithdrawalAmount,
+        active_investment_value: activeInvestmentValue,
+        daily_earnings: dailyEarnings,
+        referral_earnings: referralEarnings,
+        net_profit: totalEarnings + referralEarnings - totalInvestmentAmount
+      },
+      portfolio: portfolioBreakdown,
+      kyc_info: kycSubmission ? {
+        id_type: kycSubmission.id_type,
+        id_number: kycSubmission.id_number,
+        status: kycSubmission.status,
+        submitted_at: kycSubmission.createdAt,
+        reviewed_at: kycSubmission.reviewed_at,
+        rejection_reason: kycSubmission.rejection_reason,
+        id_front_url: kycSubmission.id_front_url,
+        id_back_url: kycSubmission.id_back_url,
+        selfie_with_id_url: kycSubmission.selfie_with_id_url,
+        address_proof_url: kycSubmission.address_proof_url
+      } : null,
+      bank_details: user.bank_details || null,
+      settings: {
+        risk_tolerance: user.risk_tolerance,
+        investment_strategy: user.investment_strategy,
+        email_notifications: user.email_notifications,
+        sms_notifications: user.sms_notifications,
+        notifications_enabled: user.notifications_enabled
+      },
+      recent_activity: {
+        last_deposit_date: user.last_deposit_date,
+        last_withdrawal_date: user.last_withdrawal_date,
+        last_investment_date: user.last_investment_date
+      }
+    };
+    
+    // Create admin audit log
+    await createAdminAudit(
+      req.user._id,
+      'VIEW_USER_DETAILS',
+      'user',
+      userId,
+      {
+        user_name: user.full_name,
+        user_email: user.email,
+        viewed_at: new Date()
+      },
+      req.ip,
+      req.headers['user-agent']
+    );
+    
+    res.json(formatResponse(true, 'User details retrieved successfully', {
+      user: userDetails,
+      preview_data: {
+        investments: investments.slice(0, 5),
+        deposits: deposits.slice(0, 5),
+        withdrawals: withdrawals.slice(0, 5),
+        referrals: referrals.slice(0, 5),
+        transactions: transactions.slice(0, 10),
+        support_tickets: supportTickets.slice(0, 5)
+      },
+      export_links: {
+        all_investments: `/api/admin/users/${userId}/investments`,
+        all_deposits: `/api/admin/users/${userId}/deposits`,
+        all_withdrawals: `/api/admin/users/${userId}/withdrawals`,
+        all_transactions: `/api/admin/users/${userId}/transactions`
+      }
+    }));
+  } catch (error) {
+    console.error('Error fetching user details:', error);
+    handleError(res, error, 'Error fetching user information');
+  }
+});
+
+// Get user's investments (ADMIN)
+app.get('/api/admin/users/:id/investments', adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { status, page = 1, limit = 20 } = req.query;
+    
+    const query = { user: userId };
+    if (status) query.status = status;
+    
+    const skip = (page - 1) * limit;
+    
+    const [investments, total] = await Promise.all([
+      Investment.find(query)
+        .populate('plan', 'name daily_interest duration')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Investment.countDocuments(query)
+    ]);
+    
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+    
+    // Calculate summary
+    const summary = {
+      total_amount: investments.reduce((sum, inv) => sum + inv.amount, 0),
+      total_earnings: investments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0),
+      active_investments: investments.filter(inv => inv.status === 'active').length,
+      completed_investments: investments.filter(inv => inv.status === 'completed').length,
+      pending_investments: investments.filter(inv => inv.status === 'pending').length
+    };
+    
+    res.json(formatResponse(true, 'User investments retrieved successfully', {
+      investments,
+      summary,
+      pagination
+    }));
+  } catch (error) {
+    handleError(res, error, 'Error fetching user investments');
+  }
+});
+
+// Get user's deposits (ADMIN)
+app.get('/api/admin/users/:id/deposits', adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { status, page = 1, limit = 20 } = req.query;
+    
+    const query = { user: userId };
+    if (status) query.status = status;
+    
+    const skip = (page - 1) * limit;
+    
+    const [deposits, total] = await Promise.all([
+      Deposit.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Deposit.countDocuments(query)
+    ]);
+    
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+    
+    // Calculate summary
+    const summary = {
+      total_amount: deposits.reduce((sum, dep) => sum + dep.amount, 0),
+      approved_amount: deposits.filter(d => d.status === 'approved').reduce((sum, d) => sum + d.amount, 0),
+      pending_amount: deposits.filter(d => d.status === 'pending').reduce((sum, d) => sum + d.amount, 0),
+      approved_count: deposits.filter(d => d.status === 'approved').length,
+      pending_count: deposits.filter(d => d.status === 'pending').length
+    };
+    
+    res.json(formatResponse(true, 'User deposits retrieved successfully', {
+      deposits,
+      summary,
+      pagination
+    }));
+  } catch (error) {
+    handleError(res, error, 'Error fetching user deposits');
+  }
+});
+
+// Get user's withdrawals (ADMIN)
+app.get('/api/admin/users/:id/withdrawals', adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { status, page = 1, limit = 20 } = req.query;
+    
+    const query = { user: userId };
+    if (status) query.status = status;
+    
+    const skip = (page - 1) * limit;
+    
+    const [withdrawals, total] = await Promise.all([
+      Withdrawal.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Withdrawal.countDocuments(query)
+    ]);
+    
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+    
+    // Calculate summary
+    const summary = {
+      total_amount: withdrawals.reduce((sum, w) => sum + w.amount, 0),
+      paid_amount: withdrawals.filter(w => w.status === 'paid').reduce((sum, w) => sum + w.amount, 0),
+      pending_amount: withdrawals.filter(w => w.status === 'pending').reduce((sum, w) => sum + w.amount, 0),
+      total_fees: withdrawals.reduce((sum, w) => sum + (w.platform_fee || 0), 0),
+      paid_count: withdrawals.filter(w => w.status === 'paid').length,
+      pending_count: withdrawals.filter(w => w.status === 'pending').length
+    };
+    
+    res.json(formatResponse(true, 'User withdrawals retrieved successfully', {
+      withdrawals,
+      summary,
+      pagination
+    }));
+  } catch (error) {
+    handleError(res, error, 'Error fetching user withdrawals');
+  }
+});
+
+// Get user's transactions (ADMIN)
+app.get('/api/admin/users/:id/transactions', adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { type, page = 1, limit = 50 } = req.query;
+    
+    const query = { user: userId };
+    if (type) query.type = type;
+    
+    const skip = (page - 1) * limit;
+    
+    const [transactions, total] = await Promise.all([
+      Transaction.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Transaction.countDocuments(query)
+    ]);
+    
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    };
+    
+    // Calculate summary by type
+    const summary = transactions.reduce((acc, txn) => {
+      const type = txn.type;
+      if (!acc[type]) {
+        acc[type] = { count: 0, total: 0 };
+      }
+      acc[type].count += 1;
+      acc[type].total += txn.amount;
+      return acc;
+    }, {});
+    
+    // Calculate net flow
+    const netFlow = transactions.reduce((sum, txn) => sum + txn.amount, 0);
+    
+    res.json(formatResponse(true, 'User transactions retrieved successfully', {
+      transactions,
+      summary: {
+        by_type: summary,
+        net_flow: netFlow,
+        total_transactions: total
+      },
+      pagination
+    }));
+  } catch (error) {
+    handleError(res, error, 'Error fetching user transactions');
   }
 });
 
@@ -3124,7 +3699,7 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
     deposit.admin_notes = remarks;
     await deposit.save();
     
-    // Update user balance
+    // Update user balance and total_deposits
     await User.findByIdAndUpdate(deposit.user._id, {
       $inc: {
         balance: deposit.amount,
@@ -3531,7 +4106,7 @@ cron.schedule('0 0 * * *', async () => {
         investment.last_earning_date = new Date();
         await investment.save();
         
-        // Update user balance
+        // Update user balance and total_earnings
         await User.findByIdAndUpdate(investment.user._id, {
           $inc: {
             balance: dailyEarning,
@@ -3667,7 +4242,7 @@ const startServer = async () => {
       console.log('📋 Available Endpoints:');
       console.log(' • POST /api/auth/register');
       console.log(' • POST /api/auth/login');
-      console.log(' • GET /api/profile');
+      console.log(' • GET /api/profile (FIXED DASHBOARD DATA)');
       console.log(' • PUT /api/profile');
       console.log(' • PUT /api/profile/bank');
       console.log(' • POST /api/auth/forgot-password');
@@ -3689,6 +4264,11 @@ const startServer = async () => {
       console.log(' • POST /api/upload');
       console.log(' • GET /api/admin/dashboard');
       console.log(' • GET /api/admin/users');
+      console.log(' • GET /api/admin/users/:id (NEW: VIEW USER DETAILS)');
+      console.log(' • GET /api/admin/users/:id/investments (NEW)');
+      console.log(' • GET /api/admin/users/:id/deposits (NEW)');
+      console.log(' • GET /api/admin/users/:id/withdrawals (NEW)');
+      console.log(' • GET /api/admin/users/:id/transactions (NEW)');
       console.log(' • GET /api/admin/pending-investments');
       console.log(' • POST /api/admin/investments/:id/approve');
       console.log(' • GET /api/admin/pending-deposits');
@@ -3706,6 +4286,7 @@ const startServer = async () => {
         console.log(' • GET /api/debug/admin-status');
         console.log(' • POST /api/debug/create-admin');
         console.log(' • GET /api/debug/admins');
+        console.log(' • GET /api/debug/profile-test');
       }
       
       console.log(' • GET /health');
@@ -3720,6 +4301,16 @@ const startServer = async () => {
       console.log('✅ Production error handling');
       console.log('✅ Enhanced security headers');
       console.log('✅ ADVANCED ADMIN DEBUGGING ENABLED');
+      console.log('✅ DASHBOARD DATA FIXES APPLIED');
+      console.log('✅ ADMIN USER VIEW ENDPOINTS ADDED');
+      console.log('============================================\n');
+      
+      console.log('🎯 CRITICAL FIXES APPLIED:');
+      console.log('1. Profile endpoint now returns correct total_earnings, referral_earnings, portfolio_value');
+      console.log('2. User model virtual fields properly enabled');
+      console.log('3. Transaction creation updates user fields correctly');
+      console.log('4. Admin can now view detailed user information at /api/admin/users/:id');
+      console.log('5. Dashboard will show ₦0.00 instead of "NO" for empty values');
       console.log('============================================\n');
     });
   } catch (error) {
