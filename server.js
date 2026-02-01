@@ -1,6 +1,9 @@
-// server.js - RAW WEALTHY BACKEND v38.0 - ULTIMATE PRODUCTION EDITION
+// server.js - RAW WEALTHY BACKEND v38.0 - ULTIMATE PRODUCTION EDITION - FIXED VERSION
+
 // COMPLETE DEBUGGING FIXES WITH ADVANCED USER EARNINGS SYSTEM
+
 // FULLY INTEGRATED WITH FRONTEND v37.0 - 100% COMPATIBLE
+
 // ENHANCED ADMIN DASHBOARD WITH DETAILED USER VIEWS
 
 import express from 'express';
@@ -34,6 +37,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '.env.production') });
 
 // ==================== ENVIRONMENT VALIDATION ====================
+
 const requiredEnvVars = [
   'MONGODB_URI',
   'JWT_SECRET',
@@ -78,6 +82,7 @@ console.log('✅ SERVER_URL:', SERVER_URL);
 console.log('============================\n');
 
 // ==================== DYNAMIC CONFIGURATION ====================
+
 const config = {
   // Server
   port: PORT,
@@ -151,6 +156,7 @@ console.log(`- Email Enabled: ${config.emailEnabled}`);
 console.log(`- Allowed Origins: ${config.allowedOrigins.length}`);
 
 // ==================== ENHANCED EXPRESS SETUP ====================
+
 const app = express();
 
 // Security Headers with dynamic CSP
@@ -182,17 +188,16 @@ if (config.nodeEnv === 'production') {
 }
 
 // ==================== DYNAMIC CORS CONFIGURATION ====================
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
     if (config.allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       // Check if origin matches pattern (for preview deployments)
       const isPreviewDeployment = origin.includes('vercel.app') || origin.includes('onrender.com');
-      
       if (isPreviewDeployment) {
         console.log(`🌐 Allowed preview deployment: ${origin}`);
         callback(null, true);
@@ -211,6 +216,7 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // ==================== BODY PARSING ====================
+
 app.use(express.json({
   limit: '50mb',
   verify: (req, res, buf) => {
@@ -225,6 +231,7 @@ app.use(express.urlencoded({
 }));
 
 // ==================== RATE LIMITING ====================
+
 const createRateLimiter = (windowMs, max, message) => rateLimit({
   windowMs,
   max,
@@ -255,7 +262,9 @@ app.use('/api/admin', rateLimiters.admin);
 app.use('/api/', rateLimiters.api);
 
 // ==================== ENHANCED FILE UPLOAD CONFIGURATION ====================
+
 const storage = multer.memoryStorage();
+
 const fileFilter = (req, file, cb) => {
   if (!config.allowedMimeTypes[file.mimetype]) {
     return cb(new Error(`Invalid file type: ${file.mimetype}`), false);
@@ -339,7 +348,9 @@ app.use('/uploads', express.static(config.uploadDir, {
 }));
 
 // ==================== DYNAMIC EMAIL CONFIGURATION ====================
+
 let emailTransporter = null;
+
 if (config.emailEnabled) {
   try {
     emailTransporter = nodemailer.createTransport({
@@ -391,6 +402,7 @@ const sendEmail = async (to, subject, html, text = '') => {
 };
 
 // ==================== DATABASE MODELS - ENHANCED ====================
+
 // Enhanced User Model with complete fields
 const userSchema = new mongoose.Schema({
   full_name: { type: String, required: true, trim: true },
@@ -458,8 +470,6 @@ const userSchema = new mongoose.Schema({
       delete ret.password_reset_token;
       delete ret.login_attempts;
       delete ret.lock_until;
-      // Ensure portfolio_value is calculated
-      ret.portfolio_value = (ret.balance || 0) + (ret.total_earnings || 0) + (ret.referral_earnings || 0);
       return ret;
     }
   },
@@ -480,17 +490,12 @@ userSchema.virtual('portfolio_value').get(function() {
 
 // Pre-save hooks
 userSchema.pre('save', async function(next) {
-  console.log(`🔍 User pre-save hook triggered for: ${this.email}, isModified('password'): ${this.isModified('password')}`);
-  
   if (this.isModified('password')) {
-    console.log(`🔐 Hashing password with ${config.bcryptRounds} rounds`);
     this.password = await bcrypt.hash(this.password, config.bcryptRounds);
-    console.log(`✅ Password hashed successfully (length: ${this.password.length})`);
   }
   
   if (!this.referral_code) {
     this.referral_code = crypto.randomBytes(6).toString('hex').toUpperCase();
-    console.log(`🎫 Generated referral code: ${this.referral_code}`);
   }
   
   if (this.isModified('email') && !this.is_verified) {
@@ -507,22 +512,16 @@ userSchema.pre('save', async function(next) {
 
 // Methods
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  console.log(`🔑 Comparing password for user: ${this.email}`);
-  console.log(`🔑 Candidate password length: ${candidatePassword ? candidatePassword.length : 0}`);
-  console.log(`🔑 Hashed password length: ${this.password ? this.password.length : 0}`);
-  
   try {
     const isMatch = await bcrypt.compare(candidatePassword, this.password);
-    console.log(`🔑 Password match result: ${isMatch}`);
     return isMatch;
   } catch (error) {
-    console.error('🔑 Password comparison error:', error);
+    console.error('Password comparison error:', error);
     return false;
   }
 };
 
 userSchema.methods.generateAuthToken = function() {
-  console.log(`🎫 Generating auth token for user: ${this.email}, role: ${this.role}`);
   return jwt.sign(
     {
       id: this._id,
@@ -809,6 +808,7 @@ adminAuditSchema.index({ admin_id: 1, createdAt: -1 });
 const AdminAudit = mongoose.model('AdminAudit', adminAuditSchema);
 
 // ==================== UTILITY FUNCTIONS - CRITICAL FIXES ====================
+
 const formatResponse = (success, message, data = null, pagination = null) => {
   const response = {
     success,
@@ -922,6 +922,7 @@ const createNotification = async (userId, title, message, type = 'info', actionU
 };
 
 // ==================== CRITICAL FIX: ENHANCED createTransaction FUNCTION ====================
+
 // FIXED VERSION - Updates all user fields correctly
 const createTransaction = async (userId, type, amount, description, status = 'completed', metadata = {}, proofUrl = null) => {
   try {
@@ -1087,6 +1088,72 @@ const createTransaction = async (userId, type, amount, description, status = 'co
   }
 };
 
+// ==================== NEW FUNCTION: PROCESS REFERRAL BONUS ====================
+
+const processReferralBonus = async (userId, investmentAmount) => {
+  try {
+    console.log(`🎁 Processing referral bonus for user: ${userId}, amount: ${investmentAmount}`);
+    
+    const user = await User.findById(userId);
+    if (!user || !user.referred_by) {
+      console.log('⚠️ User has no referrer or user not found');
+      return;
+    }
+    
+    const referrer = await User.findById(user.referred_by);
+    if (!referrer) {
+      console.log('⚠️ Referrer not found');
+      return;
+    }
+    
+    const commissionPercent = config.referralCommissionPercent;
+    const bonusAmount = (investmentAmount * commissionPercent) / 100;
+    
+    console.log(`🎁 Referral bonus: ${bonusAmount} for referrer: ${referrer.email}`);
+    
+    // Credit referrer's account
+    await createTransaction(
+      referrer._id,
+      'referral',
+      bonusAmount,
+      `Referral bonus from ${user.full_name}'s investment`,
+      'completed',
+      {
+        referred_user_id: userId,
+        referred_user_name: user.full_name,
+        investment_amount: investmentAmount,
+        commission_rate: commissionPercent
+      }
+    );
+    
+    // Update referral record
+    await Referral.findOneAndUpdate(
+      { referrer: referrer._id, referred_user: userId },
+      {
+        $inc: { earnings: bonusAmount },
+        status: 'active',
+        investment_amount: investmentAmount,
+        earnings_paid: true,
+        paid_at: new Date()
+      },
+      { upsert: true, new: true }
+    );
+    
+    // Create notification for referrer
+    await createNotification(
+      referrer._id,
+      'Referral Bonus Earned!',
+      `You earned ₦${bonusAmount.toLocaleString()} referral bonus from ${user.full_name}'s investment!`,
+      'referral',
+      '/referrals'
+    );
+    
+    console.log(`✅ Referral bonus processed: ₦${bonusAmount}`);
+  } catch (error) {
+    console.error('❌ Error processing referral bonus:', error);
+  }
+};
+
 // Admin audit log function
 const createAdminAudit = async (adminId, action, targetType, targetId, details = {}, ip = '', userAgent = '') => {
   try {
@@ -1112,6 +1179,7 @@ const createAdminAudit = async (adminId, action, targetType, targetId, details =
 };
 
 // ==================== AUTH MIDDLEWARE ====================
+
 const auth = async (req, res, next) => {
   try {
     let token = req.header('Authorization');
@@ -1144,7 +1212,6 @@ const auth = async (req, res, next) => {
     } else if (error.name === 'TokenExpiredError') {
       return res.status(401).json(formatResponse(false, 'Token expired'));
     }
-    
     console.error('Auth middleware error:', error);
     res.status(500).json(formatResponse(false, 'Server error during authentication'));
   }
@@ -1164,6 +1231,7 @@ const adminAuth = async (req, res, next) => {
 };
 
 // ==================== DATABASE INITIALIZATION ====================
+
 const initializeDatabase = async () => {
   try {
     console.log('🔄 Initializing database...');
@@ -1250,12 +1318,10 @@ const createDefaultInvestmentPlans = async () => {
   try {
     for (const planData of defaultPlans) {
       const existingPlan = await InvestmentPlan.findOne({ name: planData.name });
-      
       if (!existingPlan) {
         await InvestmentPlan.create(planData);
       }
     }
-    
     console.log('✅ Default investment plans created/verified');
   } catch (error) {
     console.error('Error creating default investment plans:', error);
@@ -1263,6 +1329,7 @@ const createDefaultInvestmentPlans = async () => {
 };
 
 // ==================== ENHANCED ADMIN CREATION WITH DEBUGGING ====================
+
 const createAdminUser = async () => {
   try {
     console.log('\n🚀 =========== ADMIN USER SETUP STARTING ===========');
@@ -1272,48 +1339,26 @@ const createAdminUser = async () => {
     
     console.log(`📧 Admin Email: ${adminEmail}`);
     console.log(`🔑 Admin Password: ${adminPassword ? '***' : 'NOT SET'}`);
-    console.log(`🔑 Bcrypt Rounds: ${config.bcryptRounds}`);
-    console.log(`📁 Environment: ${config.nodeEnv}`);
     
     // Check if admin already exists
-    console.log('🔍 Checking if admin already exists...');
     let existingAdmin = await User.findOne({ email: adminEmail });
     
     if (existingAdmin) {
       console.log('✅ Admin already exists in database');
-      console.log(`👤 Admin ID: ${existingAdmin._id}`);
-      console.log(`🎭 Admin Role: ${existingAdmin.role}`);
-      console.log(`✅ Admin Active: ${existingAdmin.is_active}`);
-      console.log(`✅ Admin Verified: ${existingAdmin.is_verified}`);
       
       // Test password for debugging
-      console.log('🔑 Testing admin password...');
       const testAdmin = await User.findOne({ email: adminEmail }).select('+password');
-      
       if (testAdmin && testAdmin.password) {
-        console.log(`🔑 Password hash exists: ${testAdmin.password.substring(0, 20)}...`);
-        console.log(`🔑 Password hash length: ${testAdmin.password.length}`);
-        
-        // Test password match
         const testMatch = await testAdmin.comparePassword(adminPassword);
-        console.log(`🔑 Password match test: ${testMatch ? '✅ SUCCESS' : '❌ FAILED'}`);
-        
         if (!testMatch) {
-          console.log('⚠️ Password mismatch detected! Updating admin password...');
           testAdmin.password = adminPassword;
           await testAdmin.save();
           console.log('✅ Admin password updated successfully');
         }
-      } else {
-        console.log('❌ Admin password field is missing!');
-        console.log('🔄 Recreating admin user...');
-        await User.deleteOne({ email: adminEmail });
-        existingAdmin = null;
       }
       
       // Ensure admin has correct role
-      if (existingAdmin && existingAdmin.role !== 'super_admin') {
-        console.log(`⚠️ Admin role is ${existingAdmin.role}, updating to super_admin...`);
+      if (existingAdmin.role !== 'super_admin') {
         existingAdmin.role = 'super_admin';
         await existingAdmin.save();
         console.log('✅ Admin role updated to super_admin');
@@ -1324,8 +1369,6 @@ const createAdminUser = async () => {
     }
     
     // Create new admin user
-    console.log('🔄 Creating new admin user...');
-    
     const adminData = {
       full_name: 'Raw Wealthy Admin',
       email: adminEmail,
@@ -1345,45 +1388,13 @@ const createAdminUser = async () => {
       total_investments: 1500000
     };
     
-    console.log('📝 Admin data prepared:', {
-      ...adminData,
-      password: '***'
-    });
-    
     const admin = new User(adminData);
     await admin.save();
     
     console.log('✅ Admin created successfully');
     console.log(`👤 Admin ID: ${admin._id}`);
-    console.log(`🎭 Admin Role: ${admin.role}`);
     console.log(`💰 Admin Balance: ₦${admin.balance.toLocaleString()}`);
     console.log(`💰 Admin Total Earnings: ₦${admin.total_earnings.toLocaleString()}`);
-    console.log(`💰 Admin Referral Earnings: ₦${admin.referral_earnings.toLocaleString()}`);
-    
-    // Verify the admin was saved correctly
-    const savedAdmin = await User.findOne({ email: adminEmail }).select('+password');
-    console.log('🔍 Verifying admin in database...');
-    console.log(`✅ Admin exists in DB: ${!!savedAdmin}`);
-    
-    if (savedAdmin && savedAdmin.password) {
-      console.log(`🔑 Password hash: ${savedAdmin.password.substring(0, 20)}...`);
-      console.log(`🔑 Password hash length: ${savedAdmin.password.length}`);
-      
-      // Test password match
-      const passwordMatch = await savedAdmin.comparePassword(adminPassword);
-      console.log(`🔑 Password verification: ${passwordMatch ? '✅ SUCCESS' : '❌ FAILED'}`);
-      
-      if (!passwordMatch) {
-        console.log('❌ CRITICAL: Password verification failed!');
-        console.log('🔄 Attempting to fix password...');
-        savedAdmin.password = adminPassword;
-        await savedAdmin.save();
-        
-        const fixedAdmin = await User.findOne({ email: adminEmail }).select('+password');
-        const fixedMatch = await fixedAdmin.comparePassword(adminPassword);
-        console.log(`🔑 Fixed password verification: ${fixedMatch ? '✅ SUCCESS' : '❌ STILL FAILED'}`);
-      }
-    }
     
     // Create welcome notification
     await createNotification(
@@ -1398,23 +1409,13 @@ const createAdminUser = async () => {
     console.log(`📧 Login Email: ${adminEmail}`);
     console.log(`🔑 Login Password: ${adminPassword}`);
     console.log(`👉 Login at: ${config.clientURL}/admin/login`);
-    console.log(`👉 API Login: POST ${config.serverURL}/api/auth/login`);
-    console.log('============================================\n');
     
   } catch (error) {
     console.error('\n❌ =========== ADMIN CREATION ERROR ===========');
     console.error('Error:', error.message);
-    console.error('Stack:', error.stack);
-    
-    if (error.code === 11000) {
-      console.error('Duplicate key error - admin already exists with this email');
-    }
-    
-    console.error('============================================\n');
     
     // Try alternative approach
     try {
-      console.log('🔄 Attempting alternative admin creation...');
       const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
       const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
       
@@ -1453,6 +1454,7 @@ const createAdminUser = async () => {
 };
 
 // ==================== DEBUG ENDPOINTS FOR ADMIN ====================
+
 // Admin debug endpoint (only in development)
 if (config.nodeEnv !== 'production') {
   app.get('/api/debug/admin-status', async (req, res) => {
@@ -1490,7 +1492,6 @@ if (config.nodeEnv !== 'production') {
           created_at: admin.createdAt,
           password_hash_exists: !!admin.password,
           password_hash_length: admin.password ? admin.password.length : 0,
-          password_hash_preview: admin.password ? admin.password.substring(0, 20) + '...' : null,
           password_match_test: passwordMatch
         },
         environment: {
@@ -1575,8 +1576,8 @@ if (config.nodeEnv !== 'production') {
   // List all admins
   app.get('/api/debug/admins', async (req, res) => {
     try {
-      const admins = await User.find({ 
-        $or: [{ role: 'admin' }, { role: 'super_admin' }] 
+      const admins = await User.find({
+        $or: [{ role: 'admin' }, { role: 'super_admin' }]
       }).select('-password');
       
       res.json({
@@ -1610,7 +1611,6 @@ if (config.nodeEnv !== 'production') {
       
       // Get user with all fields
       const user = await User.findById(userId);
-      
       if (!user) {
         return res.status(404).json(formatResponse(false, 'User not found'));
       }
@@ -1652,6 +1652,7 @@ if (config.nodeEnv !== 'production') {
 }
 
 // ==================== HEALTH CHECK ====================
+
 app.get('/health', async (req, res) => {
   const health = {
     success: true,
@@ -1678,10 +1679,11 @@ app.get('/health', async (req, res) => {
 });
 
 // ==================== ROOT ENDPOINT ====================
+
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🚀 Raw Wealthy Backend API v38.0 - Ultimate Edition',
+    message: '🚀 Raw Wealthy Backend API v38.0 - Ultimate Edition - FIXED VERSION',
     version: '38.0.0',
     timestamp: new Date().toISOString(),
     status: 'Operational',
@@ -1700,11 +1702,19 @@ app.get('/', (req, res) => {
       upload: '/api/upload',
       forgot_password: '/api/auth/forgot-password',
       health: '/health'
+    },
+    fixes_applied: {
+      total_earnings_fix: true,
+      referral_earnings_fix: true,
+      createTransaction_fix: true,
+      referral_bonus_system: true,
+      dashboard_data_fix: true
     }
   });
 });
 
 // ==================== ENHANCED AUTH ENDPOINTS WITH DEBUGGING ====================
+
 // Register
 app.post('/api/auth/register', [
   body('full_name').notEmpty().trim().isLength({ min: 2, max: 100 }),
@@ -1806,17 +1816,17 @@ app.post('/api/auth/register', [
         user.email,
         'Welcome to Raw Wealthy!',
         `<h2>Welcome ${user.full_name}!</h2>
-        <p>Your account has been successfully created. Your welcome bonus of ₦${config.welcomeBonus} has been credited to your account.</p>
-        <p>Start investing today and grow your wealth with us!</p>
-        <p><strong>Account Details:</strong></p>
-        <ul>
-          <li>Email: ${user.email}</li>
-          <li>Balance: ₦${user.balance.toLocaleString()}</li>
-          <li>Total Earnings: ₦${user.total_earnings.toLocaleString()}</li>
-          <li>Referral Earnings: ₦${user.referral_earnings.toLocaleString()}</li>
-          <li>Referral Code: ${user.referral_code}</li>
-        </ul>
-        <p><a href="${config.clientURL}/dashboard">Go to Dashboard</a></p>`
+         <p>Your account has been successfully created. Your welcome bonus of ₦${config.welcomeBonus} has been credited to your account.</p>
+         <p>Start investing today and grow your wealth with us!</p>
+         <p><strong>Account Details:</strong></p>
+         <ul>
+           <li>Email: ${user.email}</li>
+           <li>Balance: ₦${user.balance.toLocaleString()}</li>
+           <li>Total Earnings: ₦${user.total_earnings.toLocaleString()}</li>
+           <li>Referral Earnings: ₦${user.referral_earnings.toLocaleString()}</li>
+           <li>Referral Code: ${user.referral_code}</li>
+         </ul>
+         <p><a href="${config.clientURL}/dashboard">Go to Dashboard</a></p>`
       );
     }
     
@@ -1842,46 +1852,23 @@ app.post('/api/auth/login', [
     
     const { email, password } = req.body;
     
-    console.log(`🔍 Login attempt for: ${email}`);
-    console.log(`🔍 Password length: ${password ? password.length : 0}`);
-    
     // Find user with password
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
     
     if (!user) {
-      console.log(`❌ User not found: ${email}`);
       return res.status(400).json(formatResponse(false, 'Invalid credentials'));
     }
-    
-    console.log(`✅ User found: ${user.email}`);
-    console.log(`🎭 User role: ${user.role}`);
-    console.log(`✅ User active: ${user.is_active}`);
-    console.log(`✅ User verified: ${user.is_verified}`);
-    console.log(`🔑 Password field exists: ${!!user.password}`);
-    console.log(`🔑 Password hash length: ${user.password ? user.password.length : 0}`);
     
     // Check if account is active
     if (!user.is_active) {
-      console.log(`❌ Account deactivated: ${email}`);
       return res.status(401).json(formatResponse(false, 'Account is deactivated. Please contact support.'));
     }
     
-    // Check password with detailed debugging
-    console.log('🔑 Starting password comparison...');
+    // Check password
     const isMatch = await user.comparePassword(password);
-    console.log(`🔑 Password match result: ${isMatch}`);
-    
     if (!isMatch) {
-      console.log(`❌ Invalid password for: ${email}`);
-      
-      // Debug: Show what we're comparing
-      console.log(`🔑 Provided password: "${password}"`);
-      console.log(`🔑 Password length comparison: ${password.length} chars`);
-      
       return res.status(400).json(formatResponse(false, 'Invalid credentials'));
     }
-    
-    console.log(`✅ Login successful for: ${email}`);
     
     // Update last login
     user.last_login = new Date();
@@ -1890,19 +1877,18 @@ app.post('/api/auth/login', [
     
     // Generate token
     const token = user.generateAuthToken();
-    console.log(`🎫 Token generated for: ${email}`);
     
     res.json(formatResponse(true, 'Login successful', {
       user: user.toObject(),
       token
     }));
   } catch (error) {
-    console.error('Login error:', error);
     handleError(res, error, 'Login failed');
   }
 });
 
 // ==================== CRITICAL FIX: ENHANCED PROFILE ENDPOINT ====================
+
 // Get current user profile - FIXED VERSION with proper field handling
 app.get('/api/profile', auth, async (req, res) => {
   try {
@@ -2106,10 +2092,10 @@ app.post('/api/auth/forgot-password', [
         user.email,
         'Password Reset Request',
         `<h2>Password Reset Request</h2>
-        <p>You requested a password reset. Click the link below to reset your password:</p>
-        <p><a href="${resetUrl}">${resetUrl}</a></p>
-        <p>This link will expire in 10 minutes.</p>
-        <p>If you didn't request this, please ignore this email.</p>`
+         <p>You requested a password reset. Click the link below to reset your password:</p>
+         <p><a href="${resetUrl}">${resetUrl}</a></p>
+         <p>This link will expire in 10 minutes.</p>
+         <p>If you didn't request this, please ignore this email.</p>`
       );
     }
     
@@ -2171,6 +2157,7 @@ app.post('/api/auth/reset-password/:token', [
 });
 
 // ==================== INVESTMENT PLANS ENDPOINTS ====================
+
 // Get all investment plans
 app.get('/api/plans', async (req, res) => {
   try {
@@ -2185,6 +2172,7 @@ app.get('/api/plans', async (req, res) => {
 });
 
 // ==================== INVESTMENT ENDPOINTS ====================
+
 // Get user investments
 app.get('/api/investments', auth, async (req, res) => {
   try {
@@ -2233,7 +2221,7 @@ app.get('/api/investments', auth, async (req, res) => {
   }
 });
 
-// Create investment
+// Create investment - UPDATED WITH REFERRAL BONUS
 app.post('/api/investments', auth, upload.single('payment_proof'), [
   body('plan_id').notEmpty(),
   body('amount').isFloat({ min: config.minInvestment }),
@@ -2328,6 +2316,11 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
       }
     });
     
+    // 🔥 CRITICAL FIX: Process referral bonus if user has a referrer
+    if (req.user.referred_by) {
+      await processReferralBonus(userId, investmentAmount);
+    }
+    
     // Create notification
     await createNotification(
       userId,
@@ -2352,6 +2345,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
 });
 
 // ==================== DEPOSIT ENDPOINTS ====================
+
 // Get user deposits
 app.get('/api/deposits', auth, async (req, res) => {
   try {
@@ -2459,6 +2453,7 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
 });
 
 // ==================== WITHDRAWAL ENDPOINTS ====================
+
 // Get user withdrawals
 app.get('/api/withdrawals', auth, async (req, res) => {
   try {
@@ -2603,6 +2598,7 @@ app.post('/api/withdrawals', auth, [
 });
 
 // ==================== TRANSACTION ENDPOINTS ====================
+
 // Get user transactions
 app.get('/api/transactions', auth, async (req, res) => {
   try {
@@ -2614,6 +2610,7 @@ app.get('/api/transactions', auth, async (req, res) => {
     // Apply filters
     if (type) query.type = type;
     if (status) query.status = status;
+    
     if (start_date || end_date) {
       query.createdAt = {};
       if (start_date) query.createdAt.$gte = new Date(start_date);
@@ -2660,6 +2657,7 @@ app.get('/api/transactions', auth, async (req, res) => {
 });
 
 // ==================== KYC ENDPOINTS ====================
+
 // Submit KYC
 app.post('/api/kyc', auth, upload.fields([
   { name: 'id_front', maxCount: 1 },
@@ -2785,6 +2783,7 @@ app.get('/api/kyc/status', auth, async (req, res) => {
 });
 
 // ==================== SUPPORT ENDPOINTS ====================
+
 // Submit support ticket
 app.post('/api/support', auth, upload.array('attachments', 5), [
   body('subject').notEmpty().trim().isLength({ min: 5, max: 200 }),
@@ -2898,6 +2897,7 @@ app.get('/api/support/tickets', auth, async (req, res) => {
 });
 
 // ==================== CRITICAL FIX: REFERRAL ENDPOINTS ====================
+
 // Get referral stats - FIXED VERSION
 app.get('/api/referrals/stats', auth, async (req, res) => {
   try {
@@ -2933,6 +2933,7 @@ app.get('/api/referrals/stats', auth, async (req, res) => {
 });
 
 // ==================== NOTIFICATION ENDPOINTS ====================
+
 // Get user notifications
 app.get('/api/notifications', auth, async (req, res) => {
   try {
@@ -3012,6 +3013,7 @@ app.post('/api/notifications/read-all', auth, async (req, res) => {
 });
 
 // ==================== UPLOAD ENDPOINT ====================
+
 // File upload
 app.post('/api/upload', auth, upload.single('file'), async (req, res) => {
   try {
@@ -3039,6 +3041,7 @@ app.post('/api/upload', auth, upload.single('file'), async (req, res) => {
 });
 
 // ==================== ADMIN ENDPOINTS ====================
+
 // Admin dashboard stats
 app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
   try {
@@ -3083,17 +3086,19 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
     
     // Calculate total portfolio value
     const portfolioResult = await User.aggregate([
-      { $group: { 
-        _id: null, 
-        total_balance: { $sum: '$balance' },
-        total_earnings: { $sum: '$total_earnings' },
-        total_referral_earnings: { $sum: '$referral_earnings' }
-      } }
+      {
+        $group: {
+          _id: null,
+          total_balance: { $sum: '$balance' },
+          total_earnings: { $sum: '$total_earnings' },
+          total_referral_earnings: { $sum: '$referral_earnings' }
+        }
+      }
     ]);
     
-    const totalPortfolio = portfolioResult[0] ? 
-      (portfolioResult[0].total_balance || 0) + 
-      (portfolioResult[0].total_earnings || 0) + 
+    const totalPortfolio = portfolioResult[0] ?
+      (portfolioResult[0].total_balance || 0) +
+      (portfolioResult[0].total_earnings || 0) +
       (portfolioResult[0].total_referral_earnings || 0) : 0;
     
     const stats = {
@@ -3208,6 +3213,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
 });
 
 // ==================== ADVANCED ADMIN: VIEW SPECIFIC USER INFORMATION ====================
+
 // Get detailed information about a specific user (ADMIN ONLY)
 app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
   try {
@@ -3674,6 +3680,7 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
     investment.approved_by = adminId;
     investment.payment_verified = true;
     investment.remarks = remarks;
+    
     await investment.save();
     
     // Create notification for user
@@ -3752,6 +3759,7 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
     deposit.approved_at = new Date();
     deposit.approved_by = adminId;
     deposit.admin_notes = remarks;
+    
     await deposit.save();
     
     // Use createTransaction to update user fields correctly
@@ -3846,6 +3854,7 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
     withdrawal.paid_at = new Date();
     withdrawal.transaction_id = transaction_id;
     withdrawal.admin_notes = remarks;
+    
     await withdrawal.save();
     
     // Update user withdrawal stats via createTransaction
@@ -3940,6 +3949,7 @@ app.post('/api/admin/kyc/:id/approve', adminAuth, [
     kyc.reviewed_by = adminId;
     kyc.reviewed_at = new Date();
     kyc.notes = remarks;
+    
     await kyc.save();
     
     // Update user
@@ -3993,7 +4003,6 @@ app.get('/api/admin/transactions', adminAuth, async (req, res) => {
     } = req.query;
     
     const query = {};
-    
     if (type) query.type = type;
     if (status) query.status = status;
     if (user_id) query.user = user_id;
@@ -4131,6 +4140,7 @@ app.put('/api/admin/users/:id/status', adminAuth, [
 });
 
 // ==================== CRITICAL FIX: DAILY INTEREST CRON JOB ====================
+
 // Schedule daily interest calculation - FIXED VERSION
 cron.schedule('0 0 * * *', async () => {
   try {
@@ -4214,6 +4224,7 @@ cron.schedule('0 1 * * *', async () => {
 });
 
 // ==================== ERROR HANDLING MIDDLEWARE ====================
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json(formatResponse(false, 'Endpoint not found'));
@@ -4228,11 +4239,9 @@ app.use((err, req, res, next) => {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json(formatResponse(false, 'File too large. Maximum size is 10MB'));
     }
-    
     if (err.code === 'LIMIT_FILE_COUNT') {
       return res.status(400).json(formatResponse(false, 'Too many files. Maximum is 10 files'));
     }
-    
     return res.status(400).json(formatResponse(false, `File upload error: ${err.message}`));
   }
   
@@ -4261,6 +4270,7 @@ app.use((err, req, res, next) => {
 });
 
 // ==================== START SERVER ====================
+
 const startServer = async () => {
   try {
     // Initialize database
@@ -4269,7 +4279,7 @@ const startServer = async () => {
     // Start server
     app.listen(config.port, () => {
       console.log('\n🚀 ============================================');
-      console.log(`✅ Raw Wealthy Backend v38.0 - ULTIMATE EDITION`);
+      console.log(`✅ Raw Wealthy Backend v38.0 - FIXED ULTIMATE EDITION`);
       console.log(`🌐 Environment: ${config.nodeEnv}`);
       console.log(`📍 Port: ${config.port}`);
       console.log(`🔗 Server URL: ${config.serverURL}`);
@@ -4279,12 +4289,14 @@ const startServer = async () => {
       console.log('============================================\n');
       
       console.log('🎯 CRITICAL FIXES APPLIED:');
-      console.log('1. ✅ createTransaction function now updates user.total_earnings and user.referral_earnings');
-      console.log('2. ✅ Profile endpoint returns correct financial data (not 0 or "NO")');
-      console.log('3. ✅ Daily interest cron job creates "earning" transactions (not "referral")');
+      console.log('1. ✅ createTransaction function now correctly updates user.total_earnings and user.referral_earnings');
+      console.log('2. ✅ Profile endpoint returns correct financial data (no more 0 or "NO")');
+      console.log('3. ✅ Daily interest cron job creates "earning" transactions that update total_earnings');
       console.log('4. ✅ Portfolio value calculated correctly in all responses');
       console.log('5. ✅ Admin can view detailed user info at /api/admin/users/:id');
       console.log('6. ✅ All user fields (balance, total_earnings, etc.) are guaranteed to have values');
+      console.log('7. ✅ Added processReferralBonus function for automatic referral commissions');
+      console.log('8. ✅ Investment creation now triggers referral bonuses for referrers');
       console.log('============================================\n');
       
       console.log('📋 Available Endpoints:');
@@ -4297,7 +4309,7 @@ const startServer = async () => {
       console.log(' • POST /api/auth/reset-password/:token');
       console.log(' • GET /api/plans');
       console.log(' • GET /api/investments');
-      console.log(' • POST /api/investments');
+      console.log(' • POST /api/investments (WITH REFERRAL BONUS)');
       console.log(' • GET /api/deposits');
       console.log(' • POST /api/deposits');
       console.log(' • GET /api/withdrawals');
@@ -4312,11 +4324,11 @@ const startServer = async () => {
       console.log(' • POST /api/upload');
       console.log(' • GET /api/admin/dashboard');
       console.log(' • GET /api/admin/users');
-      console.log(' • GET /api/admin/users/:id (NEW: VIEW USER DETAILS)');
-      console.log(' • GET /api/admin/users/:id/investments (NEW)');
-      console.log(' • GET /api/admin/users/:id/deposits (NEW)');
-      console.log(' • GET /api/admin/users/:id/withdrawals (NEW)');
-      console.log(' • GET /api/admin/users/:id/transactions (NEW)');
+      console.log(' • GET /api/admin/users/:id (VIEW USER DETAILS)');
+      console.log(' • GET /api/admin/users/:id/investments');
+      console.log(' • GET /api/admin/users/:id/deposits');
+      console.log(' • GET /api/admin/users/:id/withdrawals');
+      console.log(' • GET /api/admin/users/:id/transactions');
       console.log(' • GET /api/admin/pending-investments');
       console.log(' • POST /api/admin/investments/:id/approve');
       console.log(' • GET /api/admin/pending-deposits');
@@ -4351,6 +4363,7 @@ const startServer = async () => {
       console.log('✅ ADVANCED USER EARNINGS SYSTEM ENABLED');
       console.log('✅ DASHBOARD DATA 100% FIXED');
       console.log('✅ ADMIN USER VIEW ENDPOINTS ADDED');
+      console.log('✅ AUTOMATIC REFERRAL BONUS SYSTEM ENABLED');
       console.log('============================================\n');
     });
   } catch (error) {
