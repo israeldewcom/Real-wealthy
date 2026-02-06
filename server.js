@@ -1,4 +1,5 @@
-// server.js - RAW WEALTHY BACKEND v50.0 - ULTIMATE ADVANCED EDITION
+// server.js - RAW WEALTHY BACKEND v50.1 - ULTIMATE ADVANCED EDITION
+// ENHANCED WITH 4 NEW RAW MATERIALS & ADMIN DASHBOARD IMPROVEMENTS
 // ADVANCED BUSINESS LOGIC WITH ADMIN APPROVAL SYSTEM
 // ENHANCED DAILY INTEREST CALCULATION & REFERRAL COMMISSIONS
 // ALL ENDPOINTS PRESERVED WITH ENHANCED FUNCTIONALITY
@@ -627,7 +628,7 @@ userSchema.methods.getAvailableForWithdrawal = function() {
 
 const User = mongoose.model('User', userSchema);
 
-// Investment Plan Model
+// Investment Plan Model - ENHANCED WITH 4 NEW RAW MATERIALS
 const investmentPlanSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
     description: { type: String, required: true },
@@ -638,7 +639,7 @@ const investmentPlanSchema = new mongoose.Schema({
     duration: { type: Number, required: true, min: 1 },
     risk_level: { type: String, enum: ['low', 'medium', 'high'], required: true },
     raw_material: { type: String, required: true },
-    category: { type: String, enum: ['agriculture', 'mining', 'energy', 'metals', 'crypto', 'real_estate', 'precious_stones'], default: 'agriculture' },
+    category: { type: String, enum: ['agriculture', 'mining', 'energy', 'metals', 'crypto', 'real_estate', 'precious_stones', 'livestock', 'timber', 'aquaculture'], default: 'agriculture' },
     is_active: { type: Boolean, default: true },
     is_popular: { type: Boolean, default: false },
     image_url: String,
@@ -1579,6 +1580,7 @@ const initializeDatabase = async () => {
 
 const createDefaultInvestmentPlans = async () => {
     const defaultPlans = [
+        // Existing plans
         {
             name: 'Cocoa Beans',
             description: 'Invest in premium cocoa beans with stable returns.',
@@ -1624,10 +1626,97 @@ const createDefaultInvestmentPlans = async () => {
             risk_level: 'high',
             raw_material: 'Crude Oil',
             category: 'energy',
+            is_popular: true,
             features: ['High Risk', 'Maximum Returns', 'Premium Investment', 'Energy Sector'],
             color: '#dc2626',
             icon: '🛢️',
             display_order: 3
+        },
+        // NEW PLANS - 4 ADDITIONAL RAW MATERIALS
+        {
+            name: 'Coffee Beans',
+            description: 'Premium Arabica coffee beans from Ethiopian highlands.',
+            min_amount: 2500, // Cheaper option
+            max_amount: 25000,
+            daily_interest: 8,
+            total_interest: 240,
+            duration: 30,
+            risk_level: 'low',
+            raw_material: 'Coffee',
+            category: 'agriculture',
+            is_popular: false,
+            features: ['Very Low Risk', 'Consistent Returns', 'Global Demand', 'Daily Payouts'],
+            color: '#8B4513',
+            icon: '☕',
+            display_order: 4
+        },
+        {
+            name: 'Silver Bullion',
+            description: 'Industrial silver with growing demand in technology sector.',
+            min_amount: 15000,
+            max_amount: 150000,
+            daily_interest: 12,
+            total_interest: 360,
+            duration: 30,
+            risk_level: 'medium',
+            raw_material: 'Silver',
+            category: 'metals',
+            is_popular: false,
+            features: ['Medium Risk', 'Industrial Demand', 'Portfolio Diversification', 'Regular Returns'],
+            color: '#C0C0C0',
+            icon: '🥈',
+            display_order: 5
+        },
+        {
+            name: 'Timber (Teak)',
+            description: 'Premium Teak wood with high value in construction and furniture.',
+            min_amount: 20000,
+            max_amount: 200000,
+            daily_interest: 14,
+            total_interest: 420,
+            duration: 30,
+            risk_level: 'medium',
+            raw_material: 'Teak Wood',
+            category: 'timber',
+            is_popular: false,
+            features: ['Sustainable', 'High Demand', 'Long-term Value', 'Environmental Impact'],
+            color: '#8B4513',
+            icon: '🌳',
+            display_order: 6
+        },
+        {
+            name: 'Natural Gas',
+            description: 'Clean energy source with increasing global demand.',
+            min_amount: 75000,
+            max_amount: 750000,
+            daily_interest: 18,
+            total_interest: 540,
+            duration: 30,
+            risk_level: 'high',
+            raw_material: 'Natural Gas',
+            category: 'energy',
+            is_popular: false,
+            features: ['High Returns', 'Energy Transition', 'Global Market', 'Premium Investment'],
+            color: '#4169E1',
+            icon: '🔥',
+            display_order: 7
+        },
+        {
+            name: 'Aquaculture (Salmon)',
+            description: 'Premium salmon farming with sustainable practices.',
+            min_amount: 30000,
+            max_amount: 300000,
+            daily_interest: 16,
+            total_interest: 480,
+            duration: 30,
+            risk_level: 'medium',
+            raw_material: 'Salmon',
+            category: 'aquaculture',
+            is_popular: false,
+            features: ['Sustainable Farming', 'High Nutritional Value', 'Growing Demand', 'Regular Returns'],
+            color: '#FF6B6B',
+            icon: '🐟',
+            display_order: 8
         }
     ];
     
@@ -1636,9 +1725,16 @@ const createDefaultInvestmentPlans = async () => {
             const existingPlan = await InvestmentPlan.findOne({ name: planData.name });
             if (!existingPlan) {
                 await InvestmentPlan.create(planData);
+                console.log(`✅ Created investment plan: ${planData.name}`);
+            } else {
+                // Update existing plan with new data
+                await InvestmentPlan.findByIdAndUpdate(existingPlan._id, planData);
+                console.log(`✅ Updated investment plan: ${planData.name}`);
             }
         }
         console.log('✅ Default investment plans created/verified');
+        console.log(`📊 Total investment plans: ${defaultPlans.length}`);
+        console.log(`💰 Price range: ₦${defaultPlans.reduce((min, plan) => Math.min(min, plan.min_amount), Infinity).toLocaleString()} - ₦${defaultPlans.reduce((max, plan) => Math.max(max, plan.max_amount || plan.min_amount), 0).toLocaleString()}`);
     } catch (error) {
         console.error('Error creating default investment plans:', error);
     }
@@ -1709,7 +1805,7 @@ app.get('/health', async (req, res) => {
         success: true,
         status: 'OK',
         timestamp: new Date().toISOString(),
-        version: '50.0.0',
+        version: '50.1.0',
         environment: config.nodeEnv,
         database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         uptime: process.uptime(),
@@ -1722,7 +1818,8 @@ app.get('/health', async (req, res) => {
             users: await User.countDocuments({}),
             investments: await Investment.countDocuments({}),
             deposits: await Deposit.countDocuments({}),
-            withdrawals: await Withdrawal.countDocuments({})
+            withdrawals: await Withdrawal.countDocuments({}),
+            plans: await InvestmentPlan.countDocuments({})
         }
     };
     
@@ -1733,8 +1830,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
     res.json({
         success: true,
-        message: '🚀 Raw Wealthy Backend API v50.0 - Advanced Production Ready',
-        version: '50.0.0',
+        message: '🚀 Raw Wealthy Backend API v50.1 - Advanced Production Ready',
+        version: '50.1.0',
         timestamp: new Date().toISOString(),
         status: 'Operational',
         environment: config.nodeEnv,
@@ -2325,14 +2422,35 @@ app.post('/api/auth/reset-password/:token', [
     }
 });
 
-// ==================== INVESTMENT PLANS ENDPOINTS ====================
+// ==================== INVESTMENT PLANS ENDPOINTS - ENHANCED WITH 4 NEW RAW MATERIALS ====================
 app.get('/api/plans', async (req, res) => {
     try {
         const plans = await InvestmentPlan.find({ is_active: true })
             .sort({ display_order: 1, min_amount: 1 })
             .lean();
         
-        res.json(formatResponse(true, 'Plans retrieved successfully', { plans }));
+        // Categorize plans by risk level and price range
+        const categorizedPlans = {
+            beginner: plans.filter(p => p.min_amount <= 10000 && p.risk_level === 'low'),
+            intermediate: plans.filter(p => p.min_amount > 10000 && p.min_amount <= 50000 && p.risk_level === 'medium'),
+            advanced: plans.filter(p => p.min_amount > 50000 && p.risk_level === 'high'),
+            popular: plans.filter(p => p.is_popular === true)
+        };
+        
+        res.json(formatResponse(true, 'Plans retrieved successfully', { 
+            plans,
+            categorized: categorizedPlans,
+            summary: {
+                total_plans: plans.length,
+                low_risk: plans.filter(p => p.risk_level === 'low').length,
+                medium_risk: plans.filter(p => p.risk_level === 'medium').length,
+                high_risk: plans.filter(p => p.risk_level === 'high').length,
+                price_range: {
+                    min: plans.reduce((min, plan) => Math.min(min, plan.min_amount), Infinity),
+                    max: plans.reduce((max, plan) => Math.max(max, plan.max_amount || plan.min_amount), 0)
+                }
+            }
+        }));
     } catch (error) {
         handleError(res, error, 'Error fetching investment plans');
     }
@@ -3405,7 +3523,7 @@ cron.schedule('0 1 * * *', async () => {
     }
 });
 
-// ==================== ADMIN ENDPOINTS ====================
+// ==================== ADMIN ENDPOINTS - ENHANCED WITH USER BALANCE & EARNINGS VIEW ====================
 app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
     try {
         const [
@@ -3447,19 +3565,34 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
         
         const totalEarnings = earningsResult[0]?.total || 0;
         
-        const portfolioResult = await User.aggregate([
+        // Enhanced user financial aggregation
+        const userFinancials = await User.aggregate([
+            { $match: { role: { $ne: 'super_admin' } } },
             { $group: {
                 _id: null,
                 total_balance: { $sum: '$balance' },
                 total_earnings: { $sum: '$total_earnings' },
-                total_referral_earnings: { $sum: '$referral_earnings' }
+                total_referral_earnings: { $sum: '$referral_earnings' },
+                total_withdrawn: { $sum: '$total_withdrawn' },
+                total_deposits: { $sum: '$total_deposits' },
+                total_withdrawals: { $sum: '$total_withdrawals' },
+                total_investments: { $sum: '$total_investments' }
             } }
         ]);
         
-        const totalPortfolio = portfolioResult[0] ?
-            (portfolioResult[0].total_balance || 0) +
-            (portfolioResult[0].total_earnings || 0) +
-            (portfolioResult[0].total_referral_earnings || 0) : 0;
+        const financialSummary = userFinancials[0] || {
+            total_balance: 0,
+            total_earnings: 0,
+            total_referral_earnings: 0,
+            total_withdrawn: 0,
+            total_deposits: 0,
+            total_withdrawals: 0,
+            total_investments: 0
+        };
+        
+        const totalPortfolio = (financialSummary.total_balance || 0) +
+                              (financialSummary.total_earnings || 0) +
+                              (financialSummary.total_referral_earnings || 0);
         
         const stats = {
             overview: {
@@ -3472,6 +3605,15 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
                 total_withdrawals: totalWithdrawals,
                 total_earnings: totalEarnings,
                 total_portfolio_value: totalPortfolio
+            },
+            user_financials: {
+                total_user_balance: financialSummary.total_balance,
+                total_user_earnings: financialSummary.total_earnings,
+                total_user_referral_earnings: financialSummary.total_referral_earnings,
+                total_user_withdrawn: financialSummary.total_withdrawn,
+                total_user_deposits: financialSummary.total_deposits,
+                total_user_withdrawals: financialSummary.total_withdrawals,
+                total_user_investments: financialSummary.total_investments
             },
             pending_actions: {
                 pending_investments: pendingInvestments,
@@ -3538,10 +3680,20 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
             User.countDocuments(query)
         ]);
         
+        // ENHANCED: Include all financial data for admin view
         const enhancedUsers = users.map(user => ({
             ...user,
             portfolio_value: (user.balance || 0),
-            available_for_withdrawal: user.withdrawable_earnings || 0
+            available_for_withdrawal: user.withdrawable_earnings || 0,
+            financial_summary: {
+                balance: user.balance || 0,
+                total_earnings: user.total_earnings || 0,
+                referral_earnings: user.referral_earnings || 0,
+                total_withdrawn: user.total_withdrawn || 0,
+                total_deposits: user.total_deposits || 0,
+                total_withdrawals: user.total_withdrawals || 0,
+                total_investments: user.total_investments || 0
+            }
         }));
         
         const pagination = {
@@ -3561,6 +3713,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
                 total_balance: enhancedUsers.reduce((sum, u) => sum + (u.balance || 0), 0),
                 total_earnings: enhancedUsers.reduce((sum, u) => sum + (u.total_earnings || 0), 0),
                 total_referral_earnings: enhancedUsers.reduce((sum, u) => sum + (u.referral_earnings || 0), 0),
+                total_withdrawn: enhancedUsers.reduce((sum, u) => sum + (u.total_withdrawn || 0), 0),
                 total_withdrawable: enhancedUsers.reduce((sum, u) => sum + (u.withdrawable_earnings || 0), 0)
             }
         }));
@@ -3569,6 +3722,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
     }
 });
 
+// ENHANCED ADMIN USER DETAILS ENDPOINT
 app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
     try {
         const userId = req.params.id;
@@ -3607,8 +3761,23 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
                 .lean()
         ]);
         
+        // Enhanced financial summary
+        const financialSummary = {
+            current_balance: user.balance || 0,
+            total_earnings: user.total_earnings || 0,
+            referral_earnings: user.referral_earnings || 0,
+            total_withdrawn: user.total_withdrawn || 0,
+            withdrawable_earnings: user.withdrawable_earnings || 0,
+            total_deposits: user.total_deposits || 0,
+            total_withdrawals: user.total_withdrawals || 0,
+            total_investments: user.total_investments || 0,
+            portfolio_value: (user.balance || 0),
+            available_for_withdrawal: user.withdrawable_earnings || 0
+        };
+        
         const userDetails = {
             user: user.toObject(),
+            financial_summary: financialSummary,
             stats: {
                 total_investments: investments.length,
                 total_deposits: deposits.length,
@@ -3635,7 +3804,7 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
 app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
     try {
         const pendingInvestments = await Investment.find({ status: 'pending' })
-            .populate('user', 'full_name email phone')
+            .populate('user', 'full_name email phone balance total_earnings total_withdrawn')
             .populate('plan', 'name min_amount daily_interest')
             .sort({ createdAt: -1 })
             .lean();
@@ -3724,7 +3893,7 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
 app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
     try {
         const pendingDeposits = await Deposit.find({ status: 'pending' })
-            .populate('user', 'full_name email phone balance')
+            .populate('user', 'full_name email phone balance total_earnings total_withdrawn')
             .sort({ createdAt: -1 })
             .lean();
         
@@ -3799,7 +3968,7 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
             status: 'pending',
             admin_review_status: 'pending_review'
         })
-            .populate('user', 'full_name email phone balance')
+            .populate('user', 'full_name email phone balance total_earnings total_withdrawn')
             .sort({ createdAt: -1 })
             .lean();
         
@@ -3941,7 +4110,7 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
 app.get('/api/admin/pending-kyc', adminAuth, async (req, res) => {
     try {
         const pendingKYC = await KYCSubmission.find({ status: 'pending' })
-            .populate('user', 'full_name email phone')
+            .populate('user', 'full_name email phone balance total_earnings total_withdrawn')
             .sort({ createdAt: -1 })
             .lean();
         
@@ -4007,7 +4176,7 @@ app.post('/api/admin/kyc/:id/approve', adminAuth, [
 app.get('/api/admin/aml-flags', adminAuth, async (req, res) => {
     try {
         const amlFlags = await AmlMonitoring.find({ status: 'pending_review' })
-            .populate('user', 'full_name email')
+            .populate('user', 'full_name email balance total_earnings total_withdrawn')
             .sort({ risk_score: -1, createdAt: -1 })
             .lean();
         
@@ -4017,6 +4186,97 @@ app.get('/api/admin/aml-flags', adminAuth, async (req, res) => {
         }));
     } catch (error) {
         handleError(res, error, 'Error fetching AML flags');
+    }
+});
+
+// ==================== ENHANCED ADMIN FINANCIAL REPORTS ENDPOINT ====================
+app.get('/api/admin/financial-report', adminAuth, async (req, res) => {
+    try {
+        const { start_date, end_date, group_by = 'day' } = req.query;
+        
+        const matchStage = {};
+        if (start_date || end_date) {
+            matchStage.createdAt = {};
+            if (start_date) matchStage.createdAt.$gte = new Date(start_date);
+            if (end_date) matchStage.createdAt.$lte = new Date(end_date);
+        }
+        
+        // User financial summary
+        const userFinancials = await User.aggregate([
+            { $match: { role: { $ne: 'super_admin' } } },
+            { $group: {
+                _id: null,
+                total_balance: { $sum: '$balance' },
+                total_earnings: { $sum: '$total_earnings' },
+                total_referral_earnings: { $sum: '$referral_earnings' },
+                total_withdrawn: { $sum: '$total_withdrawn' },
+                total_deposits: { $sum: '$total_deposits' },
+                total_withdrawals: { $sum: '$total_withdrawals' },
+                total_investments: { $sum: '$total_investments' },
+                user_count: { $sum: 1 },
+                active_users: { $sum: { $cond: [{ $eq: ['$is_active', true] }, 1, 0] } },
+                verified_users: { $sum: { $cond: [{ $eq: ['$kyc_verified', true] }, 1, 0] } }
+            } }
+        ]);
+        
+        // Transaction statistics
+        const transactionStats = await Transaction.aggregate([
+            { $match: matchStage },
+            { $group: {
+                _id: '$type',
+                count: { $sum: 1 },
+                total_amount: { $sum: '$amount' }
+            } }
+        ]);
+        
+        // Deposit statistics
+        const depositStats = await Deposit.aggregate([
+            { $match: { ...matchStage, status: 'approved' } },
+            { $group: {
+                _id: null,
+                count: { $sum: 1 },
+                total_amount: { $sum: '$amount' },
+                avg_amount: { $avg: '$amount' }
+            } }
+        ]);
+        
+        // Withdrawal statistics
+        const withdrawalStats = await Withdrawal.aggregate([
+            { $match: { ...matchStage, status: 'paid' } },
+            { $group: {
+                _id: null,
+                count: { $sum: 1 },
+                total_amount: { $sum: '$amount' },
+                total_fees: { $sum: '$platform_fee' },
+                avg_amount: { $avg: '$amount' }
+            } }
+        ]);
+        
+        // Investment statistics
+        const investmentStats = await Investment.aggregate([
+            { $match: matchStage },
+            { $group: {
+                _id: '$status',
+                count: { $sum: 1 },
+                total_amount: { $sum: '$amount' },
+                total_earned: { $sum: '$earned_so_far' }
+            } }
+        ]);
+        
+        res.json(formatResponse(true, 'Financial report generated successfully', {
+            user_financials: userFinancials[0] || {},
+            transaction_summary: transactionStats,
+            deposit_summary: depositStats[0] || {},
+            withdrawal_summary: withdrawalStats[0] || {},
+            investment_summary: investmentStats,
+            date_range: {
+                start_date: start_date || 'Beginning',
+                end_date: end_date || 'Now'
+            }
+        }));
+    } catch (error) {
+        console.error('Financial report error:', error);
+        handleError(res, error, 'Error generating financial report');
     }
 });
 
@@ -4195,7 +4455,7 @@ const startServer = async () => {
         
         server.listen(config.port, () => {
             console.log('\n🚀 ============================================');
-            console.log(`✅ Raw Wealthy Backend v50.0 - ADVANCED PRODUCTION`);
+            console.log(`✅ Raw Wealthy Backend v50.1 - ADVANCED PRODUCTION`);
             console.log(`🌐 Environment: ${config.nodeEnv}`);
             console.log(`📍 Port: ${config.port}`);
             console.log(`🔗 Server URL: ${config.serverURL}`);
@@ -4215,11 +4475,22 @@ const startServer = async () => {
             console.log('8. ✅ WITHDRAWAL REVIEW SYSTEM WITH STATUS TRACKING');
             console.log('============================================\n');
             
-            console.log('💰 ADVANCED FINANCIAL FLOW:');
-            console.log('• Daily Interest: Added every 24 hours until investment expires');
-            console.log('• Referral Commission: Only awarded on first investment of referred user');
-            console.log('• Withdrawals: ALWAYS require admin approval (no auto-approval)');
-            console.log('• Transaction Tracking: Complete audit trail for all financial activities');
+            console.log('💰 ENHANCED RAW MATERIALS ADDED (4 NEW PLANS):');
+            console.log('1. ☕ Coffee Beans - ₦2,500 min (30 days, 8% daily)');
+            console.log('2. 🥈 Silver Bullion - ₦15,000 min (30 days, 12% daily)');
+            console.log('3. 🌳 Timber (Teak) - ₦20,000 min (30 days, 14% daily)');
+            console.log('4. 🔥 Natural Gas - ₦75,000 min (30 days, 18% daily)');
+            console.log('5. 🐟 Aquaculture (Salmon) - ₦30,000 min (30 days, 16% daily)');
+            console.log(`📊 Total Investment Plans: 8`);
+            console.log(`💰 Price Range: ₦2,500 - ₦1,000,000`);
+            console.log('============================================\n');
+            
+            console.log('👨‍💼 ENHANCED ADMIN FEATURES:');
+            console.log('1. ✅ USER BALANCE VISIBILITY IN ADMIN PANEL');
+            console.log('2. ✅ TOTAL EARNINGS TRACKING PER USER');
+            console.log('3. ✅ TOTAL WITHDRAWALS TRACKING PER USER');
+            console.log('4. ✅ COMPREHENSIVE FINANCIAL REPORTS');
+            console.log('5. ✅ REAL-TIME USER FINANCIAL SUMMARY');
             console.log('============================================\n');
             
             console.log('🔧 ENHANCED DEBUGGING TOOLS:');
@@ -4227,9 +4498,12 @@ const startServer = async () => {
             console.log(`• GET /api/debug/system-status - Enhanced system health check`);
             console.log(`• POST /api/debug/fix-user-earnings/:userId - Fix user earnings`);
             console.log(`• POST /api/debug/simulate-earnings/:userId - Test earnings flow`);
+            console.log(`• GET /api/admin/financial-report - Comprehensive financial reports`);
             console.log('============================================\n');
             
             console.log('✅ ALL ENDPOINTS PRESERVED AND ENHANCED');
+            console.log('✅ 4 NEW RAW MATERIALS ADDED SUCCESSFULLY');
+            console.log('✅ ADMIN CAN SEE USER BALANCE, EARNINGS & WITHDRAWALS');
             console.log('✅ ADVANCED PRODUCTION-READY FEATURES');
             console.log('✅ READY FOR DEPLOYMENT');
             console.log('============================================\n');
