@@ -1,7 +1,8 @@
-// server.js - RAW WEALTHY BACKEND v50.1 - ULTIMATE ADVANCED EDITION
-// ENHANCED WITH 4 NEW RAW MATERIALS & ADMIN DASHBOARD IMPROVEMENTS
-// ADVANCED BUSINESS LOGIC WITH ADMIN APPROVAL SYSTEM
-// ENHANCED DAILY INTEREST CALCULATION & REFERRAL COMMISSIONS
+// server.js - RAW WEALTHY BACKEND v50.2 - ULTIMATE ADVANCED EDITION
+// ENHANCED WITH ADVANCED DAILY INTEREST SYSTEM & ADMIN FEATURES
+// DAILY INTEREST STARTS IMMEDIATELY AFTER ADMIN APPROVAL & UPDATES EVERY 24 HOURS
+// INTEREST RATES UPDATED: 3500 PLAN TO 15%, ALL OTHERS +5%
+// ADVANCED ADMIN CONTROLS FOR USER REJECTION
 // ALL ENDPOINTS PRESERVED WITH ENHANCED FUNCTIONALITY
 // READY FOR DEPLOYMENT
 
@@ -518,7 +519,18 @@ const userSchema = new mongoose.Schema({
         location: String,
         device: String,
         timestamp: { type: Date, default: Date.now }
-    }]
+    }],
+    
+    // Account status tracking
+    account_status: { 
+        type: String, 
+        enum: ['active', 'suspended', 'rejected', 'pending_verification'], 
+        default: 'active' 
+    },
+    suspension_reason: String,
+    suspension_date: Date,
+    suspension_end_date: Date,
+    suspended_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, {
     timestamps: true,
     toJSON: {
@@ -554,6 +566,7 @@ userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ referral_code: 1 }, { unique: true, sparse: true });
 userSchema.index({ is_active: 1, role: 1, kyc_status: 1 });
 userSchema.index({ withdrawable_earnings: 1 });
+userSchema.index({ account_status: 1 });
 
 // Pre-save hooks
 userSchema.pre('save', async function(next) {
@@ -583,6 +596,12 @@ userSchema.pre('save', async function(next) {
         );
     }
     
+    // Auto-activate user if admin and account_status is pending
+    if (this.isModified('role') && this.role === 'admin' && this.account_status === 'pending_verification') {
+        this.account_status = 'active';
+        this.is_active = true;
+    }
+    
     next();
 });
 
@@ -605,7 +624,8 @@ userSchema.methods.generateAuthToken = function() {
             kyc_verified: this.kyc_verified,
             balance: this.balance,
             total_earnings: this.total_earnings,
-            referral_earnings: this.referral_earnings
+            referral_earnings: this.referral_earnings,
+            account_status: this.account_status
         },
         config.jwtSecret,
         { expiresIn: config.jwtExpiresIn }
@@ -626,9 +646,44 @@ userSchema.methods.getAvailableForWithdrawal = function() {
     return Math.max(0, this.withdrawable_earnings || 0);
 };
 
+userSchema.methods.suspendAccount = function(reason, adminId, durationDays = null) {
+    this.account_status = 'suspended';
+    this.is_active = false;
+    this.suspension_reason = reason;
+    this.suspension_date = new Date();
+    this.suspended_by = adminId;
+    
+    if (durationDays) {
+        this.suspension_end_date = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+    }
+    
+    return this;
+};
+
+userSchema.methods.activateAccount = function() {
+    this.account_status = 'active';
+    this.is_active = true;
+    this.suspension_reason = null;
+    this.suspension_date = null;
+    this.suspension_end_date = null;
+    this.suspended_by = null;
+    
+    return this;
+};
+
+userSchema.methods.rejectAccount = function(reason, adminId) {
+    this.account_status = 'rejected';
+    this.is_active = false;
+    this.suspension_reason = reason;
+    this.suspension_date = new Date();
+    this.suspended_by = adminId;
+    
+    return this;
+};
+
 const User = mongoose.model('User', userSchema);
 
-// Investment Plan Model - ENHANCED WITH 4 NEW RAW MATERIALS
+// Investment Plan Model - ENHANCED WITH UPDATED INTEREST RATES
 const investmentPlanSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
     description: { type: String, required: true },
@@ -1235,79 +1290,89 @@ const createTransaction = async (userId, type, amount, description, status = 'co
     }
 };
 
-// AML Monitoring function
-const checkAmlCompliance = async (userId, transactionType, amount, metadata = {}) => {
+// ==================== ADVANCED DAILY INTEREST HELPER FUNCTIONS ====================
+const addDailyInterestForInvestment = async (investment) => {
+    console.log(`💰 [INTEREST] Adding daily interest for investment: ${investment._id}`);
+    
     try {
-        if (amount <= 0) return { riskScore: 0, flagged: false };
-        
-        let riskScore = 0;
-        let flaggedReasons = [];
-        
-        // Check amount thresholds
-        if (amount > 1000000) {
-            riskScore += 40;
-            flaggedReasons.push('Large transaction amount');
+        // Check if investment is still active and hasn't expired
+        if (investment.status !== 'active') {
+            console.log(`❌ [INTEREST] Investment ${investment._id} is not active`);
+            return { success: false, error: 'Investment not active' };
         }
         
-        if (amount > 500000 && transactionType === 'withdrawal') {
-            riskScore += 30;
-            flaggedReasons.push('Large withdrawal request');
+        if (investment.end_date <= new Date()) {
+            console.log(`❌ [INTEREST] Investment ${investment._id} has expired`);
+            investment.status = 'completed';
+            await investment.save();
+            return { success: false, error: 'Investment expired' };
         }
         
-        // Check frequency
-        const recentTransactions = await Transaction.countDocuments({
-            user: userId,
-            createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-        });
-        
-        if (recentTransactions > 10) {
-            riskScore += 20;
-            flaggedReasons.push('High transaction frequency');
+        // Calculate daily interest
+        const plan = await InvestmentPlan.findById(investment.plan);
+        if (!plan) {
+            console.log(`❌ [INTEREST] Plan not found for investment: ${investment._id}`);
+            return { success: false, error: 'Plan not found' };
         }
         
-        // Check user's account age
-        const user = await User.findById(userId);
-        if (user) {
-            const accountAgeDays = (new Date() - user.createdAt) / (1000 * 60 * 60 * 24);
-            if (accountAgeDays < 7 && amount > 100000) {
-                riskScore += 30;
-                flaggedReasons.push('New account with large transaction');
+        const dailyEarning = (investment.amount * plan.daily_interest) / 100;
+        
+        // Update investment
+        investment.earned_so_far += dailyEarning;
+        investment.interest_added_count += 1;
+        investment.last_earning_date = new Date();
+        investment.next_interest_date = new Date(Date.now() + 24 * 60 * 60 * 1000); // Next interest in 24 hours
+        
+        // Save investment
+        await investment.save();
+        
+        // Credit user's earnings
+        await createTransaction(
+            investment.user,
+            'daily_interest',
+            dailyEarning,
+            `Daily interest from ${plan.name} investment (Day ${investment.interest_added_count})`,
+            'completed',
+            {
+                investment_id: investment._id,
+                plan_name: plan.name,
+                daily_interest_rate: plan.daily_interest,
+                investment_amount: investment.amount,
+                interest_day: investment.interest_added_count,
+                total_days: investment.total_interest_days,
+                next_interest_date: investment.next_interest_date
             }
-        }
+        );
         
-        if (riskScore > 50) {
-            const amlRecord = new AmlMonitoring({
-                user: userId,
-                transaction_type: transactionType,
-                amount,
-                flagged_reason: flaggedReasons.join(', '),
-                risk_score: riskScore,
-                status: 'pending_review',
-                metadata
-            });
+        console.log(`✅ [INTEREST] Added daily interest: ₦${dailyEarning.toLocaleString()} for investment ${investment._id}`);
+        
+        // Check if investment has completed all interest days
+        if (investment.interest_added_count >= investment.total_interest_days) {
+            investment.status = 'completed';
+            await investment.save();
             
-            await amlRecord.save();
+            await createNotification(
+                investment.user,
+                'Investment Completed',
+                `Your investment in ${plan.name} has completed. Total earnings: ₦${investment.earned_so_far.toLocaleString()}`,
+                'investment',
+                '/investments'
+            );
             
-            // Notify admins
-            emitToAdmins('aml-flagged', {
-                userId,
-                transactionType,
-                amount,
-                riskScore,
-                reasons: flaggedReasons
-            });
-            
-            console.log(`🚨 AML Flagged: User ${userId}, Risk Score: ${riskScore}, Reasons: ${flaggedReasons.join(', ')}`);
+            console.log(`🎉 [INTEREST] Investment ${investment._id} completed successfully`);
         }
         
         return {
-            riskScore,
-            flagged: riskScore > 50,
-            reasons: flaggedReasons
+            success: true,
+            dailyEarning,
+            interestAddedCount: investment.interest_added_count,
+            totalEarned: investment.earned_so_far,
+            nextInterestDate: investment.next_interest_date
         };
+        
     } catch (error) {
-        console.error('AML check error:', error);
-        return { riskScore: 0, flagged: false, reasons: [] };
+        console.error(`❌ [INTEREST] Error adding daily interest:`, error);
+        return { success: false, error: error.message };
     }
 };
 
@@ -1325,66 +1390,16 @@ const calculateDailyInterest = async () => {
                 { next_interest_date: { $lte: now } },
                 { next_interest_date: { $exists: false } }
             ]
-        }).populate('plan', 'daily_interest name').populate('user');
+        }).populate('plan').populate('user');
         
         let totalInterestPaid = 0;
         let investmentsUpdated = 0;
         
         for (const investment of activeInvestments) {
-            if (investment.plan && investment.plan.daily_interest) {
-                const dailyEarning = (investment.amount * investment.plan.daily_interest) / 100;
-                
-                // Check if investment hasn't expired
-                if (investment.end_date > now) {
-                    // Update investment
-                    investment.earned_so_far += dailyEarning;
-                    investment.interest_added_count += 1;
-                    investment.last_earning_date = now;
-                    
-                    // Set next interest date to 24 hours from now
-                    investment.next_interest_date = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-                    
-                    // If this is the first interest, set total interest days
-                    if (!investment.total_interest_days) {
-                        investment.total_interest_days = investment.plan.duration;
-                    }
-                    
-                    await investment.save();
-                    
-                    // Credit user's earnings
-                    await createTransaction(
-                        investment.user._id,
-                        'daily_interest',
-                        dailyEarning,
-                        `Daily interest from ${investment.plan.name} investment`,
-                        'completed',
-                        {
-                            investment_id: investment._id,
-                            plan_name: investment.plan.name,
-                            daily_interest_rate: investment.plan.daily_interest,
-                            investment_amount: investment.amount,
-                            interest_day: investment.interest_added_count,
-                            total_days: investment.total_interest_days
-                        }
-                    );
-                    
-                    totalInterestPaid += dailyEarning;
-                    investmentsUpdated++;
-                    
-                    // Check if investment has completed all interest days
-                    if (investment.interest_added_count >= investment.total_interest_days) {
-                        investment.status = 'completed';
-                        await investment.save();
-                        
-                        await createNotification(
-                            investment.user._id,
-                            'Investment Completed',
-                            `Your investment in ${investment.plan.name} has completed. Total earnings: ₦${investment.earned_so_far.toLocaleString()}`,
-                            'investment',
-                            '/investments'
-                        );
-                    }
-                }
+            const result = await addDailyInterestForInvestment(investment);
+            if (result.success) {
+                totalInterestPaid += result.dailyEarning;
+                investmentsUpdated++;
             }
         }
         
@@ -1500,6 +1515,82 @@ const awardReferralCommission = async (referredUserId, investmentAmount, investm
     }
 };
 
+// AML Monitoring function
+const checkAmlCompliance = async (userId, transactionType, amount, metadata = {}) => {
+    try {
+        if (amount <= 0) return { riskScore: 0, flagged: false };
+        
+        let riskScore = 0;
+        let flaggedReasons = [];
+        
+        // Check amount thresholds
+        if (amount > 1000000) {
+            riskScore += 40;
+            flaggedReasons.push('Large transaction amount');
+        }
+        
+        if (amount > 500000 && transactionType === 'withdrawal') {
+            riskScore += 30;
+            flaggedReasons.push('Large withdrawal request');
+        }
+        
+        // Check frequency
+        const recentTransactions = await Transaction.countDocuments({
+            user: userId,
+            createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        });
+        
+        if (recentTransactions > 10) {
+            riskScore += 20;
+            flaggedReasons.push('High transaction frequency');
+        }
+        
+        // Check user's account age
+        const user = await User.findById(userId);
+        if (user) {
+            const accountAgeDays = (new Date() - user.createdAt) / (1000 * 60 * 60 * 24);
+            if (accountAgeDays < 7 && amount > 100000) {
+                riskScore += 30;
+                flaggedReasons.push('New account with large transaction');
+            }
+        }
+        
+        if (riskScore > 50) {
+            const amlRecord = new AmlMonitoring({
+                user: userId,
+                transaction_type: transactionType,
+                amount,
+                flagged_reason: flaggedReasons.join(', '),
+                risk_score: riskScore,
+                status: 'pending_review',
+                metadata
+            });
+            
+            await amlRecord.save();
+            
+            // Notify admins
+            emitToAdmins('aml-flagged', {
+                userId,
+                transactionType,
+                amount,
+                riskScore,
+                reasons: flaggedReasons
+            });
+            
+            console.log(`🚨 AML Flagged: User ${userId}, Risk Score: ${riskScore}, Reasons: ${flaggedReasons.join(', ')}`);
+        }
+        
+        return {
+            riskScore,
+            flagged: riskScore > 50,
+            reasons: flaggedReasons
+        };
+    } catch (error) {
+        console.error('AML check error:', error);
+        return { riskScore: 0, flagged: false, reasons: [] };
+    }
+};
+
 // ==================== AUTH MIDDLEWARE ====================
 const auth = async (req, res, next) => {
     try {
@@ -1521,6 +1612,14 @@ const auth = async (req, res, next) => {
         
         if (!user.is_active) {
             return res.status(401).json(formatResponse(false, 'Account is deactivated. Please contact support.'));
+        }
+        
+        if (user.account_status === 'suspended') {
+            return res.status(403).json(formatResponse(false, 'Account is suspended. Please contact support.'));
+        }
+        
+        if (user.account_status === 'rejected') {
+            return res.status(403).json(formatResponse(false, 'Account has been rejected. Please contact support.'));
         }
         
         // Update last active time
@@ -1580,14 +1679,14 @@ const initializeDatabase = async () => {
 
 const createDefaultInvestmentPlans = async () => {
     const defaultPlans = [
-        // Existing plans
+        // UPDATED: 3500 plan to 15%, all others +5%
         {
             name: 'Cocoa Beans',
             description: 'Invest in premium cocoa beans with stable returns.',
             min_amount: 3500,
             max_amount: 50000,
-            daily_interest: 10,
-            total_interest: 300,
+            daily_interest: 15, // UPDATED: 10 → 15
+            total_interest: 450, // UPDATED: 300 → 450
             duration: 30,
             risk_level: 'low',
             raw_material: 'Cocoa',
@@ -1603,8 +1702,8 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Precious metal investment with high liquidity.',
             min_amount: 50000,
             max_amount: 500000,
-            daily_interest: 15,
-            total_interest: 450,
+            daily_interest: 20, // UPDATED: 15 → 20
+            total_interest: 600, // UPDATED: 450 → 600
             duration: 30,
             risk_level: 'medium',
             raw_material: 'Gold',
@@ -1620,8 +1719,8 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Energy sector investment with premium returns.',
             min_amount: 100000,
             max_amount: 1000000,
-            daily_interest: 20,
-            total_interest: 600,
+            daily_interest: 25, // UPDATED: 20 → 25
+            total_interest: 750, // UPDATED: 600 → 750
             duration: 30,
             risk_level: 'high',
             raw_material: 'Crude Oil',
@@ -1632,14 +1731,14 @@ const createDefaultInvestmentPlans = async () => {
             icon: '🛢️',
             display_order: 3
         },
-        // NEW PLANS - 4 ADDITIONAL RAW MATERIALS
+        // NEW PLANS - UPDATED INTEREST RATES (+5%)
         {
             name: 'Coffee Beans',
             description: 'Premium Arabica coffee beans from Ethiopian highlands.',
-            min_amount: 5500, // Cheaper option
+            min_amount: 5500,
             max_amount: 25000,
-            daily_interest: 14,
-            total_interest: 240,
+            daily_interest: 19, // UPDATED: 14 → 19
+            total_interest: 570,
             duration: 30,
             risk_level: 'low',
             raw_material: 'Coffee',
@@ -1655,8 +1754,8 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Industrial silver with growing demand in technology sector.',
             min_amount: 15000,
             max_amount: 150000,
-            daily_interest: 12,
-            total_interest: 360,
+            daily_interest: 17, // UPDATED: 12 → 17
+            total_interest: 510,
             duration: 30,
             risk_level: 'medium',
             raw_material: 'Silver',
@@ -1672,8 +1771,8 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Premium Teak wood with high value in construction and furniture.',
             min_amount: 20000,
             max_amount: 200000,
-            daily_interest: 14,
-            total_interest: 420,
+            daily_interest: 19, // UPDATED: 14 → 19
+            total_interest: 570,
             duration: 30,
             risk_level: 'medium',
             raw_material: 'Teak Wood',
@@ -1689,8 +1788,8 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Clean energy source with increasing global demand.',
             min_amount: 75000,
             max_amount: 750000,
-            daily_interest: 18,
-            total_interest: 540,
+            daily_interest: 23, // UPDATED: 18 → 23
+            total_interest: 690,
             duration: 30,
             risk_level: 'high',
             raw_material: 'Natural Gas',
@@ -1706,8 +1805,8 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Premium salmon farming with sustainable practices.',
             min_amount: 30000,
             max_amount: 300000,
-            daily_interest: 16,
-            total_interest: 480,
+            daily_interest: 21, // UPDATED: 16 → 21
+            total_interest: 630,
             duration: 30,
             risk_level: 'medium',
             raw_material: 'Salmon',
@@ -1725,16 +1824,23 @@ const createDefaultInvestmentPlans = async () => {
             const existingPlan = await InvestmentPlan.findOne({ name: planData.name });
             if (!existingPlan) {
                 await InvestmentPlan.create(planData);
-                console.log(`✅ Created investment plan: ${planData.name}`);
+                console.log(`✅ Created investment plan: ${planData.name} (${planData.daily_interest}% daily)`);
             } else {
                 // Update existing plan with new data
                 await InvestmentPlan.findByIdAndUpdate(existingPlan._id, planData);
-                console.log(`✅ Updated investment plan: ${planData.name}`);
+                console.log(`✅ Updated investment plan: ${planData.name} (${planData.daily_interest}% daily)`);
             }
         }
         console.log('✅ Default investment plans created/verified');
         console.log(`📊 Total investment plans: ${defaultPlans.length}`);
         console.log(`💰 Price range: ₦${defaultPlans.reduce((min, plan) => Math.min(min, plan.min_amount), Infinity).toLocaleString()} - ₦${defaultPlans.reduce((max, plan) => Math.max(max, plan.max_amount || plan.min_amount), 0).toLocaleString()}`);
+        
+        // Log interest rate summary
+        console.log('\n📈 UPDATED INTEREST RATES SUMMARY:');
+        defaultPlans.forEach(plan => {
+            console.log(`   ${plan.icon} ${plan.name}: ${plan.daily_interest}% daily interest`);
+        });
+        
     } catch (error) {
         console.error('Error creating default investment plans:', error);
     }
@@ -1774,7 +1880,8 @@ const createAdminUser = async () => {
             email_notifications: true,
             total_deposits: 2000000,
             total_withdrawals: 500000,
-            total_investments: 1500000
+            total_investments: 1500000,
+            account_status: 'active'
         });
         
         await admin.save();
@@ -1805,7 +1912,7 @@ app.get('/health', async (req, res) => {
         success: true,
         status: 'OK',
         timestamp: new Date().toISOString(),
-        version: '50.1.0',
+        version: '50.2.0',
         environment: config.nodeEnv,
         database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         uptime: process.uptime(),
@@ -1830,8 +1937,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
     res.json({
         success: true,
-        message: '🚀 Raw Wealthy Backend API v50.1 - Advanced Production Ready',
-        version: '50.1.0',
+        message: '🚀 Raw Wealthy Backend API v50.2 - Advanced Production Ready',
+        version: '50.2.0',
         timestamp: new Date().toISOString(),
         status: 'Operational',
         environment: config.nodeEnv,
@@ -2056,7 +2163,8 @@ app.post('/api/auth/register', [
             withdrawable_earnings: 0,
             total_deposits: 0,
             total_withdrawals: 0,
-            total_investments: 0
+            total_investments: 0,
+            account_status: 'active'
         });
         
         await user.save();
@@ -2145,6 +2253,17 @@ app.post('/api/auth/login', [
         
         if (!user.is_active) {
             return res.status(401).json(formatResponse(false, 'Account is deactivated. Please contact support.'));
+        }
+        
+        if (user.account_status === 'suspended') {
+            const message = user.suspension_reason 
+                ? `Account suspended. Reason: ${user.suspension_reason}. Contact support.`
+                : 'Account suspended. Please contact support.';
+            return res.status(403).json(formatResponse(false, message));
+        }
+        
+        if (user.account_status === 'rejected') {
+            return res.status(403).json(formatResponse(false, 'Account has been rejected. Please contact support.'));
         }
         
         const isMatch = await user.comparePassword(password);
@@ -2422,7 +2541,7 @@ app.post('/api/auth/reset-password/:token', [
     }
 });
 
-// ==================== INVESTMENT PLANS ENDPOINTS - ENHANCED WITH 4 NEW RAW MATERIALS ====================
+// ==================== INVESTMENT PLANS ENDPOINTS - ENHANCED WITH UPDATED INTEREST RATES ====================
 app.get('/api/plans', async (req, res) => {
     try {
         const plans = await InvestmentPlan.find({ is_active: true })
@@ -3485,13 +3604,14 @@ if (config.paymentEnabled) {
 }
 
 // ==================== ADVANCED DAILY INTEREST CRON JOB ====================
+// Run every 30 minutes to check for investments that need interest added
 cron.schedule('*/30 * * * *', async () => {
     console.log('🔄 Running advanced daily interest calculation...');
     await calculateDailyInterest();
 });
 
-// Investment completion check
-cron.schedule('0 1 * * *', async () => {
+// Investment completion check - run every hour
+cron.schedule('0 * * * *', async () => {
     try {
         console.log('🔄 Checking completed investments...');
         
@@ -3523,7 +3643,7 @@ cron.schedule('0 1 * * *', async () => {
     }
 });
 
-// ==================== ADMIN ENDPOINTS - ENHANCED WITH USER BALANCE & EARNINGS VIEW ====================
+// ==================== ADMIN ENDPOINTS - ENHANCED WITH USER MANAGEMENT ====================
 app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
     try {
         const [
@@ -3594,6 +3714,15 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
                               (financialSummary.total_earnings || 0) +
                               (financialSummary.total_referral_earnings || 0);
         
+        // Account status stats
+        const accountStatusStats = await User.aggregate([
+            { $match: { role: { $ne: 'super_admin' } } },
+            { $group: {
+                _id: '$account_status',
+                count: { $sum: 1 }
+            } }
+        ]);
+        
         const stats = {
             overview: {
                 total_users: totalUsers,
@@ -3622,7 +3751,11 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
                 pending_kyc: pendingKYC,
                 aml_flags: amlFlags,
                 total_pending: pendingInvestments + pendingDeposits + pendingWithdrawals + pendingKYC + amlFlags
-            }
+            },
+            account_status: accountStatusStats.reduce((acc, stat) => {
+                acc[stat._id] = stat.count;
+                return acc;
+            }, {})
         };
         
         res.json(formatResponse(true, 'Admin dashboard stats retrieved successfully', {
@@ -3633,7 +3766,9 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
                 pending_withdrawals: '/api/admin/pending-withdrawals',
                 pending_kyc: '/api/admin/pending-kyc',
                 aml_flags: '/api/admin/aml-flags',
-                all_users: '/api/admin/users'
+                all_users: '/api/admin/users',
+                suspended_users: '/api/admin/users?account_status=suspended',
+                rejected_users: '/api/admin/users?account_status=rejected'
             }
         }));
     } catch (error) {
@@ -3649,6 +3784,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
             status,
             role,
             kyc_status,
+            account_status,
             search
         } = req.query;
         
@@ -3658,6 +3794,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
         if (status === 'inactive') query.is_active = false;
         if (role) query.role = role;
         if (kyc_status) query.kyc_status = kyc_status;
+        if (account_status) query.account_status = account_status;
         
         if (search) {
             query.$or = [
@@ -3709,6 +3846,8 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
             summary: {
                 total_users: total,
                 active_users: enhancedUsers.filter(u => u.is_active).length,
+                suspended_users: enhancedUsers.filter(u => u.account_status === 'suspended').length,
+                rejected_users: enhancedUsers.filter(u => u.account_status === 'rejected').length,
                 verified_users: enhancedUsers.filter(u => u.kyc_verified).length,
                 total_balance: enhancedUsers.reduce((sum, u) => sum + (u.balance || 0), 0),
                 total_earnings: enhancedUsers.reduce((sum, u) => sum + (u.total_earnings || 0), 0),
@@ -3801,6 +3940,323 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
     }
 });
 
+// ==================== ADVANCED ADMIN USER MANAGEMENT ENDPOINTS ====================
+app.post('/api/admin/users/:id/suspend', adminAuth, [
+    body('reason').notEmpty().trim().isLength({ min: 5, max: 500 }),
+    body('duration_days').optional().isInt({ min: 1, max: 365 })
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json(formatResponse(false, 'Validation failed'));
+        }
+        
+        const userId = req.params.id;
+        const adminId = req.user._id;
+        const { reason, duration_days } = req.body;
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json(formatResponse(false, 'User not found'));
+        }
+        
+        if (user.role === 'super_admin') {
+            return res.status(403).json(formatResponse(false, 'Cannot suspend super admin'));
+        }
+        
+        if (user.role === 'admin' && req.user.role !== 'super_admin') {
+            return res.status(403).json(formatResponse(false, 'Only super admin can suspend other admins'));
+        }
+        
+        // Suspend user account
+        user.suspendAccount(reason, adminId, duration_days);
+        await user.save();
+        
+        // Create admin audit log
+        await AdminAudit.create({
+            admin_id: adminId,
+            action: 'suspend_user',
+            target_type: 'user',
+            target_id: userId,
+            details: {
+                reason,
+                duration_days: duration_days || 'indefinite',
+                user_email: user.email
+            },
+            ip_address: req.ip,
+            user_agent: req.headers['user-agent']
+        });
+        
+        await createNotification(
+            userId,
+            'Account Suspended',
+            `Your account has been suspended. Reason: ${reason}${duration_days ? ` Duration: ${duration_days} days` : ''}. Please contact support for more information.`,
+            'error',
+            '/support'
+        );
+        
+        // Notify admins
+        emitToAdmins('user-suspended', {
+            user_id: userId,
+            user_email: user.email,
+            suspended_by: adminId,
+            reason,
+            duration_days
+        });
+        
+        res.json(formatResponse(true, 'User account suspended successfully', {
+            user: {
+                id: user._id,
+                email: user.email,
+                account_status: user.account_status,
+                suspension_reason: user.suspension_reason,
+                suspension_date: user.suspension_date,
+                suspension_end_date: user.suspension_end_date
+            }
+        }));
+    } catch (error) {
+        handleError(res, error, 'Error suspending user account');
+    }
+});
+
+app.post('/api/admin/users/:id/activate', adminAuth, async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const adminId = req.user._id;
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json(formatResponse(false, 'User not found'));
+        }
+        
+        if (user.account_status !== 'suspended') {
+            return res.status(400).json(formatResponse(false, 'User account is not suspended'));
+        }
+        
+        // Activate user account
+        user.activateAccount();
+        await user.save();
+        
+        // Create admin audit log
+        await AdminAudit.create({
+            admin_id: adminId,
+            action: 'activate_user',
+            target_type: 'user',
+            target_id: userId,
+            details: {
+                user_email: user.email,
+                previous_status: 'suspended'
+            },
+            ip_address: req.ip,
+            user_agent: req.headers['user-agent']
+        });
+        
+        await createNotification(
+            userId,
+            'Account Activated',
+            'Your account has been activated. You can now access all features.',
+            'success',
+            '/dashboard'
+        );
+        
+        // Notify admins
+        emitToAdmins('user-activated', {
+            user_id: userId,
+            user_email: user.email,
+            activated_by: adminId
+        });
+        
+        res.json(formatResponse(true, 'User account activated successfully', {
+            user: {
+                id: user._id,
+                email: user.email,
+                account_status: user.account_status,
+                is_active: user.is_active
+            }
+        }));
+    } catch (error) {
+        handleError(res, error, 'Error activating user account');
+    }
+});
+
+app.post('/api/admin/users/:id/reject', adminAuth, [
+    body('reason').notEmpty().trim().isLength({ min: 5, max: 500 })
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json(formatResponse(false, 'Validation failed'));
+        }
+        
+        const userId = req.params.id;
+        const adminId = req.user._id;
+        const { reason } = req.body;
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json(formatResponse(false, 'User not found'));
+        }
+        
+        if (user.role === 'super_admin') {
+            return res.status(403).json(formatResponse(false, 'Cannot reject super admin'));
+        }
+        
+        if (user.role === 'admin' && req.user.role !== 'super_admin') {
+            return res.status(403).json(formatResponse(false, 'Only super admin can reject other admins'));
+        }
+        
+        // Reject user account
+        user.rejectAccount(reason, adminId);
+        await user.save();
+        
+        // Create admin audit log
+        await AdminAudit.create({
+            admin_id: adminId,
+            action: 'reject_user',
+            target_type: 'user',
+            target_id: userId,
+            details: {
+                reason,
+                user_email: user.email
+            },
+            ip_address: req.ip,
+            user_agent: req.headers['user-agent']
+        });
+        
+        await createNotification(
+            userId,
+            'Account Rejected',
+            `Your account has been rejected. Reason: ${reason}. Please contact support for more information.`,
+            'error',
+            '/support'
+        );
+        
+        // Notify admins
+        emitToAdmins('user-rejected', {
+            user_id: userId,
+            user_email: user.email,
+            rejected_by: adminId,
+            reason
+        });
+        
+        res.json(formatResponse(true, 'User account rejected successfully', {
+            user: {
+                id: user._id,
+                email: user.email,
+                account_status: user.account_status,
+                suspension_reason: user.suspension_reason,
+                suspension_date: user.suspension_date
+            }
+        }));
+    } catch (error) {
+        handleError(res, error, 'Error rejecting user account');
+    }
+});
+
+app.post('/api/admin/users/:id/update-balance', adminAuth, [
+    body('amount').isFloat(),
+    body('type').isIn(['add', 'subtract', 'set']),
+    body('reason').notEmpty().trim().isLength({ min: 5, max: 500 })
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json(formatResponse(false, 'Validation failed'));
+        }
+        
+        const userId = req.params.id;
+        const adminId = req.user._id;
+        const { amount, type, reason } = req.body;
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json(formatResponse(false, 'User not found'));
+        }
+        
+        let newBalance = user.balance || 0;
+        let transactionAmount = 0;
+        let transactionDescription = '';
+        
+        switch (type) {
+            case 'add':
+                newBalance += parseFloat(amount);
+                transactionAmount = parseFloat(amount);
+                transactionDescription = `Admin added balance: ${reason}`;
+                break;
+            case 'subtract':
+                newBalance = Math.max(0, newBalance - parseFloat(amount));
+                transactionAmount = -parseFloat(amount);
+                transactionDescription = `Admin deducted balance: ${reason}`;
+                break;
+            case 'set':
+                newBalance = parseFloat(amount);
+                transactionAmount = parseFloat(amount) - (user.balance || 0);
+                transactionDescription = `Admin set balance: ${reason}`;
+                break;
+        }
+        
+        // Update user balance
+        user.balance = newBalance;
+        await user.save();
+        
+        // Create transaction record
+        if (transactionAmount !== 0) {
+            await createTransaction(
+                userId,
+                'bonus',
+                transactionAmount,
+                transactionDescription,
+                'completed',
+                {
+                    admin_id: adminId,
+                    reason,
+                    balance_before: user.balance - transactionAmount,
+                    balance_after: user.balance,
+                    admin_action: true
+                }
+            );
+        }
+        
+        // Create admin audit log
+        await AdminAudit.create({
+            admin_id: adminId,
+            action: 'update_balance',
+            target_type: 'user',
+            target_id: userId,
+            details: {
+                amount: parseFloat(amount),
+                type,
+                reason,
+                old_balance: user.balance - transactionAmount,
+                new_balance: user.balance,
+                user_email: user.email
+            },
+            ip_address: req.ip,
+            user_agent: req.headers['user-agent']
+        });
+        
+        await createNotification(
+            userId,
+            'Balance Updated',
+            `Your balance has been updated by admin. New balance: ₦${newBalance.toLocaleString()}. Reason: ${reason}`,
+            'info',
+            '/profile'
+        );
+        
+        res.json(formatResponse(true, 'User balance updated successfully', {
+            user: {
+                id: user._id,
+                email: user.email,
+                old_balance: user.balance - transactionAmount,
+                new_balance: user.balance,
+                transaction_amount: transactionAmount
+            }
+        }));
+    } catch (error) {
+        handleError(res, error, 'Error updating user balance');
+    }
+});
+
 app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
     try {
         const pendingInvestments = await Investment.find({ status: 'pending' })
@@ -3819,6 +4275,7 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
     }
 });
 
+// ==================== ADVANCED INVESTMENT APPROVAL WITH IMMEDIATE DAILY INTEREST ====================
 app.post('/api/admin/investments/:id/approve', adminAuth, [
     body('remarks').optional().trim()
 ], async (req, res) => {
@@ -3833,7 +4290,8 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
         const { remarks } = req.body;
         
         const investment = await Investment.findById(investmentId)
-            .populate('user plan');
+            .populate('plan')
+            .populate('user');
         
         if (!investment) {
             return res.status(404).json(formatResponse(false, 'Investment not found'));
@@ -3874,16 +4332,39 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
             }
         }
         
+        // ADVANCED: ADD FIRST DAY'S INTEREST IMMEDIATELY AFTER APPROVAL
+        const addInterestResult = await addDailyInterestForInvestment(investment);
+        
         await createNotification(
             investment.user._id,
             'Investment Approved',
-            `Your investment of ₦${investment.amount.toLocaleString()} in ${investment.plan.name} has been approved and is now active. First interest will be added in 24 hours.`,
+            `Your investment of ₦${investment.amount.toLocaleString()} in ${investment.plan.name} has been approved and is now active. First interest of ₦${addInterestResult.dailyEarning?.toLocaleString() || '0'} has been credited.`,
             'investment',
             '/investments'
         );
         
+        // Create admin audit log
+        await AdminAudit.create({
+            admin_id: adminId,
+            action: 'approve_investment',
+            target_type: 'investment',
+            target_id: investmentId,
+            details: {
+                investment_amount: investment.amount,
+                plan_name: investment.plan.name,
+                user_email: investment.user.email,
+                daily_interest_added: addInterestResult.dailyEarning,
+                next_interest_date: investment.next_interest_date
+            },
+            ip_address: req.ip,
+            user_agent: req.headers['user-agent']
+        });
+        
         res.json(formatResponse(true, 'Investment approved successfully', {
-            investment: investment.toObject()
+            investment: investment.toObject(),
+            interest_added: addInterestResult.success,
+            daily_interest: addInterestResult.dailyEarning,
+            next_interest_date: investment.next_interest_date
         }));
     } catch (error) {
         handleError(res, error, 'Error approving investment');
@@ -4455,7 +4936,7 @@ const startServer = async () => {
         
         server.listen(config.port, () => {
             console.log('\n🚀 ============================================');
-            console.log(`✅ Raw Wealthy Backend v50.1 - ADVANCED PRODUCTION`);
+            console.log(`✅ Raw Wealthy Backend v50.2 - ADVANCED PRODUCTION`);
             console.log(`🌐 Environment: ${config.nodeEnv}`);
             console.log(`📍 Port: ${config.port}`);
             console.log(`🔗 Server URL: ${config.serverURL}`);
@@ -4465,32 +4946,37 @@ const startServer = async () => {
             console.log('============================================\n');
             
             console.log('🎯 ADVANCED FEATURES ACTIVATED:');
-            console.log('1. ✅ ALL WITHDRAWALS REQUIRE ADMIN APPROVAL');
-            console.log('2. ✅ DAILY INTEREST ADDED EVERY 24 HOURS (Exact Timing)');
-            console.log('3. ✅ REFERRAL COMMISSIONS: Only on first investment');
-            console.log('4. ✅ REAL-TIME ADMIN NOTIFICATIONS FOR WITHDRAWALS');
-            console.log('5. ✅ ENHANCED INVESTMENT TRACKING WITH NEXT_INTEREST_DATE');
-            console.log('6. ✅ ADVANCED DAILY INTEREST CALCULATION FUNCTION');
-            console.log('7. ✅ REFERRAL COMMISSION TRACKING FOR FIRST INVESTMENTS');
-            console.log('8. ✅ WITHDRAWAL REVIEW SYSTEM WITH STATUS TRACKING');
+            console.log('1. ✅ DAILY INTEREST STARTS IMMEDIATELY AFTER ADMIN APPROVAL');
+            console.log('2. ✅ INTEREST UPDATED EVERY 24 HOURS UNTIL EXPIRY');
+            console.log('3. ✅ INTEREST RATES UPDATED: 3500 PLAN = 15%, ALL OTHERS +5%');
+            console.log('4. ✅ ADMIN CAN SUSPEND/ACTIVATE/REJECT USER ACCOUNTS');
+            console.log('5. ✅ ADVANCED USER ACCOUNT STATUS MANAGEMENT');
+            console.log('6. ✅ ALL WITHDRAWALS REQUIRE ADMIN APPROVAL');
+            console.log('7. ✅ REFERRAL COMMISSIONS: Only on first investment');
+            console.log('8. ✅ REAL-TIME ADMIN NOTIFICATIONS FOR ALL ACTIONS');
             console.log('============================================\n');
             
-            console.log('💰 ENHANCED RAW MATERIALS ADDED (4 NEW PLANS):');
-            console.log('1. ☕ Coffee Beans - ₦2,500 min (30 days, 8% daily)');
-            console.log('2. 🥈 Silver Bullion - ₦15,000 min (30 days, 12% daily)');
-            console.log('3. 🌳 Timber (Teak) - ₦20,000 min (30 days, 14% daily)');
-            console.log('4. 🔥 Natural Gas - ₦75,000 min (30 days, 18% daily)');
-            console.log('5. 🐟 Aquaculture (Salmon) - ₦30,000 min (30 days, 16% daily)');
+            console.log('💰 UPDATED INTEREST RATES:');
+            console.log('1. 🌱 Cocoa Beans: ₦3,500 min (30 days, 15% daily)');
+            console.log('2. 🥇 Gold: ₦50,000 min (30 days, 20% daily)');
+            console.log('3. 🛢️ Crude Oil: ₦100,000 min (30 days, 25% daily)');
+            console.log('4. ☕ Coffee Beans: ₦5,500 min (30 days, 19% daily)');
+            console.log('5. 🥈 Silver Bullion: ₦15,000 min (30 days, 17% daily)');
+            console.log('6. 🌳 Timber (Teak): ₦20,000 min (30 days, 19% daily)');
+            console.log('7. 🔥 Natural Gas: ₦75,000 min (30 days, 23% daily)');
+            console.log('8. 🐟 Aquaculture (Salmon): ₦30,000 min (30 days, 21% daily)');
             console.log(`📊 Total Investment Plans: 8`);
-            console.log(`💰 Price Range: ₦2,500 - ₦1,000,000`);
+            console.log(`💰 Price Range: ₦3,500 - ₦1,000,000`);
             console.log('============================================\n');
             
             console.log('👨‍💼 ENHANCED ADMIN FEATURES:');
-            console.log('1. ✅ USER BALANCE VISIBILITY IN ADMIN PANEL');
-            console.log('2. ✅ TOTAL EARNINGS TRACKING PER USER');
-            console.log('3. ✅ TOTAL WITHDRAWALS TRACKING PER USER');
-            console.log('4. ✅ COMPREHENSIVE FINANCIAL REPORTS');
-            console.log('5. ✅ REAL-TIME USER FINANCIAL SUMMARY');
+            console.log('1. ✅ USER ACCOUNT SUSPENSION WITH REASON');
+            console.log('2. ✅ USER ACCOUNT REJECTION SYSTEM');
+            console.log('3. ✅ ACCOUNT ACTIVATION/RESTORATION');
+            console.log('4. ✅ BALANCE MANAGEMENT (ADD/SUBTRACT/SET)');
+            console.log('5. ✅ COMPREHENSIVE FINANCIAL REPORTS');
+            console.log('6. ✅ REAL-TIME USER FINANCIAL SUMMARY');
+            console.log('7. ✅ AUDIT LOGS FOR ALL ADMIN ACTIONS');
             console.log('============================================\n');
             
             console.log('🔧 ENHANCED DEBUGGING TOOLS:');
@@ -4502,8 +4988,8 @@ const startServer = async () => {
             console.log('============================================\n');
             
             console.log('✅ ALL ENDPOINTS PRESERVED AND ENHANCED');
-            console.log('✅ 4 NEW RAW MATERIALS ADDED SUCCESSFULLY');
-            console.log('✅ ADMIN CAN SEE USER BALANCE, EARNINGS & WITHDRAWALS');
+            console.log('✅ INTEREST SYSTEM UPDATED SUCCESSFULLY');
+            console.log('✅ ADMIN USER MANAGEMENT FEATURES ADDED');
             console.log('✅ ADVANCED PRODUCTION-READY FEATURES');
             console.log('✅ READY FOR DEPLOYMENT');
             console.log('============================================\n');
@@ -4533,4 +5019,3 @@ process.on('SIGINT', () => {
 
 // Start the server
 startServer();
-  
