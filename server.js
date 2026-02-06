@@ -1636,9 +1636,9 @@ const createDefaultInvestmentPlans = async () => {
         {
             name: 'Coffee Beans',
             description: 'Premium Arabica coffee beans from Ethiopian highlands.',
-            min_amount: 2500, // Cheaper option
+            min_amount: 5500, // Cheaper option
             max_amount: 25000,
-            daily_interest: 8,
+            daily_interest: 14,
             total_interest: 240,
             duration: 30,
             risk_level: 'low',
