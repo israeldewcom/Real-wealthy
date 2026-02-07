@@ -1,10 +1,10 @@
-// server.js - RAW WEALTHY BACKEND v60.0 - ULTIMATE ADVANCED EDITION
+// server.js - RAW WEALTHY BACKEND v50.4 - ULTIMATE ADVANCED EDITION
 // ENHANCED WITH ADVANCED DAILY INTEREST SYSTEM & ADMIN FEATURES
 // DAILY INTEREST STARTS IMMEDIATELY AFTER ADMIN APPROVAL & UPDATES EVERY 24 HOURS
 // INTEREST RATES UPDATED: 3500 PLAN TO 15%, ALL OTHERS +5%
-// REFERRAL COMMISSION UPDATED TO 20%
-// INVESTMENT SUBMITTED TO ADMIN DASHBOARD EVEN WITHOUT UPLOAD IMAGE
-// BALANCE DEDUCTED ONLY AFTER ADMIN APPROVAL
+// REFERRAL COMMISSION UPDATED: 20%
+// ALL INVESTMENTS REQUIRE ADMIN APPROVAL (EVEN WITHOUT IMAGE)
+// BALANCE ONLY DEDUCTED WHEN ADMIN APPROVES INVESTMENT
 // ADVANCED ADMIN CONTROLS FOR USER REJECTION
 // UPDATED DURATIONS: First three 20 days, next three 15 days, rest 9 days
 // MINIMUM WITHDRAWAL UPDATED: 4000
@@ -134,21 +134,21 @@ const config = {
     // Business Logic - ADVANCED UPDATES
     minInvestment: parseInt(process.env.MIN_INVESTMENT) || 3500,
     minDeposit: parseInt(process.env.MIN_DEPOSIT) || 3500,
-    minWithdrawal: parseInt(process.env.MIN_WITHDRAWAL) || 4000, // UPDATED: 3500 → 4000
+    minWithdrawal: parseInt(process.env.MIN_WITHDRAWAL) || 4000,
     maxWithdrawalPercent: parseFloat(process.env.MAX_WITHDRAWAL_PERCENT) || 100,
     
     platformFeePercent: parseFloat(process.env.PLATFORM_FEE_PERCENT) || 10,
-    referralCommissionPercent: parseFloat(process.env.REFERRAL_COMMISSION_PERCENT) || 20, // UPDATED: 10 → 20
+    referralCommissionPercent: parseFloat(process.env.REFERRAL_COMMISSION_PERCENT) || 20, // UPDATED: 10% → 20%
     welcomeBonus: parseInt(process.env.WELCOME_BONUS) || 100,
     
     // ADVANCED FEATURES
-    dailyInterestTime: process.env.DAILY_INTEREST_TIME || '00:00', // Time to add daily interest
-    withdrawalAutoApprove: process.env.WITHDRAWAL_AUTO_APPROVE === 'false' ? false : true, // All withdrawals require admin approval
-    referralCommissionOnFirstInvestment: true, // Commission only on first investment
+    dailyInterestTime: process.env.DAILY_INTEREST_TIME || '00:00',
+    withdrawalAutoApprove: process.env.WITHDRAWAL_AUTO_APPROVE === 'false' ? false : true,
+    referralCommissionOnFirstInvestment: true,
     
-    // Investment Submission - NEW: All investments go to admin dashboard
-    allInvestmentsRequireApproval: true, // NEW: All investments require admin approval
-    balanceDeductedOnApprovalOnly: true, // NEW: Balance deducted only when admin approves
+    // Investment Approval Settings - UPDATED: ALL INVESTMENTS REQUIRE ADMIN APPROVAL
+    allInvestmentsRequireAdminApproval: true, // NEW: Force all investments to require admin approval
+    deductBalanceOnlyOnApproval: true, // NEW: Only deduct balance when admin approves
     
     // Storage
     uploadDir: path.join(__dirname, 'uploads'),
@@ -187,9 +187,9 @@ console.log(`- Payment Enabled: ${config.paymentEnabled}`);
 console.log(`- Withdrawal Auto-approve: ${config.withdrawalAutoApprove}`);
 console.log(`- Daily Interest Time: ${config.dailyInterestTime}`);
 console.log(`- Minimum Withdrawal: ₦${config.minWithdrawal.toLocaleString()}`);
-console.log(`- Referral Commission: ${config.referralCommissionPercent}%`); // NEW LOG
-console.log(`- All Investments Require Approval: ${config.allInvestmentsRequireApproval}`); // NEW LOG
-console.log(`- Balance Deducted Only on Approval: ${config.balanceDeductedOnApprovalOnly}`); // NEW LOG
+console.log(`- Referral Commission: ${config.referralCommissionPercent}%`); // UPDATED
+console.log(`- All Investments Require Admin Approval: ${config.allInvestmentsRequireAdminApproval}`); // NEW
+console.log(`- Balance Deducted Only on Approval: ${config.deductBalanceOnlyOnApproval}`); // NEW
 console.log(`- Allowed Origins: ${config.allowedOrigins.length}`);
 
 // ==================== ENHANCED EXPRESS SETUP WITH SOCKET.IO ====================
@@ -553,7 +553,11 @@ const userSchema = new mongoose.Schema({
     suspension_reason: String,
     suspension_date: Date,
     suspension_end_date: Date,
-    suspended_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+    suspended_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    
+    // Pending investments tracking
+    pending_investment_amount: { type: Number, default: 0 }, // Total amount in pending investments
+    pending_investment_ids: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Investment' }] // References to pending investments
 }, {
     timestamps: true,
     toJSON: {
@@ -568,6 +572,7 @@ const userSchema = new mongoose.Schema({
             
             ret.available_for_withdrawal = doc.available_for_withdrawal;
             ret.portfolio_value = doc.portfolio_value;
+            ret.available_balance = doc.available_balance;
             return ret;
         }
     },
@@ -584,12 +589,18 @@ userSchema.virtual('portfolio_value').get(function() {
     return (this.balance || 0);
 });
 
+// Virtual field for available balance (balance minus pending investments)
+userSchema.virtual('available_balance').get(function() {
+    return Math.max(0, (this.balance || 0) - (this.pending_investment_amount || 0));
+});
+
 // Indexes
 userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ referral_code: 1 }, { unique: true, sparse: true });
 userSchema.index({ is_active: 1, role: 1, kyc_status: 1 });
 userSchema.index({ withdrawable_earnings: 1 });
 userSchema.index({ account_status: 1 });
+userSchema.index({ available_balance: 1 });
 
 // Pre-save hooks
 userSchema.pre('save', async function(next) {
@@ -648,7 +659,8 @@ userSchema.methods.generateAuthToken = function() {
             balance: this.balance,
             total_earnings: this.total_earnings,
             referral_earnings: this.referral_earnings,
-            account_status: this.account_status
+            account_status: this.account_status,
+            available_balance: this.available_balance
         },
         config.jwtSecret,
         { expiresIn: config.jwtExpiresIn }
@@ -667,6 +679,22 @@ userSchema.methods.generatePasswordResetToken = function() {
 
 userSchema.methods.getAvailableForWithdrawal = function() {
     return Math.max(0, this.withdrawable_earnings || 0);
+};
+
+userSchema.methods.getAvailableBalance = function() {
+    return Math.max(0, (this.balance || 0) - (this.pending_investment_amount || 0));
+};
+
+userSchema.methods.addPendingInvestment = async function(investmentId, amount) {
+    this.pending_investment_amount = (this.pending_investment_amount || 0) + amount;
+    this.pending_investment_ids.push(investmentId);
+    return this.save();
+};
+
+userSchema.methods.removePendingInvestment = async function(investmentId, amount) {
+    this.pending_investment_amount = Math.max(0, (this.pending_investment_amount || 0) - amount);
+    this.pending_investment_ids = this.pending_investment_ids.filter(id => id.toString() !== investmentId.toString());
+    return this.save();
 };
 
 userSchema.methods.suspendAccount = function(reason, adminId, durationDays = null) {
@@ -714,7 +742,7 @@ const investmentPlanSchema = new mongoose.Schema({
     max_amount: { type: Number, min: config.minInvestment },
     daily_interest: { type: Number, required: true, min: 0.1, max: 100 },
     total_interest: { type: Number, required: true, min: 1, max: 1000 },
-    duration: { type: Number, required: true, min: 1 }, // UPDATED DURATIONS
+    duration: { type: Number, required: true, min: 1 },
     risk_level: { type: String, enum: ['low', 'medium', 'high'], required: true },
     raw_material: { type: String, required: true },
     category: { type: String, enum: ['agriculture', 'mining', 'energy', 'metals', 'crypto', 'real_estate', 'precious_stones', 'livestock', 'timber', 'aquaculture'], default: 'agriculture' },
@@ -745,7 +773,7 @@ const investmentSchema = new mongoose.Schema({
     amount: { type: Number, required: true, min: config.minInvestment },
     status: { type: String, enum: ['pending', 'active', 'completed', 'cancelled', 'failed', 'rejected'], default: 'pending' },
     start_date: { type: Date, default: Date.now },
-    end_date: { type: Date },
+    end_date: { type: Date, required: true },
     approved_at: Date,
     rejected_at: Date,
     rejected_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -767,6 +795,11 @@ const investmentSchema = new mongoose.Schema({
     approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     transaction_id: String,
     remarks: String,
+    
+    // Track if balance was deducted
+    balance_deducted: { type: Boolean, default: false },
+    deduction_date: Date,
+    
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
 }, {
     timestamps: true
@@ -775,6 +808,7 @@ const investmentSchema = new mongoose.Schema({
 investmentSchema.index({ user: 1, status: 1 });
 investmentSchema.index({ end_date: 1 });
 investmentSchema.index({ next_interest_date: 1 });
+investmentSchema.index({ balance_deducted: 1 });
 const Investment = mongoose.model('Investment', investmentSchema);
 
 // Deposit Model - ENHANCED with rejection fields
@@ -870,7 +904,7 @@ const Withdrawal = mongoose.model('Withdrawal', withdrawalSchema);
 // Transaction Model
 const transactionSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    type: { type: String, enum: ['deposit', 'withdrawal', 'investment', 'daily_interest', 'referral_bonus', 'bonus', 'fee', 'refund', 'transfer'], required: true },
+    type: { type: String, enum: ['deposit', 'withdrawal', 'investment', 'daily_interest', 'referral_bonus', 'bonus', 'fee', 'refund', 'transfer', 'pending_investment'], required: true }, // Added pending_investment
     amount: { type: Number, required: true },
     description: { type: String, required: true },
     reference: { type: String, unique: true, sparse: true },
@@ -948,7 +982,7 @@ const supportTicketSchema = new mongoose.Schema({
 supportTicketSchema.index({ user: 1, status: 1 });
 const SupportTicket = mongoose.model('SupportTicket', supportTicketSchema);
 
-// Referral Model - ADVANCED: Commission only on first investment - UPDATED TO 20%
+// Referral Model - ADVANCED: Commission 20% on first investment
 const referralSchema = new mongoose.Schema({
     referrer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     referred_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
@@ -1171,7 +1205,9 @@ const createTransaction = async (userId, type, amount, description, status = 'co
                 total_earnings: user.total_earnings || 0,
                 referral_earnings: user.referral_earnings || 0,
                 withdrawable_earnings: user.withdrawable_earnings || 0,
-                total_withdrawn: user.total_withdrawn || 0
+                total_withdrawn: user.total_withdrawn || 0,
+                pending_investment_amount: user.pending_investment_amount || 0,
+                available_balance: user.available_balance || 0
             };
             
             console.log(`📊 [TRANSACTION] Before state:`, beforeState);
@@ -1198,23 +1234,19 @@ const createTransaction = async (userId, type, amount, description, status = 'co
                         break;
                         
                     case 'investment':
-                        // Amount is negative for investment - ONLY DEDUCT IF BALANCE_DEDUCTED_ON_APPROVAL_ONLY IS FALSE
-                        if (!config.balanceDeductedOnApprovalOnly) {
-                            const investmentAmount = Math.abs(amount);
-                            user.balance = Math.max(0, beforeState.balance - investmentAmount);
-                            user.total_investments = (user.total_investments || 0) + investmentAmount;
-                            user.last_investment_date = new Date();
-                            
-                            // Track first investment
-                            if (!user.first_investment_amount || user.first_investment_amount === 0) {
-                                user.first_investment_amount = investmentAmount;
-                                user.first_investment_date = new Date();
-                            }
-                            
-                            console.log(`📈 Deducted ${investmentAmount} from balance for investment`);
-                        } else {
-                            console.log(`📈 Investment created - balance not deducted (will deduct on approval)`);
+                        // Amount is negative for investment
+                        const investmentAmount = Math.abs(amount);
+                        user.balance = Math.max(0, beforeState.balance - investmentAmount);
+                        user.total_investments = (user.total_investments || 0) + investmentAmount;
+                        user.last_investment_date = new Date();
+                        
+                        // Track first investment
+                        if (!user.first_investment_amount || user.first_investment_amount === 0) {
+                            user.first_investment_amount = investmentAmount;
+                            user.first_investment_date = new Date();
                         }
+                        
+                        console.log(`📈 Deducted ${investmentAmount} from balance for investment`);
                         break;
                         
                     case 'deposit':
@@ -1256,6 +1288,12 @@ const createTransaction = async (userId, type, amount, description, status = 'co
                             console.log(`↩️ Refunded ${amount} to balance`);
                         }
                         break;
+                        
+                    case 'pending_investment':
+                        // Track pending investment amount (no balance deduction)
+                        user.pending_investment_amount = beforeState.pending_investment_amount + Math.abs(amount);
+                        console.log(`⏳ Added ${Math.abs(amount)} to pending_investment_amount`);
+                        break;
                 }
             }
             
@@ -1269,7 +1307,9 @@ const createTransaction = async (userId, type, amount, description, status = 'co
                 total_earnings: user.total_earnings,
                 referral_earnings: user.referral_earnings,
                 withdrawable_earnings: user.withdrawable_earnings,
-                total_withdrawn: user.total_withdrawn
+                total_withdrawn: user.total_withdrawn,
+                pending_investment_amount: user.pending_investment_amount,
+                available_balance: user.available_balance
             };
             
             const transaction = new Transaction({
@@ -1299,7 +1339,8 @@ const createTransaction = async (userId, type, amount, description, status = 'co
                             balance: afterState.balance - beforeState.balance,
                             total_earnings: afterState.total_earnings - beforeState.total_earnings,
                             referral_earnings: afterState.referral_earnings - beforeState.referral_earnings,
-                            withdrawable_earnings: afterState.withdrawable_earnings - beforeState.withdrawable_earnings
+                            withdrawable_earnings: afterState.withdrawable_earnings - beforeState.withdrawable_earnings,
+                            pending_investment_amount: afterState.pending_investment_amount - beforeState.pending_investment_amount
                         }
                     }
                 }
@@ -1315,6 +1356,8 @@ const createTransaction = async (userId, type, amount, description, status = 'co
                 referral_earnings: afterState.referral_earnings,
                 withdrawable_earnings: afterState.withdrawable_earnings,
                 total_withdrawn: afterState.total_withdrawn,
+                pending_investment_amount: afterState.pending_investment_amount,
+                available_balance: afterState.available_balance,
                 timestamp: new Date().toISOString()
             });
             
@@ -1508,7 +1551,7 @@ const awardReferralCommission = async (referredUserId, investmentAmount, investm
             {
                 referred_user_id: referredUserId,
                 investment_id: investmentId,
-                commission_percentage: config.referralCommissionPercent, // UPDATED: 20%
+                commission_percentage: config.referralCommissionPercent,
                 first_investment_amount: investmentAmount
             }
         );
@@ -1540,13 +1583,14 @@ const awardReferralCommission = async (referredUserId, investmentAmount, investm
             '/referrals'
         );
         
-        console.log(`✅ Referral commission awarded: ₦${commission.toLocaleString()} (${config.referralCommissionPercent}%) to user ${referredUser.referred_by}`); // UPDATED
+        console.log(`✅ Referral commission awarded: ₦${commission.toLocaleString()} (${config.referralCommissionPercent}%) to user ${referredUser.referred_by}`);
         
         return {
             success: true,
             commission,
             referrerId: referredUser.referred_by,
-            referredUserId: referredUserId
+            referredUserId: referredUserId,
+            commission_percentage: config.referralCommissionPercent
         };
     } catch (error) {
         console.error('❌ Error awarding referral commission:', error);
@@ -1727,9 +1771,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Invest in premium cocoa beans with stable returns.',
             min_amount: 3500,
             max_amount: 50000,
-            daily_interest: 15, // UPDATED: 10 → 15
-            total_interest: 300, // 15% daily × 20 days = 300%
-            duration: 20, // UPDATED: 30 → 20 (First three: 20 days)
+            daily_interest: 15,
+            total_interest: 300,
+            duration: 20,
             risk_level: 'low',
             raw_material: 'Cocoa',
             category: 'agriculture',
@@ -1744,9 +1788,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Precious metal investment with high liquidity.',
             min_amount: 50000,
             max_amount: 500000,
-            daily_interest: 15, // UPDATED: 15 → 20
-            total_interest: 300, // 20% daily × 20 days = 400%
-            duration: 20, // UPDATED: 30 → 20 (First three: 20 days)
+            daily_interest: 20,
+            total_interest: 400,
+            duration: 20,
             risk_level: 'medium',
             raw_material: 'Gold',
             category: 'metals',
@@ -1761,9 +1805,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Energy sector investment with premium returns.',
             min_amount: 100000,
             max_amount: 1000000,
-            daily_interest: 15, // UPDATED: 20 → 25
-            total_interest: 300, // 25% daily × 20 days = 500%
-            duration: 20, // UPDATED: 30 → 20 (First three: 20 days)
+            daily_interest: 25,
+            total_interest: 500,
+            duration: 20,
             risk_level: 'high',
             raw_material: 'Crude Oil',
             category: 'energy',
@@ -1773,15 +1817,14 @@ const createDefaultInvestmentPlans = async () => {
             icon: '🛢️',
             display_order: 3
         },
-        // NEW PLANS - UPDATED INTEREST RATES (+5%), UPDATED DURATIONS
         {
             name: 'Coffee Beans',
             description: 'Premium Arabica coffee beans from Ethiopian highlands.',
             min_amount: 5500,
             max_amount: 25000,
-            daily_interest: 19, // UPDATED: 14 → 19
-            total_interest: 285, // 19% daily × 15 days = 285%
-            duration: 15, // UPDATED: 30 → 15 (Next three: 15 days)
+            daily_interest: 19,
+            total_interest: 285,
+            duration: 15,
             risk_level: 'low',
             raw_material: 'Coffee',
             category: 'agriculture',
@@ -1796,9 +1839,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Industrial silver with growing demand in technology sector.',
             min_amount: 15000,
             max_amount: 150000,
-            daily_interest: 15, // UPDATED: 12 → 17
-            total_interest: 300, // 17% daily × 15 days = 255%
-            duration: 15, // UPDATED: 30 → 15 (Next three: 15 days)
+            daily_interest: 17,
+            total_interest: 255,
+            duration: 15,
             risk_level: 'medium',
             raw_material: 'Silver',
             category: 'metals',
@@ -1813,9 +1856,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Premium Teak wood with high value in construction and furniture.',
             min_amount: 20000,
             max_amount: 200000,
-            daily_interest: 19, // UPDATED: 14 → 19
-            total_interest: 285, // 19% daily × 15 days = 285%
-            duration: 15, // UPDATED: 30 → 15 (Next three: 15 days)
+            daily_interest: 19,
+            total_interest: 285,
+            duration: 15,
             risk_level: 'medium',
             raw_material: 'Teak Wood',
             category: 'timber',
@@ -1830,9 +1873,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Clean energy source with increasing global demand.',
             min_amount: 75000,
             max_amount: 750000,
-            daily_interest: 23, // UPDATED: 18 → 23
-            total_interest: 207, // 23% daily × 9 days = 207%
-            duration: 9, // UPDATED: 30 → 9 (Rest: 9 days)
+            daily_interest: 23,
+            total_interest: 207,
+            duration: 9,
             risk_level: 'high',
             raw_material: 'Natural Gas',
             category: 'energy',
@@ -1847,9 +1890,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Premium salmon farming with sustainable practices.',
             min_amount: 30000,
             max_amount: 300000,
-            daily_interest: 21, // UPDATED: 16 → 21
-            total_interest: 189, // 21% daily × 9 days = 189%
-            duration: 9, // UPDATED: 30 → 9 (Rest: 9 days)
+            daily_interest: 21,
+            total_interest: 189,
+            duration: 9,
             risk_level: 'medium',
             raw_material: 'Salmon',
             category: 'aquaculture',
@@ -1965,7 +2008,7 @@ app.get('/health', async (req, res) => {
         success: true,
         status: 'OK',
         timestamp: new Date().toISOString(),
-        version: '60.0.0',
+        version: '50.4.0',
         environment: config.nodeEnv,
         database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         uptime: process.uptime(),
@@ -1990,8 +2033,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
     res.json({
         success: true,
-        message: '🚀 Raw Wealthy Backend API v60.0 - Advanced Production Ready',
-        version: '60.0.0',
+        message: '🚀 Raw Wealthy Backend API v50.4 - Advanced Production Ready',
+        version: '50.4.0',
         timestamp: new Date().toISOString(),
         status: 'Operational',
         environment: config.nodeEnv,
@@ -2039,6 +2082,7 @@ app.get('/api/debug/earnings-status/:userId', auth, async (req, res) => {
         let calculatedTotalEarnings = 0;
         let calculatedReferralEarnings = 0;
         let calculatedWithdrawn = 0;
+        let calculatedPendingInvestments = 0;
         
         transactions.forEach(t => {
             if (t.status === 'completed') {
@@ -2049,6 +2093,8 @@ app.get('/api/debug/earnings-status/:userId', auth, async (req, res) => {
                 } else if (t.type === 'withdrawal' && t.amount < 0) {
                     calculatedWithdrawn += Math.abs(t.amount);
                 }
+            } else if (t.status === 'pending' && t.type === 'pending_investment') {
+                calculatedPendingInvestments += Math.abs(t.amount);
             }
         });
         
@@ -2065,18 +2111,22 @@ app.get('/api/debug/earnings-status/:userId', auth, async (req, res) => {
                     total_earnings: user.total_earnings,
                     referral_earnings: user.referral_earnings,
                     withdrawable_earnings: user.withdrawable_earnings,
-                    total_withdrawn: user.total_withdrawn
+                    total_withdrawn: user.total_withdrawn,
+                    pending_investment_amount: user.pending_investment_amount,
+                    available_balance: user.available_balance
                 },
                 calculated: {
                     total_earnings: calculatedTotalEarnings,
                     referral_earnings: calculatedReferralEarnings,
                     total_withdrawn: calculatedWithdrawn,
-                    withdrawable_earnings: calculatedWithdrawable
+                    withdrawable_earnings: calculatedWithdrawable,
+                    pending_investments: calculatedPendingInvestments
                 },
                 discrepancies: {
                     total_earnings: Math.abs(user.total_earnings - calculatedTotalEarnings),
                     referral_earnings: Math.abs(user.referral_earnings - calculatedReferralEarnings),
-                    withdrawable_earnings: Math.abs(user.withdrawable_earnings - calculatedWithdrawable)
+                    withdrawable_earnings: Math.abs(user.withdrawable_earnings - calculatedWithdrawable),
+                    pending_investments: Math.abs(user.pending_investment_amount - calculatedPendingInvestments)
                 }
             },
             transactions: {
@@ -2084,6 +2134,7 @@ app.get('/api/debug/earnings-status/:userId', auth, async (req, res) => {
                 daily_interest: transactions.filter(t => t.type === 'daily_interest').length,
                 referral_bonus: transactions.filter(t => t.type === 'referral_bonus').length,
                 withdrawal: transactions.filter(t => t.type === 'withdrawal').length,
+                pending_investment: transactions.filter(t => t.type === 'pending_investment').length,
                 recent: transactions.slice(0, 5).map(t => ({
                     type: t.type,
                     amount: t.amount,
@@ -2094,7 +2145,8 @@ app.get('/api/debug/earnings-status/:userId', auth, async (req, res) => {
             investments: {
                 count: investments.length,
                 active: investments.filter(i => i.status === 'active').length,
-                total_invested: investments.reduce((sum, i) => sum + i.amount, 0),
+                pending: investments.filter(i => i.status === 'pending').length,
+                total_invested: investments.filter(i => i.status === 'active').reduce((sum, i) => sum + i.amount, 0),
                 total_earned: investments.reduce((sum, i) => sum + (i.earned_so_far || 0), 0),
                 list: investments.map(i => ({
                     plan: i.plan?.name,
@@ -2102,7 +2154,8 @@ app.get('/api/debug/earnings-status/:userId', auth, async (req, res) => {
                     earned_so_far: i.earned_so_far,
                     status: i.status,
                     next_interest_date: i.next_interest_date,
-                    interest_added_count: i.interest_added_count
+                    interest_added_count: i.interest_added_count,
+                    balance_deducted: i.balance_deducted
                 }))
             }
         });
@@ -2114,7 +2167,7 @@ app.get('/api/debug/earnings-status/:userId', auth, async (req, res) => {
 
 app.post('/api/debug/fix-user-earnings/:userId', adminAuth, async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = req.params.id;
         
         const user = await User.findById(userId);
         if (!user) {
@@ -2230,7 +2283,8 @@ app.post('/api/auth/register', [
                 referrer: referredBy._id,
                 referred_user: user._id,
                 referral_code: referral_code.toUpperCase(),
-                status: 'pending'
+                status: 'pending',
+                commission_percentage: config.referralCommissionPercent // UPDATED: 20%
             });
             
             await referral.save();
@@ -2238,7 +2292,7 @@ app.post('/api/auth/register', [
             await createNotification(
                 referredBy._id,
                 'New Referral!',
-                `${user.full_name} has signed up using your referral code!`,
+                `${user.full_name} has signed up using your referral code! You will earn ${config.referralCommissionPercent}% commission on their first investment.`, // UPDATED
                 'referral',
                 '/referrals'
             );
@@ -2273,6 +2327,7 @@ app.post('/api/auth/register', [
                     <li>Email: ${user.email}</li>
                     <li>Balance: ₦${user.balance.toLocaleString()}</li>
                     <li>Referral Code: ${user.referral_code}</li>
+                    <li>Referral Commission: ${config.referralCommissionPercent}% on first investment</li> <!-- UPDATED -->
                 </ul>
                 <p><a href="${config.clientURL}/dashboard">Go to Dashboard</a></p>`
             );
@@ -2398,6 +2453,8 @@ app.get('/api/profile', auth, async (req, res) => {
                 withdrawable_earnings: userData.withdrawable_earnings || 0,
                 available_for_withdrawal: userData.available_for_withdrawal || 0,
                 daily_interest: dailyInterest,
+                pending_investment_amount: userData.pending_investment_amount || 0,
+                available_balance: userData.available_balance || 0,
                 
                 total_investments: investments,
                 active_investments: activeInvestments.length,
@@ -2628,7 +2685,7 @@ app.get('/api/plans', async (req, res) => {
     }
 });
 
-// ==================== INVESTMENT ENDPOINTS - ENHANCED: ALL INVESTMENTS GO TO ADMIN DASHBOARD ====================
+// ==================== INVESTMENT ENDPOINTS - UPDATED: ALL INVESTMENTS REQUIRE ADMIN APPROVAL ====================
 app.get('/api/investments', auth, async (req, res) => {
     try {
         const userId = req.user._id;
@@ -2650,7 +2707,9 @@ app.get('/api/investments', auth, async (req, res) => {
         ]);
         
         const activeInvestments = investments.filter(inv => inv.status === 'active');
+        const pendingInvestments = investments.filter(inv => inv.status === 'pending');
         const totalActiveValue = activeInvestments.reduce((sum, inv) => sum + inv.amount, 0);
+        const totalPendingValue = pendingInvestments.reduce((sum, inv) => sum + inv.amount, 0);
         const totalEarnings = investments.reduce((sum, inv) => sum + (inv.earned_so_far || 0), 0);
         
         const pagination = {
@@ -2664,8 +2723,10 @@ app.get('/api/investments', auth, async (req, res) => {
             investments,
             stats: {
                 total_active_value: totalActiveValue,
+                total_pending_value: totalPendingValue,
                 total_earnings: totalEarnings,
                 active_count: activeInvestments.length,
+                pending_count: pendingInvestments.length,
                 total_count: total
             },
             pagination
@@ -2675,7 +2736,7 @@ app.get('/api/investments', auth, async (req, res) => {
     }
 });
 
-// ==================== ENHANCED INVESTMENT CREATION - ALL INVESTMENTS SUBMITTED TO ADMIN ====================
+// ==================== ENHANCED INVESTMENT CREATION - ALL INVESTMENTS REQUIRE ADMIN APPROVAL ====================
 app.post('/api/investments', auth, upload.single('payment_proof'), [
     body('plan_id').notEmpty(),
     body('amount').isFloat({ min: config.minInvestment }),
@@ -2712,16 +2773,11 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
                 `Maximum investment for ${plan.name} is ₦${plan.max_amount.toLocaleString()}`));
         }
         
-        // Check if user has enough balance - but don't deduct yet
-        if (config.balanceDeductedOnApprovalOnly) {
-            if (investmentAmount > freshUser.balance) {
-                return res.status(400).json(formatResponse(false, 'Insufficient balance for this investment'));
-            }
-            console.log(`✅ Balance check passed: ₦${freshUser.balance} available, ₦${investmentAmount} required`);
-        } else {
-            if (investmentAmount > freshUser.balance) {
-                return res.status(400).json(formatResponse(false, 'Insufficient balance for this investment'));
-            }
+        // Check available balance (balance minus pending investments)
+        const availableBalance = freshUser.available_balance;
+        if (investmentAmount > availableBalance) {
+            return res.status(400).json(formatResponse(false, 
+                `Insufficient available balance. Available: ₦${availableBalance.toLocaleString()}, Required: ₦${investmentAmount.toLocaleString()}`));
         }
         
         let proofUrl = null;
@@ -2736,67 +2792,53 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
         
         const expectedEarnings = (investmentAmount * plan.total_interest) / 100;
         const dailyEarnings = (investmentAmount * plan.daily_interest) / 100;
-        // Note: end_date will be set when admin approves
+        const endDate = new Date(Date.now() + plan.duration * 24 * 60 * 60 * 1000);
         
-        // NEW: All investments go to admin dashboard
+        // UPDATED: ALL INVESTMENTS ARE PENDING REGARDLESS OF IMAGE UPLOAD
         const investment = new Investment({
             user: userId,
             plan: plan_id,
             amount: investmentAmount,
-            status: 'pending', // Always pending - goes to admin dashboard
+            status: 'pending', // ALWAYS PENDING - REQUIRES ADMIN APPROVAL
             start_date: new Date(),
-            // end_date will be set on approval
+            end_date: endDate,
             expected_earnings: expectedEarnings,
             daily_earnings: dailyEarnings,
-            // next_interest_date will be set on approval
-            total_interest_days: plan.duration,
             auto_renew,
             payment_proof_url: proofUrl,
-            payment_verified: false // Always false until admin verifies
+            payment_verified: false, // ALWAYS FALSE - REQUIRES ADMIN VERIFICATION
+            balance_deducted: false // NEW: Track if balance was deducted
         });
         
         await investment.save();
         
-        // NEW: Balance is NOT deducted here - only on admin approval
-        if (!config.balanceDeductedOnApprovalOnly) {
-            await createTransaction(
-                userId,
-                'investment',
-                -investmentAmount,
-                `Investment in ${plan.name} plan`,
-                'completed',
-                {
-                    investment_id: investment._id,
-                    plan_name: plan.name,
-                    plan_duration: plan.duration,
-                    daily_interest: plan.daily_interest
-                }
-            );
-        } else {
-            // Create pending transaction instead
-            await createTransaction(
-                userId,
-                'investment',
-                0, // Zero amount for pending investment
-                `Pending investment in ${plan.name} plan - Awaiting admin approval`,
-                'pending',
-                {
-                    investment_id: investment._id,
-                    plan_name: plan.name,
-                    plan_duration: plan.duration,
-                    daily_interest: plan.daily_interest,
-                    pending_approval: true,
-                    amount_reserved: investmentAmount
-                }
-            );
-        }
+        // UPDATED: Track pending investment amount WITHOUT deducting balance
+        await freshUser.addPendingInvestment(investment._id, investmentAmount);
         
-        await InvestmentPlan.findByIdAndUpdate(plan_id, {
-            $inc: {
-                investment_count: 1,
-                total_invested: investmentAmount
+        // Create pending transaction record (no balance deduction)
+        await createTransaction(
+            userId,
+            'pending_investment',
+            -investmentAmount,
+            `Pending investment in ${plan.name} plan - Awaiting admin approval`,
+            'pending',
+            {
+                investment_id: investment._id,
+                plan_name: plan.name,
+                plan_duration: plan.duration,
+                daily_interest: plan.daily_interest,
+                requires_admin_approval: true,
+                balance_not_deducted: true
             }
-        });
+        );
+        
+        await createNotification(
+            userId,
+            'Investment Submitted for Approval',
+            `Your investment of ₦${investmentAmount.toLocaleString()} in ${plan.name} has been submitted and is pending admin approval. Your balance will be deducted only after approval.`,
+            'investment',
+            '/investments'
+        );
         
         // Notify admins about new pending investment
         emitToInvestmentAdmins('new-pending-investment', {
@@ -2809,33 +2851,29 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
             timestamp: new Date().toISOString()
         });
         
-        // Also notify in general admin room
+        // Also notify regular admin room
         emitToAdmins('new-investment', {
             investment_id: investment._id,
             user_id: userId,
             amount: investmentAmount,
             plan_name: plan.name,
-            status: 'pending',
             requires_approval: true
         });
         
-        await createNotification(
-            userId,
-            'Investment Submitted',
-            `Your investment of ₦${investmentAmount.toLocaleString()} in ${plan.name} has been submitted and is pending admin approval.`,
-            'investment',
-            '/investments'
-        );
-        
-        res.status(201).json(formatResponse(true, 'Investment submitted successfully! It is now pending admin approval.', {
+        res.status(201).json(formatResponse(true, 'Investment submitted for admin approval!', {
             investment: {
                 ...investment.toObject(),
                 plan_name: plan.name,
                 expected_daily_earnings: dailyEarnings,
                 expected_total_earnings: expectedEarnings,
-                status: 'pending',
+                end_date: endDate,
                 requires_admin_approval: true,
-                balance_deducted: false // NEW: Indicate balance not deducted yet
+                balance_not_deducted: true
+            },
+            user_balance: {
+                current_balance: freshUser.balance,
+                pending_investments: freshUser.pending_investment_amount,
+                available_balance: freshUser.available_balance
             }
         }));
     } catch (error) {
@@ -3026,7 +3064,7 @@ app.post('/api/withdrawals', auth, [
             return res.status(404).json(formatResponse(false, 'User not found'));
         }
         
-        // Check minimum withdrawal (UPDATED: 4000)
+        // Check minimum withdrawal
         if (withdrawalAmount < config.minWithdrawal) {
             return res.status(400).json(formatResponse(false,
                 `Minimum withdrawal is ₦${config.minWithdrawal.toLocaleString()}`));
@@ -3087,7 +3125,7 @@ app.post('/api/withdrawals', auth, [
         }
         
         // ADVANCED: ALL WITHDRAWALS REQUIRE ADMIN APPROVAL
-        const requiresAdminApproval = true; // Force admin approval for all withdrawals
+        const requiresAdminApproval = true;
         
         // Create withdrawal
         const withdrawal = new Withdrawal({
@@ -3098,10 +3136,10 @@ app.post('/api/withdrawals', auth, [
             from_referral: fromReferral,
             platform_fee: platformFee,
             net_amount: netAmount,
-            status: 'pending', // Always pending for admin approval
+            status: 'pending',
             reference: generateReference('WDL'),
             requires_admin_approval: requiresAdminApproval,
-            auto_approved: false, // Never auto-approved
+            auto_approved: false,
             admin_review_status: 'pending_review',
             
             // Add payment details
@@ -3503,7 +3541,7 @@ app.get('/api/referrals/stats', auth, async (req, res) => {
                 first_investment_commission: totalFirstInvestmentCommission,
                 referral_code: user.referral_code,
                 referral_link: `${config.clientURL}/register?ref=${user.referral_code}`,
-                commission_rate: `${config.referralCommissionPercent}% (First investment only)` // UPDATED: 20%
+                commission_rate: `${config.referralCommissionPercent}% (First investment only)` // UPDATED
             },
             referrals: referrals.slice(0, 10).map(ref => ({
                 ...ref,
@@ -3771,7 +3809,8 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
                 total_withdrawn: { $sum: '$total_withdrawn' },
                 total_deposits: { $sum: '$total_deposits' },
                 total_withdrawals: { $sum: '$total_withdrawals' },
-                total_investments: { $sum: '$total_investments' }
+                total_investments: { $sum: '$total_investments' },
+                total_pending_investments: { $sum: '$pending_investment_amount' }
             } }
         ]);
         
@@ -3782,7 +3821,8 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
             total_withdrawn: 0,
             total_deposits: 0,
             total_withdrawals: 0,
-            total_investments: 0
+            total_investments: 0,
+            total_pending_investments: 0
         };
         
         const totalPortfolio = (financialSummary.total_balance || 0) +
@@ -3808,7 +3848,8 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
                 total_deposits: totalDeposits,
                 total_withdrawals: totalWithdrawals,
                 total_earnings: totalEarnings,
-                total_portfolio_value: totalPortfolio
+                total_portfolio_value: totalPortfolio,
+                total_pending_investments: financialSummary.total_pending_investments
             },
             user_financials: {
                 total_user_balance: financialSummary.total_balance,
@@ -3817,7 +3858,8 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
                 total_user_withdrawn: financialSummary.total_withdrawn,
                 total_user_deposits: financialSummary.total_deposits,
                 total_user_withdrawals: financialSummary.total_withdrawals,
-                total_user_investments: financialSummary.total_investments
+                total_user_investments: financialSummary.total_investments,
+                total_user_pending_investments: financialSummary.total_pending_investments
             },
             pending_actions: {
                 pending_investments: pendingInvestments,
@@ -3897,6 +3939,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
             ...user,
             portfolio_value: (user.balance || 0),
             available_for_withdrawal: user.withdrawable_earnings || 0,
+            available_balance: user.available_balance || 0,
             financial_summary: {
                 balance: user.balance || 0,
                 total_earnings: user.total_earnings || 0,
@@ -3904,7 +3947,9 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
                 total_withdrawn: user.total_withdrawn || 0,
                 total_deposits: user.total_deposits || 0,
                 total_withdrawals: user.total_withdrawals || 0,
-                total_investments: user.total_investments || 0
+                total_investments: user.total_investments || 0,
+                pending_investment_amount: user.pending_investment_amount || 0,
+                available_balance: user.available_balance || 0
             }
         }));
         
@@ -3928,7 +3973,9 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
                 total_earnings: enhancedUsers.reduce((sum, u) => sum + (u.total_earnings || 0), 0),
                 total_referral_earnings: enhancedUsers.reduce((sum, u) => sum + (u.referral_earnings || 0), 0),
                 total_withdrawn: enhancedUsers.reduce((sum, u) => sum + (u.total_withdrawn || 0), 0),
-                total_withdrawable: enhancedUsers.reduce((sum, u) => sum + (u.withdrawable_earnings || 0), 0)
+                total_withdrawable: enhancedUsers.reduce((sum, u) => sum + (u.withdrawable_earnings || 0), 0),
+                total_pending_investments: enhancedUsers.reduce((sum, u) => sum + (u.pending_investment_amount || 0), 0),
+                total_available_balance: enhancedUsers.reduce((sum, u) => sum + (u.available_balance || 0), 0)
             }
         }));
     } catch (error) {
@@ -3985,8 +4032,9 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
             total_deposits: user.total_deposits || 0,
             total_withdrawals: user.total_withdrawals || 0,
             total_investments: user.total_investments || 0,
-            portfolio_value: (user.balance || 0),
-            available_for_withdrawal: user.withdrawable_earnings || 0
+            pending_investment_amount: user.pending_investment_amount || 0,
+            available_balance: user.available_balance || 0,
+            portfolio_value: (user.balance || 0)
         };
         
         const userDetails = {
@@ -4336,7 +4384,7 @@ app.post('/api/admin/users/:id/update-balance', adminAuth, [
 app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
     try {
         const pendingInvestments = await Investment.find({ status: 'pending' })
-            .populate('user', 'full_name email phone balance total_earnings total_withdrawn')
+            .populate('user', 'full_name email phone balance total_earnings total_withdrawn pending_investment_amount available_balance')
             .populate('plan', 'name min_amount daily_interest duration')
             .sort({ createdAt: -1 })
             .lean();
@@ -4345,7 +4393,7 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
             investments: pendingInvestments,
             count: pendingInvestments.length,
             total_amount: pendingInvestments.reduce((sum, inv) => sum + inv.amount, 0),
-            summary: {
+            stats: {
                 with_proof: pendingInvestments.filter(inv => inv.payment_proof_url).length,
                 without_proof: pendingInvestments.filter(inv => !inv.payment_proof_url).length,
                 average_amount: pendingInvestments.length > 0 ? 
@@ -4357,7 +4405,7 @@ app.get('/api/admin/pending-investments', adminAuth, async (req, res) => {
     }
 });
 
-// ==================== ADVANCED INVESTMENT APPROVAL WITH IMMEDIATE DAILY INTEREST ====================
+// ==================== ADVANCED INVESTMENT APPROVAL WITH BALANCE DEDUCTION ONLY ON APPROVAL ====================
 app.post('/api/admin/investments/:id/approve', adminAuth, [
     body('remarks').optional().trim()
 ], async (req, res) => {
@@ -4383,48 +4431,55 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
             return res.status(400).json(formatResponse(false, 'Investment is not pending approval'));
         }
         
-        // Check if user still has enough balance for the investment
-        if (investment.amount > investment.user.balance) {
-            return res.status(400).json(formatResponse(false, 
-                `User does not have enough balance for this investment. Required: ₦${investment.amount.toLocaleString()}, Available: ₦${investment.user.balance.toLocaleString()}`));
+        // Check if user still has enough balance (available balance)
+        const user = await User.findById(investment.user._id);
+        if (investment.amount > (user.available_balance || 0)) {
+            return res.status(400).json(formatResponse(false,
+                `User does not have enough available balance for this investment. Required: ${investment.amount}, Available: ${user.available_balance}`));
         }
         
-        // Calculate dates
-        const now = new Date();
-        const nextInterestDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours from now
-        const endDate = new Date(now.getTime() + investment.plan.duration * 24 * 60 * 60 * 1000); // Duration days from now
+        // Remove from pending investments tracking
+        await user.removePendingInvestment(investment._id, investment.amount);
         
-        // Update investment
+        // UPDATED: DEDUCT BALANCE ONLY ON APPROVAL
+        await createTransaction(
+            investment.user._id,
+            'investment',
+            -investment.amount,
+            `Investment in ${investment.plan.name} plan`,
+            'completed',
+            {
+                investment_id: investment._id,
+                plan_name: investment.plan.name,
+                plan_duration: investment.plan.duration,
+                daily_interest: investment.plan.daily_interest
+            }
+        );
+        
+        // Update investment with balance deducted flag
+        investment.balance_deducted = true;
+        investment.deduction_date = new Date();
+        
+        // Set next interest date to 24 hours from now
+        const nextInterestDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        
         investment.status = 'active';
-        investment.approved_at = now;
+        investment.approved_at = new Date();
         investment.approved_by = adminId;
         investment.payment_verified = true;
         investment.remarks = remarks;
         investment.next_interest_date = nextInterestDate;
-        investment.end_date = endDate;
         investment.total_interest_days = investment.plan.duration;
         
         await investment.save();
         
-        // NEW: Deduct balance from user's account ONLY if config.balanceDeductedOnApprovalOnly is true
-        if (config.balanceDeductedOnApprovalOnly) {
-            await createTransaction(
-                investment.user._id,
-                'investment',
-                -investment.amount,
-                `Investment in ${investment.plan.name} plan`,
-                'completed',
-                {
-                    investment_id: investment._id,
-                    plan_name: investment.plan.name,
-                    plan_duration: investment.plan.duration,
-                    daily_interest: investment.plan.daily_interest,
-                    next_interest_date: nextInterestDate,
-                    approved_by_admin: adminId,
-                    approved_at: now
-                }
-            );
-        }
+        // Update plan statistics
+        await InvestmentPlan.findByIdAndUpdate(investment.plan._id, {
+            $inc: {
+                investment_count: 1,
+                total_invested: investment.amount
+            }
+        });
         
         // Check if this is the user's first investment
         const userInvestmentsCount = await Investment.countDocuments({
@@ -4450,7 +4505,7 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
         await createNotification(
             investment.user._id,
             'Investment Approved',
-            `Your investment of ₦${investment.amount.toLocaleString()} in ${investment.plan.name} has been approved and is now active. First interest of ₦${addInterestResult.dailyEarning?.toLocaleString() || '0'} has been credited.`,
+            `Your investment of ₦${investment.amount.toLocaleString()} in ${investment.plan.name} has been approved and is now active. First interest of ₦${addInterestResult.dailyEarning?.toLocaleString() || '0'} has been credited. Balance has been deducted.`,
             'investment',
             '/investments'
         );
@@ -4467,8 +4522,8 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
                 user_email: investment.user.email,
                 daily_interest_added: addInterestResult.dailyEarning,
                 next_interest_date: investment.next_interest_date,
-                balance_deducted: config.balanceDeductedOnApprovalOnly,
-                end_date: investment.end_date
+                balance_deducted: true,
+                balance_deduction_date: new Date()
             },
             ip_address: req.ip,
             user_agent: req.headers['user-agent']
@@ -4481,7 +4536,7 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
             amount: investment.amount,
             plan_name: investment.plan.name,
             approved_by: adminId,
-            balance_deducted: config.balanceDeductedOnApprovalOnly
+            balance_deducted: true
         });
         
         res.json(formatResponse(true, 'Investment approved successfully', {
@@ -4489,8 +4544,13 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
             interest_added: addInterestResult.success,
             daily_interest: addInterestResult.dailyEarning,
             next_interest_date: investment.next_interest_date,
-            end_date: investment.end_date,
-            balance_deducted: config.balanceDeductedOnApprovalOnly
+            balance_deducted: true,
+            user_balance_updated: true,
+            user_balance: {
+                current_balance: user.balance - investment.amount,
+                pending_investments: user.pending_investment_amount - investment.amount,
+                available_balance: user.available_balance
+            }
         }));
     } catch (error) {
         handleError(res, error, 'Error approving investment');
@@ -4523,7 +4583,18 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
             return res.status(400).json(formatResponse(false, 'Investment is not pending'));
         }
         
-        // Note: No refund needed since balance wasn't deducted initially
+        // Remove from pending investments tracking
+        const user = await User.findById(investment.user._id);
+        await user.removePendingInvestment(investment._id, investment.amount);
+        
+        // Update the pending transaction to cancelled
+        await Transaction.findOneAndUpdate(
+            { related_investment: investmentId, type: 'pending_investment', status: 'pending' },
+            {
+                status: 'cancelled',
+                description: `Investment rejected: ${rejection_reason}`
+            }
+        );
         
         // Update investment status
         investment.status = 'rejected';
@@ -4532,20 +4603,6 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
         investment.rejection_reason = rejection_reason;
         
         await investment.save();
-        
-        // Update pending transaction to cancelled
-        await Transaction.findOneAndUpdate(
-            { 
-                related_investment: investmentId, 
-                type: 'investment',
-                status: 'pending'
-            },
-            {
-                status: 'cancelled',
-                description: `Investment rejected: ${rejection_reason}`,
-                amount: 0
-            }
-        );
         
         // Create admin audit log
         await AdminAudit.create({
@@ -4558,8 +4615,7 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
                 plan_name: investment.plan.name,
                 user_email: investment.user.email,
                 rejection_reason,
-                refund_processed: false, // No refund since balance wasn't deducted
-                balance_was_deducted: !config.balanceDeductedOnApprovalOnly
+                balance_not_deducted: true
             },
             ip_address: req.ip,
             user_agent: req.headers['user-agent']
@@ -4568,7 +4624,7 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
         await createNotification(
             investment.user._id,
             'Investment Rejected',
-            `Your investment of ₦${investment.amount.toLocaleString()} in ${investment.plan.name} has been rejected. Reason: ${rejection_reason}.`,
+            `Your investment of ₦${investment.amount.toLocaleString()} in ${investment.plan.name} has been rejected. Reason: ${rejection_reason}. Your available balance has been updated.`,
             'error',
             '/investments'
         );
@@ -4580,12 +4636,18 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
             amount: investment.amount,
             plan_name: investment.plan.name,
             rejected_by: adminId,
-            rejection_reason
+            rejection_reason,
+            balance_not_deducted: true
         });
         
         res.json(formatResponse(true, 'Investment rejected successfully', {
             investment: investment.toObject(),
-            user_balance_updated: false // No balance change needed
+            user_balance_updated: true,
+            user_balance: {
+                current_balance: user.balance,
+                pending_investments: user.pending_investment_amount - investment.amount,
+                available_balance: user.available_balance + investment.amount
+            }
         }));
     } catch (error) {
         handleError(res, error, 'Error rejecting investment');
@@ -5089,6 +5151,7 @@ app.get('/api/admin/financial-report', adminAuth, async (req, res) => {
                 total_deposits: { $sum: '$total_deposits' },
                 total_withdrawals: { $sum: '$total_withdrawals' },
                 total_investments: { $sum: '$total_investments' },
+                total_pending_investments: { $sum: '$pending_investment_amount' },
                 user_count: { $sum: 1 },
                 active_users: { $sum: { $cond: [{ $eq: ['$is_active', true] }, 1, 0] } },
                 verified_users: { $sum: { $cond: [{ $eq: ['$kyc_verified', true] }, 1, 0] } }
@@ -5183,9 +5246,9 @@ app.get('/api/debug/system-status', async (req, res) => {
                 paymentEnabled: config.paymentEnabled,
                 withdrawalAutoApprove: config.withdrawalAutoApprove,
                 referralCommissionOnFirstInvestment: config.referralCommissionOnFirstInvestment,
-                referralCommissionPercent: config.referralCommissionPercent, // NEW: Show 20%
-                allInvestmentsRequireApproval: config.allInvestmentsRequireApproval, // NEW
-                balanceDeductedOnApprovalOnly: config.balanceDeductedOnApprovalOnly, // NEW
+                referralCommissionPercent: config.referralCommissionPercent, // UPDATED: 20%
+                allInvestmentsRequireAdminApproval: config.allInvestmentsRequireAdminApproval, // NEW
+                deductBalanceOnlyOnApproval: config.deductBalanceOnlyOnApproval, // NEW
                 minWithdrawal: config.minWithdrawal,
                 planDurations: {
                     firstThree: '20 days',
@@ -5276,13 +5339,17 @@ app.post('/api/debug/simulate-earnings/:userId', adminAuth, async (req, res) => 
                     balance: user.balance,
                     total_earnings: user.total_earnings,
                     referral_earnings: user.referral_earnings,
-                    withdrawable_earnings: user.withdrawable_earnings
+                    withdrawable_earnings: user.withdrawable_earnings,
+                    pending_investment_amount: user.pending_investment_amount,
+                    available_balance: user.available_balance
                 },
                 after: {
                     balance: updatedUser.balance,
                     total_earnings: updatedUser.total_earnings,
                     referral_earnings: updatedUser.referral_earnings,
-                    withdrawable_earnings: updatedUser.withdrawable_earnings
+                    withdrawable_earnings: updatedUser.withdrawable_earnings,
+                    pending_investment_amount: updatedUser.pending_investment_amount,
+                    available_balance: updatedUser.available_balance
                 }
             },
             transaction: {
@@ -5340,7 +5407,7 @@ const startServer = async () => {
         
         server.listen(config.port, () => {
             console.log('\n🚀 ============================================');
-            console.log(`✅ Raw Wealthy Backend v60.0 - ADVANCED PRODUCTION`);
+            console.log(`✅ Raw Wealthy Backend v50.4 - ADVANCED PRODUCTION`);
             console.log(`🌐 Environment: ${config.nodeEnv}`);
             console.log(`📍 Port: ${config.port}`);
             console.log(`🔗 Server URL: ${config.serverURL}`);
@@ -5350,12 +5417,12 @@ const startServer = async () => {
             console.log('============================================\n');
             
             console.log('🎯 ADVANCED FEATURES ACTIVATED:');
-            console.log('1. ✅ DAILY INTEREST STARTS IMMEDIATELY AFTER ADMIN APPROVAL');
-            console.log('2. ✅ INTEREST UPDATED EVERY 24 HOURS UNTIL EXPIRY');
-            console.log('3. ✅ INTEREST RATES UPDATED: 3500 PLAN = 15%, ALL OTHERS +5%');
-            console.log('4. ✅ REFERRAL COMMISSION UPDATED TO 20%');
-            console.log('5. ✅ ALL INVESTMENTS SUBMITTED TO ADMIN DASHBOARD');
-            console.log('6. ✅ BALANCE DEDUCTED ONLY AFTER ADMIN APPROVAL');
+            console.log('1. ✅ REFERRAL COMMISSION UPDATED: 20% (PREVIOUSLY 10%)');
+            console.log('2. ✅ ALL INVESTMENTS REQUIRE ADMIN APPROVAL (EVEN WITHOUT IMAGE)');
+            console.log('3. ✅ BALANCE ONLY DEDUCTED WHEN ADMIN APPROVES INVESTMENT');
+            console.log('4. ✅ DAILY INTEREST STARTS IMMEDIATELY AFTER ADMIN APPROVAL');
+            console.log('5. ✅ INTEREST UPDATED EVERY 24 HOURS UNTIL EXPIRY');
+            console.log('6. ✅ INTEREST RATES UPDATED: 3500 PLAN = 15%, ALL OTHERS +5%');
             console.log('7. ✅ UPDATED PLAN DURATIONS: First three 20 days, next three 15 days, rest 9 days');
             console.log('8. ✅ MINIMUM WITHDRAWAL UPDATED: ₦4,000');
             console.log('9. ✅ ADMIN CAN REJECT DEPOSITS AND INVESTMENTS');
@@ -5364,6 +5431,8 @@ const startServer = async () => {
             console.log('12.✅ ALL WITHDRAWALS REQUIRE ADMIN APPROVAL');
             console.log('13.✅ REFERRAL COMMISSIONS: Only on first investment (20%)');
             console.log('14.✅ REAL-TIME ADMIN NOTIFICATIONS FOR ALL ACTIONS');
+            console.log('15.✅ PENDING INVESTMENTS TRACKING WITHOUT BALANCE DEDUCTION');
+            console.log('16.✅ AVAILABLE BALANCE CALCULATION (BALANCE - PENDING INVESTMENTS)');
             console.log('============================================\n');
             
             console.log('💰 UPDATED INTEREST RATES & DURATIONS:');
@@ -5382,21 +5451,23 @@ const startServer = async () => {
             console.log(`📊 Total Investment Plans: 8`);
             console.log(`💰 Price Range: ₦3,500 - ₦1,000,000`);
             console.log(`💰 Minimum Withdrawal: ₦${config.minWithdrawal.toLocaleString()}`);
-            console.log(`💰 Referral Commission: ${config.referralCommissionPercent}%`);
+            console.log(`💰 Referral Commission: ${config.referralCommissionPercent}% (First investment only)`); // UPDATED
             console.log('============================================\n');
             
             console.log('👨‍💼 ENHANCED ADMIN FEATURES:');
-            console.log('1. ✅ USER ACCOUNT SUSPENSION WITH REASON');
-            console.log('2. ✅ USER ACCOUNT REJECTION SYSTEM');
-            console.log('3. ✅ ACCOUNT ACTIVATION/RESTORATION');
-            console.log('4. ✅ BALANCE MANAGEMENT (ADD/SUBTRACT/SET)');
-            console.log('5. ✅ INVESTMENT APPROVAL/REJECTION (Balance deducted on approval only)');
-            console.log('6. ✅ DEPOSIT APPROVAL/REJECTION');
-            console.log('7. ✅ WITHDRAWAL APPROVAL/REJECTION');
-            console.log('8. ✅ ALL INVESTMENTS GO TO ADMIN DASHBOARD');
-            console.log('9. ✅ COMPREHENSIVE FINANCIAL REPORTS');
-            console.log('10.✅ REAL-TIME USER FINANCIAL SUMMARY');
-            console.log('11.✅ AUDIT LOGS FOR ALL ADMIN ACTIONS');
+            console.log('1. ✅ ALL INVESTMENTS REQUIRE ADMIN APPROVAL');
+            console.log('2. ✅ BALANCE DEDUCTED ONLY ON APPROVAL');
+            console.log('3. ✅ PENDING INVESTMENTS TRACKING SYSTEM');
+            console.log('4. ✅ USER ACCOUNT SUSPENSION WITH REASON');
+            console.log('5. ✅ USER ACCOUNT REJECTION SYSTEM');
+            console.log('6. ✅ ACCOUNT ACTIVATION/RESTORATION');
+            console.log('7. ✅ BALANCE MANAGEMENT (ADD/SUBTRACT/SET)');
+            console.log('8. ✅ INVESTMENT APPROVAL/REJECTION WITH REFUND');
+            console.log('9. ✅ DEPOSIT APPROVAL/REJECTION');
+            console.log('10.✅ WITHDRAWAL APPROVAL/REJECTION');
+            console.log('11.✅ COMPREHENSIVE FINANCIAL REPORTS');
+            console.log('12.✅ REAL-TIME USER FINANCIAL SUMMARY');
+            console.log('13.✅ AUDIT LOGS FOR ALL ADMIN ACTIONS');
             console.log('============================================\n');
             
             console.log('🔧 ENHANCED DEBUGGING TOOLS:');
@@ -5408,9 +5479,9 @@ const startServer = async () => {
             console.log('============================================\n');
             
             console.log('✅ ALL ENDPOINTS PRESERVED AND ENHANCED');
-            console.log('✅ REFERRAL COMMISSION UPDATED TO 20%');
-            console.log('✅ ALL INVESTMENTS SUBMITTED TO ADMIN DASHBOARD');
-            console.log('✅ BALANCE DEDUCTED ONLY ON ADMIN APPROVAL');
+            console.log('✅ REFERRAL COMMISSION UPDATED TO 20% SUCCESSFULLY');
+            console.log('✅ ALL INVESTMENTS NOW REQUIRE ADMIN APPROVAL');
+            console.log('✅ BALANCE DEDUCTED ONLY WHEN ADMIN APPROVES');
             console.log('✅ INTEREST SYSTEM UPDATED SUCCESSFULLY');
             console.log('✅ DURATIONS UPDATED: First three 20 days, next three 15 days, rest 9 days');
             console.log('✅ MINIMUM WITHDRAWAL UPDATED TO ₦4,000');
@@ -5446,3 +5517,4 @@ process.on('SIGINT', () => {
 
 // Start the server
 startServer();
+
