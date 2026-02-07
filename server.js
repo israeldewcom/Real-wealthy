@@ -1726,8 +1726,8 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Precious metal investment with high liquidity.',
             min_amount: 50000,
             max_amount: 500000,
-            daily_interest: 20, // UPDATED: 15 → 20
-            total_interest: 400, // 20% daily × 20 days = 400%
+            daily_interest: 15, // UPDATED: 15 → 20
+            total_interest: 300, // 20% daily × 20 days = 400%
             duration: 20, // UPDATED: 30 → 20 (First three: 20 days)
             risk_level: 'medium',
             raw_material: 'Gold',
@@ -1743,8 +1743,8 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Energy sector investment with premium returns.',
             min_amount: 100000,
             max_amount: 1000000,
-            daily_interest: 25, // UPDATED: 20 → 25
-            total_interest: 500, // 25% daily × 20 days = 500%
+            daily_interest: 15, // UPDATED: 20 → 25
+            total_interest: 300, // 25% daily × 20 days = 500%
             duration: 20, // UPDATED: 30 → 20 (First three: 20 days)
             risk_level: 'high',
             raw_material: 'Crude Oil',
@@ -1778,8 +1778,8 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Industrial silver with growing demand in technology sector.',
             min_amount: 15000,
             max_amount: 150000,
-            daily_interest: 17, // UPDATED: 12 → 17
-            total_interest: 255, // 17% daily × 15 days = 255%
+            daily_interest: 15, // UPDATED: 12 → 17
+            total_interest: 300, // 17% daily × 15 days = 255%
             duration: 15, // UPDATED: 30 → 15 (Next three: 15 days)
             risk_level: 'medium',
             raw_material: 'Silver',
