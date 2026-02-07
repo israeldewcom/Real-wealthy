@@ -135,7 +135,7 @@ const config = {
     maxWithdrawalPercent: parseFloat(process.env.MAX_WITHDRAWAL_PERCENT) || 100,
     
     platformFeePercent: parseFloat(process.env.PLATFORM_FEE_PERCENT) || 10,
-    referralCommissionPercent: parseFloat(process.env.REFERRAL_COMMISSION_PERCENT) || 10,
+    referralCommissionPercent: parseFloat(process.env.REFERRAL_COMMISSION_PERCENT) || 20, // UPDATED: 10 → 20
     welcomeBonus: parseInt(process.env.WELCOME_BONUS) || 100,
     
     // ADVANCED FEATURES
@@ -180,6 +180,7 @@ console.log(`- Payment Enabled: ${config.paymentEnabled}`);
 console.log(`- Withdrawal Auto-approve: ${config.withdrawalAutoApprove}`);
 console.log(`- Daily Interest Time: ${config.dailyInterestTime}`);
 console.log(`- Minimum Withdrawal: ₦${config.minWithdrawal.toLocaleString()}`); // UPDATED
+console.log(`- Referral Commission: ${config.referralCommissionPercent}%`); // UPDATED: 20%
 console.log(`- Allowed Origins: ${config.allowedOrigins.length}`);
 
 // ==================== ENHANCED EXPRESS SETUP WITH SOCKET.IO ====================
@@ -934,7 +935,7 @@ const supportTicketSchema = new mongoose.Schema({
 supportTicketSchema.index({ user: 1, status: 1 });
 const SupportTicket = mongoose.model('SupportTicket', supportTicketSchema);
 
-// Referral Model - ADVANCED: Commission only on first investment
+// Referral Model - ADVANCED: Commission 20% on first investment
 const referralSchema = new mongoose.Schema({
     referrer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     referred_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
@@ -942,7 +943,7 @@ const referralSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'active', 'completed', 'expired'], default: 'pending' },
     
     total_commission: { type: Number, default: 0 },
-    commission_percentage: { type: Number, default: config.referralCommissionPercent },
+    commission_percentage: { type: Number, default: config.referralCommissionPercent }, // UPDATED: 20%
     
     investment_amount: Number,
     earnings_paid: { type: Boolean, default: false },
@@ -1383,7 +1384,7 @@ const addDailyInterestForInvestment = async (investment) => {
                 '/investments'
             );
             
-            console.log(`🎉 [INTEREST] Investment ${investment._id} completed successfully`);
+            console.log(`🎉 [INTEREST] Investment ${investment._id} completed successfully');
         }
         
         return {
@@ -1443,7 +1444,7 @@ const calculateDailyInterest = async () => {
     }
 };
 
-// ==================== ADVANCED REFERRAL COMMISSION FUNCTION ====================
+// ==================== ADVANCED REFERRAL COMMISSION FUNCTION - UPDATED TO 20% ====================
 const awardReferralCommission = async (referredUserId, investmentAmount, investmentId) => {
     try {
         console.log(`🎯 Checking referral commission for user ${referredUserId}, investment: ₦${investmentAmount}`);
@@ -1477,7 +1478,7 @@ const awardReferralCommission = async (referredUserId, investmentAmount, investm
             return { success: false, message: 'Commission already paid or referral not found' };
         }
         
-        // Calculate commission (percentage of first investment)
+        // Calculate commission (20% of first investment) - UPDATED TO 20%
         const commission = investmentAmount * (config.referralCommissionPercent / 100);
         
         // Award commission to referrer
@@ -1485,12 +1486,12 @@ const awardReferralCommission = async (referredUserId, investmentAmount, investm
             referredUser.referred_by,
             'referral_bonus',
             commission,
-            `Referral commission from ${referredUser.full_name}'s first investment`,
+            `Referral commission from ${referredUser.full_name}'s first investment (20%)`, // UPDATED: 20%
             'completed',
             {
                 referred_user_id: referredUserId,
                 investment_id: investmentId,
-                commission_percentage: config.referralCommissionPercent,
+                commission_percentage: config.referralCommissionPercent, // UPDATED: 20%
                 first_investment_amount: investmentAmount
             }
         );
@@ -1516,13 +1517,13 @@ const awardReferralCommission = async (referredUserId, investmentAmount, investm
         
         await createNotification(
             referredUser.referred_by,
-            'Referral Commission Earned!',
-            `You earned ₦${commission.toLocaleString()} commission from ${referredUser.full_name}'s first investment.`,
+            '🎉 Referral Commission Earned! (20%)',
+            `You earned ₦${commission.toLocaleString()} commission (20%) from ${referredUser.full_name}'s first investment.`, // UPDATED: 20%
             'referral',
             '/referrals'
         );
         
-        console.log(`✅ Referral commission awarded: ₦${commission.toLocaleString()} to user ${referredUser.referred_by}`);
+        console.log(`✅ Referral commission awarded: ₦${commission.toLocaleString()} (20%) to user ${referredUser.referred_by}`);
         
         return {
             success: true,
@@ -2096,7 +2097,7 @@ app.get('/api/debug/earnings-status/:userId', auth, async (req, res) => {
 
 app.post('/api/debug/fix-user-earnings/:userId', adminAuth, async (req, res) => {
     try {
-        const userId = req.params.userId;
+        const userId = req.params.id;
         
         const user = await User.findById(userId);
         if (!user) {
@@ -2767,7 +2768,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
                 await freshUser.save();
             }
             
-            // Award referral commission for first investment
+            // Award referral commission for first investment (20%)
             if (config.referralCommissionOnFirstInvestment && freshUser.referred_by && userInvestmentsCount === 1) {
                 await awardReferralCommission(userId, investmentAmount, investment._id);
             }
@@ -3446,7 +3447,7 @@ app.get('/api/support/tickets', auth, async (req, res) => {
     }
 });
 
-// ==================== REFERRAL ENDPOINTS ====================
+// ==================== REFERRAL ENDPOINTS - UPDATED TO 20% ====================
 app.get('/api/referrals/stats', auth, async (req, res) => {
     try {
         const userId = req.user._id;
@@ -3462,7 +3463,7 @@ app.get('/api/referrals/stats', auth, async (req, res) => {
         let totalFirstInvestmentCommission = 0;
         referrals.forEach(ref => {
             if (ref.first_investment_commission_paid && ref.first_investment_amount) {
-                totalFirstInvestmentCommission += ref.first_investment_amount * (config.referralCommissionPercent / 100);
+                totalFirstInvestmentCommission += ref.first_investment_amount * (config.referralCommissionPercent / 100); // 20%
             }
         });
         
@@ -3474,12 +3475,12 @@ app.get('/api/referrals/stats', auth, async (req, res) => {
                 first_investment_commission: totalFirstInvestmentCommission,
                 referral_code: user.referral_code,
                 referral_link: `${config.clientURL}/register?ref=${user.referral_code}`,
-                commission_rate: `${config.referralCommissionPercent}% (First investment only)`
+                commission_rate: `${config.referralCommissionPercent}% (First investment only)` // UPDATED: 20%
             },
             referrals: referrals.slice(0, 10).map(ref => ({
                 ...ref,
                 first_investment_commission: ref.first_investment_amount ? 
-                    ref.first_investment_amount * (config.referralCommissionPercent / 100) : 0
+                    ref.first_investment_amount * (config.referralCommissionPercent / 100) : 0 // UPDATED: 20%
             }))
         }));
     } catch (error) {
@@ -4373,7 +4374,7 @@ app.post('/api/admin/investments/:id/approve', adminAuth, [
                 first_investment_date: new Date()
             });
             
-            // Award referral commission for first investment
+            // Award referral commission (20%) for first investment
             if (config.referralCommissionOnFirstInvestment) {
                 await awardReferralCommission(investment.user._id, investment.amount, investment._id);
             }
@@ -5112,6 +5113,7 @@ app.get('/api/debug/system-status', async (req, res) => {
                 paymentEnabled: config.paymentEnabled,
                 withdrawalAutoApprove: config.withdrawalAutoApprove,
                 referralCommissionOnFirstInvestment: config.referralCommissionOnFirstInvestment,
+                referralCommissionPercent: config.referralCommissionPercent, // UPDATED: 20%
                 minWithdrawal: config.minWithdrawal, // UPDATED: 4000
                 planDurations: {
                     firstThree: '20 days',
@@ -5279,14 +5281,15 @@ const startServer = async () => {
             console.log('1. ✅ DAILY INTEREST STARTS IMMEDIATELY AFTER ADMIN APPROVAL');
             console.log('2. ✅ INTEREST UPDATED EVERY 24 HOURS UNTIL EXPIRY');
             console.log('3. ✅ INTEREST RATES UPDATED: 3500 PLAN = 15%, ALL OTHERS +5%');
-            console.log('4. ✅ UPDATED PLAN DURATIONS: First three 20 days, next three 15 days, rest 9 days');
-            console.log('5. ✅ MINIMUM WITHDRAWAL UPDATED: ₦4,000');
-            console.log('6. ✅ ADMIN CAN REJECT DEPOSITS AND INVESTMENTS');
-            console.log('7. ✅ ADMIN CAN SUSPEND/ACTIVATE/REJECT USER ACCOUNTS');
-            console.log('8. ✅ ADVANCED USER ACCOUNT STATUS MANAGEMENT');
-            console.log('9. ✅ ALL WITHDRAWALS REQUIRE ADMIN APPROVAL');
-            console.log('10.✅ REFERRAL COMMISSIONS: Only on first investment');
-            console.log('11.✅ REAL-TIME ADMIN NOTIFICATIONS FOR ALL ACTIONS');
+            console.log('4. ✅ REFERRAL COMMISSION UPDATED: 20% ON FIRST INVESTMENT'); // UPDATED: 20%
+            console.log('5. ✅ UPDATED PLAN DURATIONS: First three 20 days, next three 15 days, rest 9 days');
+            console.log('6. ✅ MINIMUM WITHDRAWAL UPDATED: ₦4,000');
+            console.log('7. ✅ ADMIN CAN REJECT DEPOSITS AND INVESTMENTS');
+            console.log('8. ✅ ADMIN CAN SUSPEND/ACTIVATE/REJECT USER ACCOUNTS');
+            console.log('9. ✅ ADVANCED USER ACCOUNT STATUS MANAGEMENT');
+            console.log('10.✅ ALL WITHDRAWALS REQUIRE ADMIN APPROVAL');
+            console.log('11.✅ REFERRAL COMMISSIONS: 20% on first investment only'); // UPDATED: 20%
+            console.log('12.✅ REAL-TIME ADMIN NOTIFICATIONS FOR ALL ACTIONS');
             console.log('============================================\n');
             
             console.log('💰 UPDATED INTEREST RATES & DURATIONS:');
@@ -5305,6 +5308,7 @@ const startServer = async () => {
             console.log(`📊 Total Investment Plans: 8`);
             console.log(`💰 Price Range: ₦3,500 - ₦1,000,000`);
             console.log(`💰 Minimum Withdrawal: ₦${config.minWithdrawal.toLocaleString()}`);
+            console.log(`💰 Referral Commission: ${config.referralCommissionPercent}% on first investment`); // UPDATED: 20%
             console.log('============================================\n');
             
             console.log('👨‍💼 ENHANCED ADMIN FEATURES:');
@@ -5330,6 +5334,7 @@ const startServer = async () => {
             
             console.log('✅ ALL ENDPOINTS PRESERVED AND ENHANCED');
             console.log('✅ INTEREST SYSTEM UPDATED SUCCESSFULLY');
+            console.log('✅ REFERRAL COMMISSION UPDATED TO 20%'); // UPDATED: 20%
             console.log('✅ DURATIONS UPDATED: First three 20 days, next three 15 days, rest 9 days');
             console.log('✅ MINIMUM WITHDRAWAL UPDATED TO ₦4,000');
             console.log('✅ ADMIN CAN REJECT DEPOSITS AND INVESTMENTS');
