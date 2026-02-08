@@ -70,12 +70,12 @@ if (missingEnvVars.length > 0) {
         process.env.JWT_SECRET = crypto.randomBytes(64).toString('hex');
         console.log('✅ Generated JWT_SECRET automatically');
     }
-    
-    if (!process.env.MONGODB_URI) {
-        process.env.MONGODB_URI = 'mongodb://localhost:27017/rawwealthy';
-        console.log('✅ Set default MONGODB_URI');
-    }
+    // Around line 80, update this:
+if (!process.env.MONGODB_URI) {
+    process.env.MONGODB_URI = 'mongodb+srv://loismotion6_db_user:ugTKBAiJ2eZRGtUc@rawwealthy.tf616kg.mongodb.net/raw_wealthy_prod?retryWrites=true&w=majority&appName=rawwealthy';
+    console.log('✅ Set MONGODB_URI with correct password');
 }
+   
 
 // Set default values
 const PORT = process.env.PORT || 10000;
