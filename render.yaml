@@ -6,7 +6,7 @@ services:
     startCommand: npm start
     envVars:
       - key: MONGODB_URI
-        value: mongodb+srv://loismotion6_db_user:YOUR_ACTUAL_PASSWORD@rawwealthy.tf616kg.mongodb.net/raw_wealthy_prod?retryWrites=true&w=majority&appName=rawwealthy
+        value: mongodb+srv://loismotion6_db_user:ugTKBAiJ2eZRGtUc@rawwealthy.tf616kg.mongodb.net/raw_wealthy_prod?retryWrites=true&w=majority&appName=rawwealthy
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_EMAIL
@@ -16,5 +16,5 @@ services:
       - key: ADMIN_URL
       - value: https://uuuuu-rawwealthy.vercel.app/
         value: production
-      - key: CLIENT_URL
-        value: https://i-rawwealthy.vercel.app/
+      - key: CLIENT_U
+        value: 
