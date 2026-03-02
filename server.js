@@ -1,6 +1,7 @@
-// server.js - RAW WEALTHY BACKEND v51.0 - PRODUCTION READY ENHANCED EDITION
+// server.js - RAW WEALTHY BACKEND v52.0 - PRODUCTION READY INTERNATIONAL EDITION
 // ENHANCED WITH ATOMIC TRANSACTIONS, FIXED REFERRAL LOGIC, PROPER WITHDRAWAL HANDLING
 // SOCKET AUTHENTICATION, CONFIGURABLE BUSINESS RULES, DISK-BASED FILE UPLOADS
+// INTERNATIONAL CURRENCY SUPPORT, EXCHANGE RATES, CURRENCY CONVERSION FEE
 // ALL ORIGINAL ENDPOINTS PRESERVED AND UPGRADED FOR REAL-WORLD PRODUCTION
 
 import express from 'express';
@@ -166,6 +167,29 @@ const config = {
     cronLocks: {
         dailyInterest: false,
         investmentCompletion: false
+    },
+    
+    // ========== INTERNATIONAL CURRENCY CONFIGURATION ==========
+    supportedCurrencies: [
+        'NGN', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY', 'INR', 'BRL', 'ZAR', 'KES', 'GHS'
+    ],
+    baseCurrency: 'NGN',
+    conversionFeePercent: parseFloat(process.env.CONVERSION_FEE_PERCENT) || 2.5, // fee when currency != NGN
+    
+    // Default exchange rates (1 NGN = X foreign currency) - will be overridden by DB
+    defaultExchangeRates: {
+        USD: 0.00067,  // 1 NGN = 0.00067 USD
+        EUR: 0.00062,
+        GBP: 0.00053,
+        CAD: 0.00091,
+        AUD: 0.0010,
+        JPY: 0.10,
+        CNY: 0.0048,
+        INR: 0.056,
+        BRL: 0.0034,
+        ZAR: 0.012,
+        KES: 0.086,
+        GHS: 0.0078
     }
 };
 
@@ -199,6 +223,9 @@ console.log(`- Investments Auto-Approved: ${!config.allInvestmentsRequireAdminAp
 console.log(`- Daily Interest Starts Immediately: ✅ YES`);
 console.log(`- Interest Updates Every 24h: ✅ YES`);
 console.log(`- Allowed Origins: ${config.allowedOrigins.length}`);
+console.log(`- Supported Currencies: ${config.supportedCurrencies.join(', ')}`);
+console.log(`- Base Currency: ${config.baseCurrency}`);
+console.log(`- Conversion Fee: ${config.conversionFeePercent}% (for non-NGN)`);
 
 // ==================== ENHANCED EXPRESS SETUP WITH SOCKET.IO ====================
 const app = express();
@@ -249,6 +276,7 @@ io.on('connection', (socket) => {
                 socket.join('withdrawal-approvals');
                 socket.join('investment-monitor');
                 socket.join('deposit-approvals');
+                socket.join('exchange-requests'); // new room for exchange requests
                 console.log(`👨‍💼 Admin ${adminId} joined admin room`);
             } else {
                 socket.emit('error', 'Unauthorized to join as another admin');
@@ -282,6 +310,10 @@ const emitToDepositAdmins = (event, data) => {
 
 const emitToInvestmentAdmins = (event, data) => {
     io.to('investment-monitor').emit(event, data);
+};
+
+const emitToExchangeAdmins = (event, data) => {
+    io.to('exchange-requests').emit(event, data);
 };
 
 // Security Headers with dynamic CSP
@@ -378,6 +410,7 @@ app.use('/api/auth/reset-password', rateLimiters.passwordReset);
 app.use('/api/investments', rateLimiters.financial);
 app.use('/api/deposits', rateLimiters.financial);
 app.use('/api/withdrawals', rateLimiters.financial);
+app.use('/api/exchange', rateLimiters.financial); // new
 app.use('/api/admin', rateLimiters.admin);
 app.use('/api/', rateLimiters.api);
 
@@ -842,10 +875,17 @@ investmentSchema.index({ next_interest_date: 1 });
 investmentSchema.index({ balance_deducted: 1 });
 const Investment = mongoose.model('Investment', investmentSchema);
 
-// Deposit Model - ENHANCED with rejection fields
+// Deposit Model - ENHANCED with rejection fields and currency support
 const depositSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     amount: { type: Number, required: true, min: config.minDeposit },
+    // International fields
+    currency: { type: String, enum: config.supportedCurrencies, default: 'NGN' },
+    original_amount: { type: Number, required: true }, // amount in the selected currency
+    amount_in_ngn: { type: Number, required: true }, // converted amount after fee
+    conversion_fee: { type: Number, default: 0 },
+    exchange_rate: { type: Number }, // rate used for conversion (1 NGN = X foreign)
+    
     payment_method: { type: String, enum: ['bank_transfer', 'crypto', 'paypal', 'card', 'flutterwave', 'paystack'], required: true },
     status: { type: String, enum: ['pending', 'approved', 'rejected', 'cancelled'], default: 'pending' },
     payment_proof_url: String,
@@ -875,10 +915,17 @@ depositSchema.index({ user: 1, status: 1 });
 depositSchema.index({ reference: 1 }, { unique: true, sparse: true });
 const Deposit = mongoose.model('Deposit', depositSchema);
 
-// Withdrawal Model - ADVANCED: ALL WITHDRAWALS REQUIRE ADMIN APPROVAL
+// Withdrawal Model - ADVANCED: ALL WITHDRAWALS REQUIRE ADMIN APPROVAL, with currency support
 const withdrawalSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     amount: { type: Number, required: true, min: config.minWithdrawal },
+    
+    // International fields
+    currency: { type: String, enum: config.supportedCurrencies, default: 'NGN' },
+    original_amount: { type: Number, required: true }, // amount in the selected currency
+    amount_in_ngn: { type: Number, required: true }, // converted amount after fee
+    conversion_fee: { type: Number, default: 0 },
+    exchange_rate: { type: Number }, // rate used
     
     // Earnings breakdown - for record keeping, not used for deduction from cumulative
     from_earnings: { type: Number, default: 0 },
@@ -935,11 +982,14 @@ withdrawalSchema.index({ user: 1, status: 1 });
 withdrawalSchema.index({ admin_review_status: 1 });
 const Withdrawal = mongoose.model('Withdrawal', withdrawalSchema);
 
-// Transaction Model - ENHANCED
+// Transaction Model - ENHANCED with currency fields
 const transactionSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    type: { type: String, enum: ['deposit', 'withdrawal', 'investment', 'daily_interest', 'referral_bonus', 'bonus', 'fee', 'refund', 'transfer'], required: true },
+    type: { type: String, enum: ['deposit', 'withdrawal', 'investment', 'daily_interest', 'referral_bonus', 'bonus', 'fee', 'refund', 'transfer', 'exchange'], required: true },
     amount: { type: Number, required: true },
+    // International fields
+    currency: { type: String, enum: config.supportedCurrencies, default: 'NGN' },
+    amount_in_ngn: { type: Number }, // for non-NGN transactions, store equivalent NGN value
     description: { type: String, required: true },
     reference: { type: String, unique: true, sparse: true },
     status: { type: String, enum: ['pending', 'completed', 'failed', 'cancelled'], default: 'completed' },
@@ -1069,7 +1119,7 @@ const Notification = mongoose.model('Notification', notificationSchema);
 const adminAuditSchema = new mongoose.Schema({
     admin_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     action: { type: String, required: true },
-    target_type: { type: String, enum: ['user', 'investment', 'deposit', 'withdrawal', 'kyc', 'transaction', 'plan', 'system'] },
+    target_type: { type: String, enum: ['user', 'investment', 'deposit', 'withdrawal', 'kyc', 'transaction', 'plan', 'system', 'exchange_rate'] },
     target_id: mongoose.Schema.Types.ObjectId,
     details: mongoose.Schema.Types.Mixed,
     ip_address: String,
@@ -1101,6 +1151,46 @@ const amlMonitoringSchema = new mongoose.Schema({
 
 amlMonitoringSchema.index({ status: 1, risk_score: -1 });
 const AmlMonitoring = mongoose.model('AmlMonitoring', amlMonitoringSchema);
+
+// ========== NEW INTERNATIONAL CURRENCY MODELS ==========
+
+// Exchange Rate Model - stores current rates for each currency against NGN
+const exchangeRateSchema = new mongoose.Schema({
+    currency: { type: String, enum: config.supportedCurrencies, required: true, unique: true },
+    rate: { type: Number, required: true }, // 1 NGN = X foreign currency
+    updated_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    updated_at: { type: Date, default: Date.now },
+    metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
+}, {
+    timestamps: true
+});
+
+exchangeRateSchema.index({ currency: 1 });
+const ExchangeRate = mongoose.model('ExchangeRate', exchangeRateSchema);
+
+// Currency Exchange Request Model
+const exchangeRequestSchema = new mongoose.Schema({
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    from_currency: { type: String, enum: config.supportedCurrencies, required: true },
+    to_currency: { type: String, enum: config.supportedCurrencies, required: true },
+    from_amount: { type: Number, required: true }, // amount in from_currency
+    to_amount: { type: Number, required: true }, // calculated amount in to_currency after conversion
+    exchange_rate: { type: Number, required: true }, // rate used (1 from_currency = X to_currency)
+    conversion_fee: { type: Number, default: 0 }, // fee applied (if applicable)
+    status: { type: String, enum: ['pending', 'approved', 'rejected', 'completed'], default: 'pending' },
+    approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    approved_at: Date,
+    rejected_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    rejected_at: Date,
+    rejection_reason: String,
+    transaction_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction' },
+    metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
+}, {
+    timestamps: true
+});
+
+exchangeRequestSchema.index({ user: 1, status: 1 });
+const ExchangeRequest = mongoose.model('ExchangeRequest', exchangeRequestSchema);
 
 // ==================== UTILITY FUNCTIONS - ENHANCED ====================
 const formatResponse = (success, message, data = null, pagination = null) => {
@@ -1324,6 +1414,14 @@ const createTransaction = async (userId, type, amount, description, status = 'co
                         console.log(`↩️ Refunded ${amount} to balance`);
                     }
                     break;
+                    
+                case 'exchange':
+                    // For currency exchange, amount is net change in NGN (could be positive or negative)
+                    if (amount !== 0) {
+                        user.balance = Math.max(0, beforeState.balance + amount);
+                        console.log(`💱 Exchange: ${amount} NGN adjustment`);
+                    }
+                    break;
             }
         }
         
@@ -1340,10 +1438,16 @@ const createTransaction = async (userId, type, amount, description, status = 'co
             total_withdrawn: user.total_withdrawn
         };
         
+        // Extract currency info from metadata
+        const currency = metadata.currency || 'NGN';
+        const amountInNgn = metadata.amount_in_ngn || amount; // if already in NGN, use amount
+        
         const transaction = new Transaction({
             user: userId,
             type,
             amount,
+            currency,
+            amount_in_ngn: amountInNgn,
             description,
             status,
             reference: generateReference('TXN'),
@@ -1385,6 +1489,73 @@ const createTransaction = async (userId, type, amount, description, status = 'co
         console.error(`❌ [TRANSACTION] Failed:`, error);
         return { success: false, error: error.message };
     }
+};
+
+// ==================== CURRENCY CONVERSION HELPER FUNCTIONS ====================
+
+// Get exchange rate from database or default
+const getExchangeRate = async (currency) => {
+    if (currency === 'NGN') return 1;
+    
+    let rateDoc = await ExchangeRate.findOne({ currency });
+    if (rateDoc) {
+        return rateDoc.rate;
+    }
+    
+    // Fallback to default rate
+    return config.defaultExchangeRates[currency] || 1;
+};
+
+// Convert amount from foreign currency to NGN including fee
+const convertToNGN = async (amount, fromCurrency) => {
+    if (fromCurrency === 'NGN') {
+        return {
+            amount_in_ngn: amount,
+            conversion_fee: 0,
+            rate: 1
+        };
+    }
+    
+    const rate = await getExchangeRate(fromCurrency); // 1 NGN = X foreign
+    // To convert foreign to NGN: foreign amount / rate
+    const amountInNgn = amount / rate;
+    
+    // Apply conversion fee if currency is not NGN
+    const conversionFee = amountInNgn * (config.conversionFeePercent / 100);
+    const netAmountInNgn = amountInNgn + conversionFee; // fee is added to the amount? Actually for deposits, user pays extra; for withdrawals, fee is deducted. We'll handle in business logic.
+    
+    return {
+        amount_in_ngn: amountInNgn,
+        gross_amount_in_ngn: amountInNgn + conversionFee,
+        conversion_fee: conversionFee,
+        rate
+    };
+};
+
+// Convert from NGN to foreign currency (for withdrawals, etc.)
+const convertFromNGN = async (amountInNgn, toCurrency) => {
+    if (toCurrency === 'NGN') {
+        return {
+            amount_in_foreign: amountInNgn,
+            conversion_fee: 0,
+            rate: 1
+        };
+    }
+    
+    const rate = await getExchangeRate(toCurrency); // 1 NGN = X foreign
+    const amountInForeign = amountInNgn * rate;
+    
+    // For withdrawal, conversion fee is applied to the NGN amount before conversion? Or after? Typically fee is deducted from the amount the user receives. We'll follow deposit logic: fee is added to the amount the user pays. For withdrawals, we want the user to receive exactly the requested foreign amount, so we'll calculate required NGN including fee.
+    // Let's define: user wants to withdraw X foreign. We need to deduct from their NGN balance: X / rate + fee. So fee is added.
+    const conversionFee = amountInNgn * (config.conversionFeePercent / 100);
+    const totalNgnNeeded = amountInNgn + conversionFee;
+    
+    return {
+        amount_in_foreign: amountInForeign,
+        conversion_fee: conversionFee,
+        total_ngn_needed: totalNgnNeeded,
+        rate
+    };
 };
 
 // ==================== ADVANCED DAILY INTEREST HELPER FUNCTIONS ====================
@@ -1830,6 +2001,7 @@ const initializeDatabase = async () => {
         console.log('✅ MongoDB connected successfully');
         await createAdminUser();
         await createDefaultInvestmentPlans();
+        await initializeExchangeRates(); // new
         console.log('✅ Database initialization completed');
     } catch (error) {
         console.error('❌ Database initialization error:', error.message);
@@ -2081,13 +2253,36 @@ const createAdminUser = async () => {
     }
 };
 
+// ========== INITIALIZE EXCHANGE RATES ==========
+const initializeExchangeRates = async () => {
+    try {
+        for (const [currency, rate] of Object.entries(config.defaultExchangeRates)) {
+            const existing = await ExchangeRate.findOne({ currency });
+            if (!existing) {
+                await ExchangeRate.create({
+                    currency,
+                    rate,
+                    updated_at: new Date()
+                });
+                console.log(`✅ Created exchange rate for ${currency}: ${rate}`);
+            } else {
+                // Optionally update if rate has changed? We'll keep existing for now.
+                console.log(`ℹ️ Exchange rate for ${currency} already exists: ${existing.rate}`);
+            }
+        }
+        console.log('✅ Exchange rates initialized');
+    } catch (error) {
+        console.error('Error initializing exchange rates:', error);
+    }
+};
+
 // ==================== HEALTH CHECK ====================
 app.get('/health', async (req, res) => {
     const health = {
         success: true,
         status: 'OK',
         timestamp: new Date().toISOString(),
-        version: '51.0.0',
+        version: '52.0.0', // updated version
         environment: config.nodeEnv,
         database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         uptime: process.uptime(),
@@ -2112,8 +2307,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
     res.json({
         success: true,
-        message: '🚀 Raw Wealthy Backend API v51.0 - Production Ready Enhanced Edition',
-        version: '51.0.0',
+        message: '🚀 Raw Wealthy Backend v52.0 - Production Ready International Edition',
+        version: '52.0.0',
         timestamp: new Date().toISOString(),
         status: 'Operational',
         environment: config.nodeEnv,
@@ -2124,7 +2319,9 @@ app.get('/', (req, res) => {
             admin_controls: '✅ ENABLED',
             real_time_updates: '✅ ENABLED',
             atomic_transactions: '✅ ENABLED',
-            secure_sockets: '✅ ENABLED'
+            secure_sockets: '✅ ENABLED',
+            international_currency: `✅ SUPPORTED (${config.supportedCurrencies.length} currencies)`,
+            conversion_fee: `${config.conversionFeePercent}% (non-NGN)`
         },
         endpoints: {
             auth: '/api/auth/*',
@@ -2139,6 +2336,7 @@ app.get('/', (req, res) => {
             admin: '/api/admin/*',
             upload: '/api/upload',
             forgot_password: '/api/auth/forgot-password',
+            exchange: '/api/exchange/*', // new
             health: '/health'
         }
     });
@@ -2275,7 +2473,9 @@ app.get('/api/debug/system-status', adminAuth, async (req, res) => {
                 allInvestmentsRequireAdminApproval: config.allInvestmentsRequireAdminApproval,
                 deductBalanceOnlyOnApproval: config.deductBalanceOnlyOnApproval,
                 minWithdrawal: config.minWithdrawal,
-                planDurations: config.planDurations
+                planDurations: config.planDurations,
+                supportedCurrencies: config.supportedCurrencies,
+                conversionFeePercent: config.conversionFeePercent
             }
         };
         
@@ -3027,7 +3227,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
     }
 });
 
-// ==================== DEPOSIT ENDPOINTS ====================
+// ==================== DEPOSIT ENDPOINTS - INTERNATIONAL SUPPORT ====================
 app.get('/api/deposits', auth, async (req, res) => {
     try {
         const userId = req.user._id;
@@ -3047,8 +3247,8 @@ app.get('/api/deposits', auth, async (req, res) => {
             Deposit.countDocuments(query)
         ]);
         
-        const totalDeposits = deposits.filter(d => d.status === 'approved').reduce((sum, d) => sum + d.amount, 0);
-        const pendingDeposits = deposits.filter(d => d.status === 'pending').reduce((sum, d) => sum + d.amount, 0);
+        const totalDeposits = deposits.filter(d => d.status === 'approved').reduce((sum, d) => sum + d.amount_in_ngn, 0);
+        const pendingDeposits = deposits.filter(d => d.status === 'pending').reduce((sum, d) => sum + d.amount_in_ngn, 0);
         
         const pagination = {
             page: parseInt(page),
@@ -3058,7 +3258,12 @@ app.get('/api/deposits', auth, async (req, res) => {
         };
         
         res.json(formatResponse(true, 'Deposits retrieved successfully', {
-            deposits,
+            deposits: deposits.map(d => ({
+                ...d,
+                amount_display: d.currency === 'NGN' 
+                    ? `₦${d.amount_in_ngn.toLocaleString()}`
+                    : `${d.original_amount} ${d.currency} (≈ ₦${d.amount_in_ngn.toLocaleString()})`
+            })),
             stats: {
                 total_deposits: totalDeposits,
                 pending_deposits: pendingDeposits,
@@ -3075,6 +3280,7 @@ app.get('/api/deposits', auth, async (req, res) => {
 
 app.post('/api/deposits', auth, upload.single('payment_proof'), [
     body('amount').isFloat({ min: config.minDeposit }),
+    body('currency').optional().isIn(config.supportedCurrencies).default('NGN'),
     body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal', 'card'])
 ], async (req, res) => {
     try {
@@ -3083,12 +3289,33 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
             return res.status(400).json(formatResponse(false, 'Validation failed'));
         }
         
-        const { amount, payment_method } = req.body;
+        const { amount, currency = 'NGN', payment_method } = req.body;
         const userId = req.user._id;
         const depositAmount = parseFloat(amount);
         
-        // AML check for large deposits
-        const amlCheck = await checkAmlCompliance(userId, 'deposit', depositAmount);
+        // Convert to NGN if necessary
+        let amountInNgn = depositAmount;
+        let conversionFee = 0;
+        let rate = 1;
+        
+        if (currency !== 'NGN') {
+            const conversion = await convertToNGN(depositAmount, currency);
+            amountInNgn = conversion.amount_in_ngn; // base amount
+            conversionFee = conversion.conversion_fee;
+            rate = conversion.rate;
+            // For deposit, user will pay the total (amountInNgn + fee) in NGN? Actually they deposit in foreign currency, we credit them NGN after fee.
+            // We'll store original amount in foreign, and amount_in_ngn as the net after fee? Let's define:
+            // User deposits X foreign. We convert to NGN at rate: X / rate = NGN. Then we apply fee to that NGN? Or fee in foreign?
+            // Standard: platform fee is on the deposited amount. So we'll calculate fee on the NGN equivalent and deduct it, so the credited amount is NGN equivalent minus fee.
+            // So amount_in_ngn = (X / rate) * (1 - feePercent/100)
+            // But earlier we computed conversion.amount_in_ngn as X / rate (gross). Let's recompute:
+            const grossNgn = depositAmount / rate;
+            conversionFee = grossNgn * (config.conversionFeePercent / 100);
+            amountInNgn = grossNgn - conversionFee; // net credited
+        }
+        
+        // AML check for large deposits (use NGN amount)
+        const amlCheck = await checkAmlCompliance(userId, 'deposit', amountInNgn);
         if (amlCheck.flagged) {
             return res.status(400).json(formatResponse(false, 
                 'Deposit flagged for review due to compliance checks. Please contact support.'));
@@ -3106,7 +3333,12 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
         
         const deposit = new Deposit({
             user: userId,
-            amount: depositAmount,
+            amount: amountInNgn, // amount in NGN (net after fee)
+            currency,
+            original_amount: depositAmount,
+            amount_in_ngn: amountInNgn,
+            conversion_fee: conversionFee,
+            exchange_rate: rate,
             payment_method,
             status: 'pending',
             payment_proof_url: proofUrl,
@@ -3118,7 +3350,9 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
         await createNotification(
             userId,
             'Deposit Request Submitted',
-            `Your deposit request of ₦${depositAmount.toLocaleString()} has been submitted and is pending approval.`,
+            currency === 'NGN'
+                ? `Your deposit request of ₦${depositAmount.toLocaleString()} has been submitted and is pending approval.`
+                : `Your deposit request of ${depositAmount} ${currency} (≈ ₦${amountInNgn.toLocaleString()}) has been submitted and is pending approval.`,
             'deposit',
             '/deposits'
         );
@@ -3128,6 +3362,8 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
             deposit_id: deposit._id,
             user_id: userId,
             amount: depositAmount,
+            currency,
+            amount_in_ngn: amountInNgn,
             payment_method,
             requires_approval: true
         });
@@ -3135,7 +3371,9 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
         res.status(201).json(formatResponse(true, 'Deposit request submitted successfully!', {
             deposit: {
                 ...deposit.toObject(),
-                formatted_amount: `₦${depositAmount.toLocaleString()}`,
+                formatted_amount: currency === 'NGN' 
+                    ? `₦${depositAmount.toLocaleString()}`
+                    : `${depositAmount} ${currency} (≈ ₦${amountInNgn.toLocaleString()})`,
                 requires_approval: true
             }
         }));
@@ -3144,7 +3382,7 @@ app.post('/api/deposits', auth, upload.single('payment_proof'), [
     }
 });
 
-// ==================== WITHDRAWAL ENDPOINTS - ADVANCED WITH ADMIN APPROVAL ====================
+// ==================== WITHDRAWAL ENDPOINTS - INTERNATIONAL SUPPORT ====================
 app.get('/api/withdrawals', auth, async (req, res) => {
     try {
         const userId = req.user._id;
@@ -3164,8 +3402,8 @@ app.get('/api/withdrawals', auth, async (req, res) => {
             Withdrawal.countDocuments(query)
         ]);
         
-        const totalWithdrawals = withdrawals.filter(w => w.status === 'paid').reduce((sum, w) => sum + w.amount, 0);
-        const pendingWithdrawals = withdrawals.filter(w => w.status === 'pending').reduce((sum, w) => sum + w.amount, 0);
+        const totalWithdrawals = withdrawals.filter(w => w.status === 'paid').reduce((sum, w) => sum + w.amount_in_ngn, 0);
+        const pendingWithdrawals = withdrawals.filter(w => w.status === 'pending').reduce((sum, w) => sum + w.amount_in_ngn, 0);
         
         const pagination = {
             page: parseInt(page),
@@ -3175,7 +3413,12 @@ app.get('/api/withdrawals', auth, async (req, res) => {
         };
         
         res.json(formatResponse(true, 'Withdrawals retrieved successfully', {
-            withdrawals,
+            withdrawals: withdrawals.map(w => ({
+                ...w,
+                amount_display: w.currency === 'NGN'
+                    ? `₦${w.amount_in_ngn.toLocaleString()}`
+                    : `${w.original_amount} ${w.currency} (≈ ₦${w.amount_in_ngn.toLocaleString()})`
+            })),
             stats: {
                 total_withdrawals: totalWithdrawals,
                 pending_withdrawals: pendingWithdrawals,
@@ -3192,6 +3435,7 @@ app.get('/api/withdrawals', auth, async (req, res) => {
 
 app.post('/api/withdrawals', auth, [
     body('amount').isFloat({ min: config.minWithdrawal }),
+    body('currency').optional().isIn(config.supportedCurrencies).default('NGN'),
     body('payment_method').isIn(['bank_transfer', 'crypto', 'paypal'])
 ], async (req, res) => {
     try {
@@ -3200,9 +3444,9 @@ app.post('/api/withdrawals', auth, [
             return res.status(400).json(formatResponse(false, 'Validation failed'));
         }
         
-        const { amount, payment_method } = req.body;
+        const { amount, currency = 'NGN', payment_method } = req.body;
         const userId = req.user._id;
-        const withdrawalAmount = parseFloat(amount);
+        const withdrawalAmount = parseFloat(amount); // amount in selected currency
         
         // Get fresh user data
         const freshUser = await User.findById(userId);
@@ -3210,23 +3454,37 @@ app.post('/api/withdrawals', auth, [
             return res.status(404).json(formatResponse(false, 'User not found'));
         }
         
-        // Check minimum withdrawal
-        if (withdrawalAmount < config.minWithdrawal) {
+        // Calculate NGN equivalent and fee
+        let amountInNgn = withdrawalAmount;
+        let conversionFee = 0;
+        let rate = 1;
+        
+        if (currency !== 'NGN') {
+            // For withdrawal: user wants to receive X foreign. We need to deduct from their NGN balance: X / rate + fee.
+            const conversion = await convertFromNGN(withdrawalAmount, currency);
+            // conversion.amount_in_foreign = X, conversion.total_ngn_needed = NGN needed including fee
+            amountInNgn = conversion.total_ngn_needed; // this is the NGN amount to deduct
+            conversionFee = conversion.conversion_fee;
+            rate = conversion.rate;
+        }
+        
+        // Check minimum withdrawal in NGN
+        if (amountInNgn < config.minWithdrawal) {
             return res.status(400).json(formatResponse(false,
-                `Minimum withdrawal is ₦${config.minWithdrawal.toLocaleString()}`));
+                `Minimum withdrawal is ₦${config.minWithdrawal.toLocaleString()} (equivalent in ${currency})`));
         }
         
         // Check available earnings for withdrawal
         const availableForWithdrawal = freshUser.withdrawable_earnings || 0;
         
-        if (withdrawalAmount > availableForWithdrawal) {
+        if (amountInNgn > availableForWithdrawal) {
             return res.status(400).json(formatResponse(false,
                 `Insufficient earnings. Available for withdrawal: ₦${availableForWithdrawal.toLocaleString()}`));
         }
         
         // Check maximum withdrawal percentage
         const maxWithdrawal = availableForWithdrawal * (config.maxWithdrawalPercent / 100);
-        if (withdrawalAmount > maxWithdrawal) {
+        if (amountInNgn > maxWithdrawal) {
             return res.status(400).json(formatResponse(false,
                 `Maximum withdrawal is ${config.maxWithdrawalPercent}% of your available earnings (₦${maxWithdrawal.toLocaleString()})`));
         }
@@ -3247,15 +3505,15 @@ app.post('/api/withdrawals', auth, [
         }
         
         // AML check for withdrawals
-        const amlCheck = await checkAmlCompliance(userId, 'withdrawal', withdrawalAmount);
+        const amlCheck = await checkAmlCompliance(userId, 'withdrawal', amountInNgn);
         if (amlCheck.flagged) {
             return res.status(400).json(formatResponse(false, 
                 'Withdrawal flagged for review due to compliance checks. Please contact support.'));
         }
         
-        // Calculate platform fee
-        const platformFee = withdrawalAmount * (config.platformFeePercent / 100);
-        const netAmount = withdrawalAmount - platformFee;
+        // Calculate platform fee (based on NGN amount)
+        const platformFee = amountInNgn * (config.platformFeePercent / 100);
+        const netAmount = amountInNgn - platformFee; // net NGN amount after platform fee (but before conversion fee? Conversion fee is separate)
         
         // Calculate split proportionally between earnings types (for record keeping only)
         const totalEarnings = freshUser.total_earnings || 0;
@@ -3266,8 +3524,8 @@ app.post('/api/withdrawals', auth, [
         let fromReferral = 0;
         
         if (totalAvailable > 0) {
-            fromEarnings = (totalEarnings / totalAvailable) * withdrawalAmount;
-            fromReferral = (totalReferral / totalAvailable) * withdrawalAmount;
+            fromEarnings = (totalEarnings / totalAvailable) * amountInNgn;
+            fromReferral = (totalReferral / totalAvailable) * amountInNgn;
         }
         
         // ADVANCED: ALL WITHDRAWALS REQUIRE ADMIN APPROVAL
@@ -3277,8 +3535,8 @@ app.post('/api/withdrawals', auth, [
         const pendingTransaction = await createTransaction(
             userId,
             'withdrawal',
-            -withdrawalAmount,
-            `Withdrawal request via ${payment_method} - Pending Admin Approval`,
+            -amountInNgn,
+            `Withdrawal request via ${payment_method} in ${currency} - Pending Admin Approval`,
             'pending',
             {
                 payment_method,
@@ -3286,7 +3544,12 @@ app.post('/api/withdrawals', auth, [
                 net_amount: netAmount,
                 from_earnings: fromEarnings,
                 from_referral: fromReferral,
-                requires_admin_approval: true
+                requires_admin_approval: true,
+                currency,
+                original_amount: withdrawalAmount,
+                amount_in_ngn: amountInNgn,
+                conversion_fee: conversionFee,
+                exchange_rate: rate
             }
         );
         
@@ -3297,7 +3560,12 @@ app.post('/api/withdrawals', auth, [
         // Create withdrawal
         const withdrawal = new Withdrawal({
             user: userId,
-            amount: withdrawalAmount,
+            amount: amountInNgn, // amount in NGN (to be deducted)
+            currency,
+            original_amount: withdrawalAmount,
+            amount_in_ngn: amountInNgn,
+            conversion_fee: conversionFee,
+            exchange_rate: rate,
             payment_method,
             from_earnings: fromEarnings,
             from_referral: fromReferral,
@@ -3332,7 +3600,9 @@ app.post('/api/withdrawals', auth, [
         await createNotification(
             userId,
             'Withdrawal Request Submitted',
-            `Your withdrawal request of ₦${withdrawalAmount.toLocaleString()} has been submitted and is pending admin approval.`,
+            currency === 'NGN'
+                ? `Your withdrawal request of ₦${withdrawalAmount.toLocaleString()} has been submitted and is pending admin approval.`
+                : `Your withdrawal request of ${withdrawalAmount} ${currency} (≈ ₦${amountInNgn.toLocaleString()}) has been submitted and is pending admin approval.`,
             'withdrawal',
             '/withdrawals'
         );
@@ -3343,11 +3613,14 @@ app.post('/api/withdrawals', auth, [
             user_id: userId,
             user_name: freshUser.full_name,
             amount: withdrawalAmount,
+            currency,
+            amount_in_ngn: amountInNgn,
             payment_method,
             net_amount: netAmount,
             platform_fee: platformFee,
+            conversion_fee: conversionFee,
             timestamp: new Date().toISOString(),
-            requires_immediate_attention: withdrawalAmount > 50000
+            requires_immediate_attention: amountInNgn > 50000
         });
         
         // Also notify regular admin room
@@ -3355,6 +3628,8 @@ app.post('/api/withdrawals', auth, [
             withdrawal_id: withdrawal._id,
             user_id: userId,
             amount: withdrawalAmount,
+            currency,
+            amount_in_ngn: amountInNgn,
             payment_method,
             auto_approved: false
         });
@@ -3363,9 +3638,15 @@ app.post('/api/withdrawals', auth, [
             'Withdrawal request submitted successfully! It is now pending admin approval.', {
             withdrawal: {
                 ...withdrawal.toObject(),
-                formatted_amount: `₦${withdrawalAmount.toLocaleString()}`,
-                formatted_net_amount: `₦${netAmount.toLocaleString()}`,
-                formatted_fee: `₦${platformFee.toLocaleString()}`,
+                formatted_amount: currency === 'NGN'
+                    ? `₦${withdrawalAmount.toLocaleString()}`
+                    : `${withdrawalAmount} ${currency} (≈ ₦${amountInNgn.toLocaleString()})`,
+                formatted_net_amount: currency === 'NGN'
+                    ? `₦${netAmount.toLocaleString()}`
+                    : `${(netAmount / rate).toFixed(2)} ${currency} (≈ ₦${netAmount.toLocaleString()})`,
+                formatted_fee: currency === 'NGN'
+                    ? `₦${platformFee.toLocaleString()}`
+                    : `${(platformFee / rate).toFixed(2)} ${currency} (≈ ₦${platformFee.toLocaleString()})`,
                 requires_admin_approval: true,
                 auto_approved: false,
                 admin_review_status: 'pending_review'
@@ -3421,7 +3702,12 @@ app.get('/api/transactions', auth, async (req, res) => {
         };
         
         res.json(formatResponse(true, 'Transactions retrieved successfully', {
-            transactions,
+            transactions: transactions.map(t => ({
+                ...t,
+                amount_display: t.currency && t.currency !== 'NGN' && t.amount_in_ngn
+                    ? `${t.amount} ${t.currency} (≈ ₦${t.amount_in_ngn.toLocaleString()})`
+                    : t.currency === 'NGN' ? `₦${t.amount.toLocaleString()}` : `₦${t.amount.toLocaleString()}`
+            })),
             summary,
             pagination
         }));
@@ -3839,28 +4125,33 @@ if (config.paymentEnabled) {
                 deposit.transaction_hash = payload.data.flw_ref;
                 await deposit.save();
                 
-                // Credit user's balance
+                // Credit user's balance (amount_in_ngn already includes fee deduction)
                 await createTransaction(
                     deposit.user,
                     'deposit',
-                    amount,
-                    `Deposit via Flutterwave`,
+                    deposit.amount_in_ngn, // use net NGN amount
+                    `Deposit via Flutterwave (${deposit.currency})`,
                     'completed',
                     {
                         deposit_id: deposit._id,
-                        transaction_ref: tx_ref
+                        transaction_ref: tx_ref,
+                        currency: deposit.currency,
+                        original_amount: deposit.original_amount,
+                        amount_in_ngn: deposit.amount_in_ngn
                     }
                 );
                 
                 await createNotification(
                     deposit.user,
                     'Deposit Successful',
-                    `Your deposit of ₦${amount.toLocaleString()} has been approved and credited to your account.`,
+                    deposit.currency === 'NGN'
+                        ? `Your deposit of ₦${deposit.amount_in_ngn.toLocaleString()} has been approved and credited to your account.`
+                        : `Your deposit of ${deposit.original_amount} ${deposit.currency} (≈ ₦${deposit.amount_in_ngn.toLocaleString()}) has been approved and credited.`,
                     'success',
                     '/deposits'
                 );
                 
-                console.log(`✅ Flutterwave webhook: Deposit ${tx_ref} approved for ${amount}`);
+                console.log(`✅ Flutterwave webhook: Deposit ${tx_ref} approved for ${deposit.amount_in_ngn} NGN (${deposit.currency} ${deposit.original_amount})`);
             }
             
             res.status(200).send('Webhook processed');
@@ -3870,6 +4161,430 @@ if (config.paymentEnabled) {
         }
     });
 }
+
+// ==================== CURRENCY EXCHANGE ENDPOINTS ====================
+
+// Get current exchange rates
+app.get('/api/exchange/rates', async (req, res) => {
+    try {
+        const rates = await ExchangeRate.find().lean();
+        const ratesMap = {};
+        rates.forEach(r => { ratesMap[r.currency] = r.rate; });
+        
+        // Include default for any missing
+        for (const curr of config.supportedCurrencies) {
+            if (!ratesMap[curr] && curr !== 'NGN') {
+                ratesMap[curr] = config.defaultExchangeRates[curr] || 1;
+            }
+        }
+        
+        res.json(formatResponse(true, 'Exchange rates retrieved', {
+            base: 'NGN',
+            rates: ratesMap,
+            last_updated: rates.length > 0 ? rates[0].updated_at : new Date()
+        }));
+    } catch (error) {
+        handleError(res, error, 'Error fetching exchange rates');
+    }
+});
+
+// Update exchange rate (admin only)
+app.put('/api/exchange/rates/:currency', adminAuth, [
+    param('currency').isIn(config.supportedCurrencies),
+    body('rate').isFloat({ min: 0.000001 })
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json(formatResponse(false, 'Validation failed'));
+        }
+        
+        const { currency } = req.params;
+        const { rate } = req.body;
+        
+        let rateDoc = await ExchangeRate.findOne({ currency });
+        if (rateDoc) {
+            rateDoc.rate = rate;
+            rateDoc.updated_by = req.user._id;
+            rateDoc.updated_at = new Date();
+            await rateDoc.save();
+        } else {
+            rateDoc = new ExchangeRate({
+                currency,
+                rate,
+                updated_by: req.user._id
+            });
+            await rateDoc.save();
+        }
+        
+        // Create admin audit log
+        await AdminAudit.create({
+            admin_id: req.user._id,
+            action: 'update_exchange_rate',
+            target_type: 'exchange_rate',
+            target_id: rateDoc._id,
+            details: { currency, rate },
+            ip_address: req.ip,
+            user_agent: req.headers['user-agent']
+        });
+        
+        // Notify admins
+        emitToAdmins('exchange-rate-updated', { currency, rate });
+        
+        res.json(formatResponse(true, 'Exchange rate updated successfully', { currency, rate }));
+    } catch (error) {
+        handleError(res, error, 'Error updating exchange rate');
+    }
+});
+
+// Create currency exchange request
+app.post('/api/exchange/request', auth, [
+    body('from_currency').isIn(config.supportedCurrencies),
+    body('to_currency').isIn(config.supportedCurrencies),
+    body('amount').isFloat({ min: 1000 }) // minimum exchange amount in NGN equivalent
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json(formatResponse(false, 'Validation failed'));
+        }
+        
+        const { from_currency, to_currency, amount } = req.body;
+        const userId = req.user._id;
+        
+        if (from_currency === to_currency) {
+            return res.status(400).json(formatResponse(false, 'Cannot exchange to same currency'));
+        }
+        
+        // Get rates
+        const fromRate = await getExchangeRate(from_currency); // 1 NGN = X from_currency
+        const toRate = await getExchangeRate(to_currency);     // 1 NGN = Y to_currency
+        
+        // Convert amount from from_currency to NGN first
+        // amount is in from_currency? We'll assume amount is in from_currency.
+        const amountInNgn = amount / fromRate;
+        
+        // Apply conversion fee (only once, on the NGN amount)
+        const conversionFee = amountInNgn * (config.conversionFeePercent / 100);
+        const netAmountInNgn = amountInNgn - conversionFee;
+        
+        // Convert net NGN to target currency
+        const toAmount = netAmountInNgn * toRate;
+        
+        // Check if user has sufficient balance in from_currency? Actually balance is stored in NGN, so we need to check NGN equivalent.
+        const user = await User.findById(userId);
+        if (amountInNgn > user.balance) {
+            return res.status(400).json(formatResponse(false,
+                `Insufficient balance. You need ${amountInNgn.toFixed(2)} NGN equivalent, but you have ${user.balance.toFixed(2)} NGN.`));
+        }
+        
+        // Create exchange request
+        const exchangeRequest = new ExchangeRequest({
+            user: userId,
+            from_currency,
+            to_currency,
+            from_amount: amount,
+            to_amount: toAmount,
+            exchange_rate: toRate / fromRate, // cross rate
+            conversion_fee: conversionFee,
+            status: 'pending'
+        });
+        
+        await exchangeRequest.save();
+        
+        await createNotification(
+            userId,
+            'Exchange Request Submitted',
+            `Your request to convert ${amount} ${from_currency} to ${toAmount.toFixed(2)} ${to_currency} has been submitted and is pending approval.`,
+            'info',
+            '/exchange'
+        );
+        
+        // Notify admins
+        emitToExchangeAdmins('new-exchange-request', {
+            request_id: exchangeRequest._id,
+            user_id: userId,
+            from_currency,
+            to_currency,
+            from_amount: amount,
+            to_amount: toAmount
+        });
+        
+        res.status(201).json(formatResponse(true, 'Exchange request submitted successfully', {
+            exchange_request: exchangeRequest
+        }));
+    } catch (error) {
+        handleError(res, error, 'Error creating exchange request');
+    }
+});
+
+// Get user's exchange requests
+app.get('/api/exchange/requests', auth, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const { status, page = 1, limit = 10 } = req.query;
+        
+        const query = { user: userId };
+        if (status) query.status = status;
+        
+        const skip = (page - 1) * limit;
+        
+        const [requests, total] = await Promise.all([
+            ExchangeRequest.find(query)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(parseInt(limit))
+                .lean(),
+            ExchangeRequest.countDocuments(query)
+        ]);
+        
+        const pagination = {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            pages: Math.ceil(total / limit)
+        };
+        
+        res.json(formatResponse(true, 'Exchange requests retrieved', { requests, pagination }));
+    } catch (error) {
+        handleError(res, error, 'Error fetching exchange requests');
+    }
+});
+
+// ==================== ADMIN EXCHANGE MANAGEMENT ====================
+app.get('/api/admin/exchange/requests', adminAuth, async (req, res) => {
+    try {
+        const { status, page = 1, limit = 20 } = req.query;
+        
+        const query = {};
+        if (status) query.status = status;
+        
+        const skip = (page - 1) * limit;
+        
+        const [requests, total] = await Promise.all([
+            ExchangeRequest.find(query)
+                .populate('user', 'full_name email balance')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(parseInt(limit))
+                .lean(),
+            ExchangeRequest.countDocuments(query)
+        ]);
+        
+        const pagination = {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            pages: Math.ceil(total / limit)
+        };
+        
+        res.json(formatResponse(true, 'Exchange requests retrieved', { requests, pagination }));
+    } catch (error) {
+        handleError(res, error, 'Error fetching exchange requests');
+    }
+});
+
+app.put('/api/admin/exchange/requests/:id/approve', adminAuth, async (req, res) => {
+    // Use session for atomic update
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
+    try {
+        const requestId = req.params.id;
+        const adminId = req.user._id;
+        
+        const exchangeRequest = await ExchangeRequest.findById(requestId)
+            .populate('user')
+            .session(session);
+        
+        if (!exchangeRequest) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json(formatResponse(false, 'Exchange request not found'));
+        }
+        
+        if (exchangeRequest.status !== 'pending') {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json(formatResponse(false, 'Exchange request is not pending'));
+        }
+        
+        const user = await User.findById(exchangeRequest.user._id).session(session);
+        
+        // Calculate NGN amount to deduct (from_currency amount converted to NGN)
+        const fromRate = await getExchangeRate(exchangeRequest.from_currency);
+        const amountInNgn = exchangeRequest.from_amount / fromRate;
+        
+        // Check balance
+        if (amountInNgn > user.balance) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json(formatResponse(false,
+                `User has insufficient balance. Need ${amountInNgn.toFixed(2)} NGN, available ${user.balance} NGN.`));
+        }
+        
+        // Deduct from_currency equivalent from user's NGN balance
+        user.balance -= amountInNgn;
+        
+        // Add to_currency equivalent (after fee) to user's NGN balance
+        const toRate = await getExchangeRate(exchangeRequest.to_currency);
+        const netNgnAdded = exchangeRequest.to_amount / toRate; // to_amount is in to_currency, convert back to NGN
+        user.balance += netNgnAdded;
+        
+        await user.save({ session });
+        
+        // Create transaction records
+        const debitTransaction = new Transaction({
+            user: user._id,
+            type: 'exchange',
+            amount: -amountInNgn,
+            currency: exchangeRequest.from_currency,
+            amount_in_ngn: amountInNgn,
+            description: `Currency exchange: Deduct ${exchangeRequest.from_amount} ${exchangeRequest.from_currency}`,
+            status: 'completed',
+            reference: generateReference('EXC'),
+            balance_before: user.balance - netNgnAdded + amountInNgn,
+            balance_after: user.balance,
+            metadata: {
+                exchange_request_id: exchangeRequest._id,
+                from_currency: exchangeRequest.from_currency,
+                to_currency: exchangeRequest.to_currency,
+                from_amount: exchangeRequest.from_amount,
+                to_amount: exchangeRequest.to_amount,
+                conversion_fee: exchangeRequest.conversion_fee
+            }
+        });
+        await debitTransaction.save({ session });
+        
+        const creditTransaction = new Transaction({
+            user: user._id,
+            type: 'exchange',
+            amount: netNgnAdded,
+            currency: exchangeRequest.to_currency,
+            amount_in_ngn: netNgnAdded,
+            description: `Currency exchange: Credit ${exchangeRequest.to_amount.toFixed(2)} ${exchangeRequest.to_currency}`,
+            status: 'completed',
+            reference: generateReference('EXC'),
+            balance_before: user.balance - netNgnAdded,
+            balance_after: user.balance,
+            metadata: {
+                exchange_request_id: exchangeRequest._id,
+                from_currency: exchangeRequest.from_currency,
+                to_currency: exchangeRequest.to_currency,
+                from_amount: exchangeRequest.from_amount,
+                to_amount: exchangeRequest.to_amount,
+                conversion_fee: exchangeRequest.conversion_fee
+            }
+        });
+        await creditTransaction.save({ session });
+        
+        // Update exchange request
+        exchangeRequest.status = 'approved';
+        exchangeRequest.approved_by = adminId;
+        exchangeRequest.approved_at = new Date();
+        exchangeRequest.transaction_id = debitTransaction._id; // link to one of them
+        await exchangeRequest.save({ session });
+        
+        // Admin audit log
+        await AdminAudit.create([{
+            admin_id: adminId,
+            action: 'approve_exchange_request',
+            target_type: 'exchange',
+            target_id: exchangeRequest._id,
+            details: {
+                from_currency: exchangeRequest.from_currency,
+                to_currency: exchangeRequest.to_currency,
+                from_amount: exchangeRequest.from_amount,
+                to_amount: exchangeRequest.to_amount,
+                user_email: user.email
+            },
+            ip_address: req.ip,
+            user_agent: req.headers['user-agent']
+        }], { session });
+        
+        await session.commitTransaction();
+        session.endSession();
+        
+        await createNotification(
+            user._id,
+            'Exchange Request Approved',
+            `Your request to convert ${exchangeRequest.from_amount} ${exchangeRequest.from_currency} to ${exchangeRequest.to_amount.toFixed(2)} ${exchangeRequest.to_currency} has been approved.`,
+            'success',
+            '/exchange'
+        );
+        
+        emitToAdmins('exchange-request-approved', {
+            request_id: exchangeRequest._id,
+            user_id: user._id
+        });
+        
+        res.json(formatResponse(true, 'Exchange request approved', { exchange_request: exchangeRequest }));
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        handleError(res, error, 'Error approving exchange request');
+    }
+});
+
+app.put('/api/admin/exchange/requests/:id/reject', adminAuth, [
+    body('rejection_reason').optional().trim()
+], async (req, res) => {
+    try {
+        const requestId = req.params.id;
+        const adminId = req.user._id;
+        const { rejection_reason } = req.body;
+        
+        const exchangeRequest = await ExchangeRequest.findById(requestId).populate('user');
+        if (!exchangeRequest) {
+            return res.status(404).json(formatResponse(false, 'Exchange request not found'));
+        }
+        
+        if (exchangeRequest.status !== 'pending') {
+            return res.status(400).json(formatResponse(false, 'Exchange request is not pending'));
+        }
+        
+        exchangeRequest.status = 'rejected';
+        exchangeRequest.rejected_by = adminId;
+        exchangeRequest.rejected_at = new Date();
+        exchangeRequest.rejection_reason = rejection_reason;
+        await exchangeRequest.save();
+        
+        await AdminAudit.create({
+            admin_id: adminId,
+            action: 'reject_exchange_request',
+            target_type: 'exchange',
+            target_id: exchangeRequest._id,
+            details: {
+                from_currency: exchangeRequest.from_currency,
+                to_currency: exchangeRequest.to_currency,
+                from_amount: exchangeRequest.from_amount,
+                to_amount: exchangeRequest.to_amount,
+                user_email: exchangeRequest.user.email,
+                reason: rejection_reason
+            },
+            ip_address: req.ip,
+            user_agent: req.headers['user-agent']
+        });
+        
+        await createNotification(
+            exchangeRequest.user._id,
+            'Exchange Request Rejected',
+            `Your request to convert ${exchangeRequest.from_amount} ${exchangeRequest.from_currency} to ${exchangeRequest.to_currency} has been rejected.${rejection_reason ? ' Reason: ' + rejection_reason : ''}`,
+            'error',
+            '/exchange'
+        );
+        
+        emitToAdmins('exchange-request-rejected', {
+            request_id: exchangeRequest._id,
+            user_id: exchangeRequest.user._id,
+            reason: rejection_reason
+        });
+        
+        res.json(formatResponse(true, 'Exchange request rejected', { exchange_request: exchangeRequest }));
+    } catch (error) {
+        handleError(res, error, 'Error rejecting exchange request');
+    }
+});
 
 // ==================== ADVANCED DAILY INTEREST CRON JOB ====================
 // Run every hour to check for investments that need interest added
@@ -3955,7 +4670,8 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
             pendingDeposits,
             pendingWithdrawals,
             pendingKYC,
-            amlFlags
+            amlFlags,
+            pendingExchangeRequests
         ] = await Promise.all([
             User.countDocuments({}),
             User.countDocuments({
@@ -3972,7 +4688,8 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
             Deposit.countDocuments({ status: 'pending' }),
             Withdrawal.countDocuments({ status: 'pending' }),
             KYCSubmission.countDocuments({ status: 'pending' }),
-            AmlMonitoring.countDocuments({ status: 'pending_review' })
+            AmlMonitoring.countDocuments({ status: 'pending_review' }),
+            ExchangeRequest.countDocuments({ status: 'pending' })
         ]);
         
         const earningsResult = await Investment.aggregate([
@@ -4047,7 +4764,8 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
                 pending_withdrawals: pendingWithdrawals,
                 pending_kyc: pendingKYC,
                 aml_flags: amlFlags,
-                total_pending: pendingInvestments + pendingDeposits + pendingWithdrawals + pendingKYC + amlFlags
+                pending_exchange_requests: pendingExchangeRequests,
+                total_pending: pendingInvestments + pendingDeposits + pendingWithdrawals + pendingKYC + amlFlags + pendingExchangeRequests
             },
             account_status: accountStatusStats.reduce((acc, stat) => {
                 acc[stat._id] = stat.count;
@@ -4063,6 +4781,7 @@ app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
                 pending_withdrawals: '/api/admin/pending-withdrawals',
                 pending_kyc: '/api/admin/pending-kyc',
                 aml_flags: '/api/admin/aml-flags',
+                pending_exchange_requests: '/api/admin/exchange/requests?status=pending',
                 all_users: '/api/admin/users',
                 suspended_users: '/api/admin/users?account_status=suspended',
                 rejected_users: '/api/admin/users?account_status=rejected'
@@ -4175,7 +4894,8 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
             deposits,
             withdrawals,
             referrals,
-            transactions
+            transactions,
+            exchangeRequests
         ] = await Promise.all([
             Investment.find({ user: userId })
                 .populate('plan', 'name daily_interest duration')
@@ -4194,6 +4914,9 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
             Transaction.find({ user: userId })
                 .sort({ createdAt: -1 })
                 .limit(50)
+                .lean(),
+            ExchangeRequest.find({ user: userId })
+                .sort({ createdAt: -1 })
                 .lean()
         ]);
         
@@ -4218,14 +4941,16 @@ app.get('/api/admin/users/:id', adminAuth, async (req, res) => {
                 total_deposits: deposits.length,
                 total_withdrawals: withdrawals.length,
                 total_referrals: referrals.length,
-                total_transactions: transactions.length
+                total_transactions: transactions.length,
+                total_exchange_requests: exchangeRequests.length
             },
             preview: {
                 investments: investments.slice(0, 5),
                 deposits: deposits.slice(0, 5),
                 withdrawals: withdrawals.slice(0, 5),
                 referrals: referrals.slice(0, 5),
-                transactions: transactions.slice(0, 10)
+                transactions: transactions.slice(0, 10),
+                exchange_requests: exchangeRequests.slice(0, 5)
             }
         };
         
@@ -4841,7 +5566,7 @@ app.get('/api/admin/pending-deposits', adminAuth, async (req, res) => {
         res.json(formatResponse(true, 'Pending deposits retrieved successfully', {
             deposits: pendingDeposits,
             count: pendingDeposits.length,
-            total_amount: pendingDeposits.reduce((sum, dep) => sum + dep.amount, 0)
+            total_amount: pendingDeposits.reduce((sum, dep) => sum + dep.amount_in_ngn, 0)
         }));
     } catch (error) {
         handleError(res, error, 'Error fetching pending deposits');
@@ -4874,23 +5599,28 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
         
         await deposit.save();
         
-        // Credit user's balance
+        // Credit user's balance (amount_in_ngn is net after conversion fee)
         await createTransaction(
             deposit.user._id,
             'deposit',
-            deposit.amount,
-            `Deposit via ${deposit.payment_method}`,
+            deposit.amount_in_ngn,
+            `Deposit via ${deposit.payment_method} (${deposit.currency})`,
             'completed',
             {
                 deposit_id: deposit._id,
-                payment_method: deposit.payment_method
+                payment_method: deposit.payment_method,
+                currency: deposit.currency,
+                original_amount: deposit.original_amount,
+                amount_in_ngn: deposit.amount_in_ngn
             }
         );
         
         await createNotification(
             deposit.user._id,
             'Deposit Approved',
-            `Your deposit of ₦${deposit.amount.toLocaleString()} has been approved and credited to your account.`,
+            deposit.currency === 'NGN'
+                ? `Your deposit of ₦${deposit.amount_in_ngn.toLocaleString()} has been approved and credited to your account.`
+                : `Your deposit of ${deposit.original_amount} ${deposit.currency} (≈ ₦${deposit.amount_in_ngn.toLocaleString()}) has been approved and credited.`,
             'success',
             '/deposits'
         );
@@ -4902,7 +5632,9 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
             target_type: 'deposit',
             target_id: depositId,
             details: {
-                deposit_amount: deposit.amount,
+                deposit_amount: deposit.original_amount,
+                currency: deposit.currency,
+                amount_in_ngn: deposit.amount_in_ngn,
                 payment_method: deposit.payment_method,
                 user_email: deposit.user.email
             },
@@ -4914,7 +5646,9 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
         emitToAdmins('deposit-approved', {
             deposit_id: depositId,
             user_id: deposit.user._id,
-            amount: deposit.amount,
+            amount: deposit.original_amount,
+            currency: deposit.currency,
+            amount_in_ngn: deposit.amount_in_ngn,
             payment_method: deposit.payment_method,
             approved_by: adminId
         });
@@ -4966,7 +5700,9 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
             target_type: 'deposit',
             target_id: depositId,
             details: {
-                deposit_amount: deposit.amount,
+                deposit_amount: deposit.original_amount,
+                currency: deposit.currency,
+                amount_in_ngn: deposit.amount_in_ngn,
                 payment_method: deposit.payment_method,
                 user_email: deposit.user.email,
                 rejection_reason
@@ -4978,7 +5714,9 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
         await createNotification(
             deposit.user._id,
             'Deposit Rejected',
-            `Your deposit request of ₦${deposit.amount.toLocaleString()} has been rejected. Reason: ${rejection_reason}. Please contact support for more information.`,
+            deposit.currency === 'NGN'
+                ? `Your deposit request of ₦${deposit.original_amount.toLocaleString()} has been rejected. Reason: ${rejection_reason}.`
+                : `Your deposit request of ${deposit.original_amount} ${deposit.currency} (≈ ₦${deposit.amount_in_ngn.toLocaleString()}) has been rejected. Reason: ${rejection_reason}.`,
             'error',
             '/deposits'
         );
@@ -4987,7 +5725,9 @@ app.post('/api/admin/deposits/:id/reject', adminAuth, [
         emitToAdmins('deposit-rejected', {
             deposit_id: depositId,
             user_id: deposit.user._id,
-            amount: deposit.amount,
+            amount: deposit.original_amount,
+            currency: deposit.currency,
+            amount_in_ngn: deposit.amount_in_ngn,
             payment_method: deposit.payment_method,
             rejected_by: adminId,
             rejection_reason
@@ -5013,9 +5753,14 @@ app.get('/api/admin/pending-withdrawals', adminAuth, async (req, res) => {
             .lean();
         
         res.json(formatResponse(true, 'Pending withdrawals retrieved successfully', {
-            withdrawals: pendingWithdrawals,
+            withdrawals: pendingWithdrawals.map(w => ({
+                ...w,
+                amount_display: w.currency === 'NGN'
+                    ? `₦${w.amount_in_ngn.toLocaleString()}`
+                    : `${w.original_amount} ${w.currency} (≈ ₦${w.amount_in_ngn.toLocaleString()})`
+            })),
             count: pendingWithdrawals.length,
-            total_amount: pendingWithdrawals.reduce((sum, w) => sum + w.amount, 0)
+            total_amount: pendingWithdrawals.reduce((sum, w) => sum + w.amount_in_ngn, 0)
         }));
     } catch (error) {
         handleError(res, error, 'Error fetching pending withdrawals');
@@ -5053,11 +5798,11 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
         
         // Check if user still has enough withdrawable earnings
         const user = await User.findById(withdrawal.user._id).session(session);
-        if (withdrawal.amount > (user.withdrawable_earnings || 0)) {
+        if (withdrawal.amount_in_ngn > (user.withdrawable_earnings || 0)) {
             await session.abortTransaction();
             session.endSession();
             return res.status(400).json(formatResponse(false,
-                `User does not have enough earnings to withdraw ${withdrawal.amount}. Available: ${user.withdrawable_earnings}`));
+                `User does not have enough earnings to withdraw ${withdrawal.amount_in_ngn} NGN. Available: ${user.withdrawable_earnings}`));
         }
         
         withdrawal.status = 'paid';
@@ -5076,15 +5821,15 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
         const pendingTransaction = await Transaction.findById(withdrawal.transaction_id_ref).session(session);
         if (pendingTransaction) {
             pendingTransaction.status = 'completed';
-            pendingTransaction.description = `Withdrawal via ${withdrawal.payment_method}`;
+            pendingTransaction.description = `Withdrawal via ${withdrawal.payment_method} in ${withdrawal.currency}`;
             await pendingTransaction.save({ session });
         } else {
             // If no pending transaction, create a completed one
             await createTransaction(
                 withdrawal.user._id,
                 'withdrawal',
-                -withdrawal.amount,
-                `Withdrawal via ${withdrawal.payment_method}`,
+                -withdrawal.amount_in_ngn,
+                `Withdrawal via ${withdrawal.payment_method} in ${withdrawal.currency}`,
                 'completed',
                 {
                     withdrawal_id: withdrawal._id,
@@ -5093,16 +5838,19 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
                     net_amount: withdrawal.net_amount,
                     transaction_id: transaction_id,
                     from_earnings: withdrawal.from_earnings,
-                    from_referral: withdrawal.from_referral
+                    from_referral: withdrawal.from_referral,
+                    currency: withdrawal.currency,
+                    original_amount: withdrawal.original_amount,
+                    amount_in_ngn: withdrawal.amount_in_ngn
                 }
             );
         }
         
         // Now update user's withdrawable earnings and balance
         // The pre-save hook will handle withdrawable_earnings update
-        user.balance = Math.max(0, user.balance - withdrawal.amount);
-        user.total_withdrawn += withdrawal.amount;
-        user.total_withdrawals = (user.total_withdrawals || 0) + withdrawal.amount;
+        user.balance = Math.max(0, user.balance - withdrawal.amount_in_ngn);
+        user.total_withdrawn += withdrawal.amount_in_ngn;
+        user.total_withdrawals = (user.total_withdrawals || 0) + withdrawal.amount_in_ngn;
         user.last_withdrawal_date = new Date();
         await user.save({ session });
         
@@ -5112,7 +5860,9 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
         await createNotification(
             withdrawal.user._id,
             'Withdrawal Approved',
-            `Your withdrawal of ₦${withdrawal.amount.toLocaleString()} has been approved and processed.`,
+            withdrawal.currency === 'NGN'
+                ? `Your withdrawal of ₦${withdrawal.amount_in_ngn.toLocaleString()} has been approved and processed.`
+                : `Your withdrawal of ${withdrawal.original_amount} ${withdrawal.currency} (≈ ₦${withdrawal.amount_in_ngn.toLocaleString()}) has been approved and processed.`,
             'success',
             '/withdrawals'
         );
@@ -5124,7 +5874,9 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
             target_type: 'withdrawal',
             target_id: withdrawalId,
             details: {
-                withdrawal_amount: withdrawal.amount,
+                withdrawal_amount: withdrawal.original_amount,
+                currency: withdrawal.currency,
+                amount_in_ngn: withdrawal.amount_in_ngn,
                 payment_method: withdrawal.payment_method,
                 user_email: withdrawal.user.email,
                 transaction_id
@@ -5137,7 +5889,9 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
         emitToAdmins('withdrawal-approved', {
             withdrawal_id: withdrawalId,
             user_id: withdrawal.user._id,
-            amount: withdrawal.amount,
+            amount: withdrawal.original_amount,
+            currency: withdrawal.currency,
+            amount_in_ngn: withdrawal.amount_in_ngn,
             payment_method: withdrawal.payment_method,
             approved_by: adminId
         });
@@ -5202,7 +5956,9 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
         await createNotification(
             withdrawal.user._id,
             'Withdrawal Rejected',
-            `Your withdrawal request of ₦${withdrawal.amount.toLocaleString()} has been rejected. Reason: ${rejection_reason}`,
+            withdrawal.currency === 'NGN'
+                ? `Your withdrawal request of ₦${withdrawal.amount_in_ngn.toLocaleString()} has been rejected. Reason: ${rejection_reason}`
+                : `Your withdrawal request of ${withdrawal.original_amount} ${withdrawal.currency} (≈ ₦${withdrawal.amount_in_ngn.toLocaleString()}) has been rejected. Reason: ${rejection_reason}`,
             'error',
             '/withdrawals'
         );
@@ -5214,7 +5970,9 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
             target_type: 'withdrawal',
             target_id: withdrawalId,
             details: {
-                withdrawal_amount: withdrawal.amount,
+                withdrawal_amount: withdrawal.original_amount,
+                currency: withdrawal.currency,
+                amount_in_ngn: withdrawal.amount_in_ngn,
                 payment_method: withdrawal.payment_method,
                 user_email: withdrawal.user.email,
                 rejection_reason
@@ -5227,7 +5985,9 @@ app.post('/api/admin/withdrawals/:id/reject', adminAuth, [
         emitToAdmins('withdrawal-rejected', {
             withdrawal_id: withdrawalId,
             user_id: withdrawal.user._id,
-            amount: withdrawal.amount,
+            amount: withdrawal.original_amount,
+            currency: withdrawal.currency,
+            amount_in_ngn: withdrawal.amount_in_ngn,
             payment_method: withdrawal.payment_method,
             rejected_by: adminId,
             rejection_reason
@@ -5394,8 +6154,8 @@ app.get('/api/admin/financial-report', adminAuth, async (req, res) => {
             { $group: {
                 _id: null,
                 count: { $sum: 1 },
-                total_amount: { $sum: '$amount' },
-                avg_amount: { $avg: '$amount' }
+                total_amount: { $sum: '$amount_in_ngn' },
+                avg_amount: { $avg: '$amount_in_ngn' }
             } }
         ]);
         
@@ -5405,9 +6165,9 @@ app.get('/api/admin/financial-report', adminAuth, async (req, res) => {
             { $group: {
                 _id: null,
                 count: { $sum: 1 },
-                total_amount: { $sum: '$amount' },
+                total_amount: { $sum: '$amount_in_ngn' },
                 total_fees: { $sum: '$platform_fee' },
-                avg_amount: { $avg: '$amount' }
+                avg_amount: { $avg: '$amount_in_ngn' }
             } }
         ]);
         
@@ -5482,7 +6242,7 @@ const startServer = async () => {
         
         server.listen(config.port, () => {
             console.log('\n🚀 ============================================');
-            console.log(`✅ Raw Wealthy Backend v51.0 - PRODUCTION READY`);
+            console.log(`✅ Raw Wealthy Backend v52.0 - PRODUCTION READY INTERNATIONAL EDITION`);
             console.log(`🌐 Environment: ${config.nodeEnv}`);
             console.log(`📍 Port: ${config.port}`);
             console.log(`🔗 Server URL: ${config.serverURL}`);
@@ -5505,6 +6265,10 @@ const startServer = async () => {
             console.log('11.✅ REFERRAL COMMISSION: 20% on first investment');
             console.log('12.✅ ALL WITHDRAWALS REQUIRE ADMIN APPROVAL');
             console.log('13.✅ REAL-TIME ADMIN NOTIFICATIONS');
+            console.log('14.✅ INTERNATIONAL CURRENCY SUPPORT (13 currencies)');
+            console.log('15.✅ CURRENCY EXCHANGE REQUESTS');
+            console.log('16.✅ EXCHANGE RATE MANAGEMENT (admin)');
+            console.log('17.✅ CONVERSION FEE: ' + config.conversionFeePercent + '% (non-NGN)');
             console.log('============================================\n');
             
             console.log('💰 UPDATED INTEREST RATES & DURATIONS (configurable):');
@@ -5537,6 +6301,18 @@ const startServer = async () => {
             console.log('8. ✅ COMPREHENSIVE FINANCIAL REPORTS');
             console.log('9. ✅ REAL-TIME USER FINANCIAL SUMMARY');
             console.log('10.✅ AUDIT LOGS FOR ALL ADMIN ACTIONS');
+            console.log('11.✅ EXCHANGE RATE MANAGEMENT');
+            console.log('12.✅ EXCHANGE REQUEST APPROVAL/REJECTION');
+            console.log('============================================\n');
+            
+            console.log('🌍 INTERNATIONAL CURRENCY SUPPORT:');
+            console.log('============================================');
+            console.log(`Base Currency: ${config.baseCurrency}`);
+            console.log(`Supported Currencies: ${config.supportedCurrencies.join(', ')}`);
+            console.log(`Conversion Fee: ${config.conversionFeePercent}% on non-NGN transactions`);
+            console.log('Deposits/Withdrawals can be made in any supported currency');
+            console.log('Exchange requests allow converting between currencies');
+            console.log('All amounts are stored in NGN with original currency preserved');
             console.log('============================================\n');
             
             console.log('✅ ALL ORIGINAL ENDPOINTS PRESERVED AND ENHANCED');
