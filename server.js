@@ -5323,6 +5323,48 @@ app.get('/api/admin/financial-report', adminAuth, async (req, res) => {
     }
 });
 
+// ==================== 🚨 TEMPORARY: FORCE ADMIN CREATION – REMOVE AFTER USE! ====================
+app.get('/api/debug/force-admin', async (req, res) => {
+    try {
+        const adminEmail = process.env.ADMIN_EMAIL || "admin@rawwealthy.com";
+        const adminPassword = process.env.ADMIN_PASSWORD || "Admin123456";
+        const adminName = "Super Admin";
+
+        let admin = await User.findOne({ email: adminEmail });
+
+        if (admin) {
+            // Update existing admin
+            admin.password = adminPassword;      // Will be hashed on save
+            admin.full_name = adminName;
+            admin.role = "super_admin";
+            admin.is_active = true;
+            admin.account_status = "active";
+            await admin.save();
+            res.send(`✅ Admin updated. Email: ${adminEmail}, Password: ${adminPassword}`);
+        } else {
+            // Create new admin
+            admin = new User({
+                full_name: adminName,
+                email: adminEmail,
+                phone: "0000000000",
+                password: adminPassword,
+                role: "super_admin",
+                balance: 1000000,
+                principal_balance: 1000000,
+                earnings_balance: 0,
+                kyc_verified: true,
+                is_active: true,
+                account_status: "active",
+                email_notifications: true
+            });
+            await admin.save();
+            res.send(`✅ Admin created. Email: ${adminEmail}, Password: ${adminPassword}`);
+        }
+    } catch (error) {
+        res.status(500).send(`❌ Error: ${error.message}`);
+    }
+});
+
 // ==================== ERROR HANDLING MIDDLEWARE ====================
 app.use((req, res) => {
     res.status(404).json(formatResponse(false, 'Endpoint not found'));
