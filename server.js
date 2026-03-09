@@ -1,8 +1,8 @@
-// server.js - RAW WEALTHY BACKEND v51.1 - PRODUCTION READY ENHANCED EDITION
-// ENHANCED WITH ATOMIC TRANSACTIONS, FIXED REFERRAL LOGIC, PROPER WITHDRAWAL HANDLING
-// SOCKET AUTHENTICATION, CONFIGURABLE BUSINESS RULES, DISK-BASED FILE UPLOADS
-// ALL ORIGINAL ENDPOINTS PRESERVED AND UPGRADED
-// NEW: EARNINGS RECALCULATION ENGINE, AUTO-CORRECT DISCREPANCIES, ADMIN FIX TOOL
+// server.js - RAW WEALTHY BACKEND v51.2 - PRODUCTION READY ENHANCED EDITION
+// ENHANCED WITH SEPARATE DEPOSIT BALANCE & EARNINGS, FIXED REFERRAL LOGIC,
+// PROPER WITHDRAWAL HANDLING, SOCKET AUTHENTICATION, CONFIGURABLE BUSINESS RULES,
+// DISK-BASED FILE UPLOADS, EARNINGS RECALCULATION ENGINE, AUTO-CORRECT DISCREPANCIES,
+// ADMIN FIX TOOL, AND INVESTMENTS FUNDED ONLY FROM DEPOSIT BALANCE.
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -498,12 +498,13 @@ const userSchema = new mongoose.Schema({
     role: { type: String, enum: ['user', 'admin', 'super_admin'], default: 'user' },
     
     // Financial fields - CORRECTED: total_earnings and referral_earnings are LIFETIME cumulative
+    // balance now represents only deposited funds (not earnings)
     balance: { type: Number, default: 0, min: 0 },
     total_earnings: { type: Number, default: 0, min: 0 }, // cumulative earnings from investments
     referral_earnings: { type: Number, default: 0, min: 0 }, // cumulative referral bonuses
     daily_earnings: { type: Number, default: 0, min: 0 }, // current daily earnings (may not be needed)
     total_withdrawn: { type: Number, default: 0, min: 0 }, // cumulative amount withdrawn
-    withdrawable_earnings: { type: Number, default: 0, min: 0 }, // earnings available for withdrawal
+    withdrawable_earnings: { type: Number, default: 0, min: 0 }, // earnings available for withdrawal (total_earnings+referral_earnings - total_withdrawn)
     
     risk_tolerance: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
     investment_strategy: { type: String, enum: ['conservative', 'balanced', 'aggressive'], default: 'balanced' },
@@ -616,7 +617,7 @@ userSchema.virtual('availableForWithdrawal').get(function() {
     return Math.max(0, this.withdrawable_earnings || 0);
 });
 
-// Virtual field for portfolio value - FIXED: balance + withdrawable_earnings (since earnings are already in balance)
+// Virtual field for portfolio value - total net worth (deposits + earnings)
 userSchema.virtual('portfolioValue').get(function() {
     return (this.balance || 0) + (this.withdrawable_earnings || 0);
 });
@@ -658,7 +659,6 @@ userSchema.pre('save', async function(next) {
     }
     
     // Update withdrawable_earnings: total_earnings + referral_earnings - total_withdrawn
-    // This is correct as total_earnings and referral_earnings are cumulative.
     if (this.isModified('total_earnings') || this.isModified('referral_earnings') || this.isModified('total_withdrawn')) {
         this.withdrawable_earnings = Math.max(0, 
             (this.total_earnings || 0) + 
@@ -1217,7 +1217,7 @@ const createNotification = async (userId, title, message, type = 'info', actionU
     }
 };
 
-// ==================== ENHANCED createTransaction FUNCTION - FIXED WITHDRAWAL LOGIC ====================
+// ==================== ENHANCED createTransaction FUNCTION - UPDATED FOR SEPARATE BALANCE/EARNINGS ====================
 const createTransaction = async (userId, type, amount, description, status = 'completed', metadata = {}) => {
     console.log(`🔄 [TRANSACTION] Creating: ${type} for user ${userId}, amount: ${amount}, status: ${status}`);
     
@@ -1244,20 +1244,18 @@ const createTransaction = async (userId, type, amount, description, status = 'co
             switch (type) {
                 case 'daily_interest':
                     if (amount > 0) {
-                        // Add to total_earnings (cumulative) and balance
+                        // Add to total_earnings only, NOT to balance
                         user.total_earnings = beforeState.total_earnings + amount;
-                        user.balance = beforeState.balance + amount;
                         // withdrawable_earnings will be recalculated in pre-save hook
-                        console.log(`💰 Added ${amount} to total_earnings and balance`);
+                        console.log(`💰 Added ${amount} to total_earnings only (balance unchanged)`);
                     }
                     break;
                     
                 case 'referral_bonus':
                     if (amount > 0) {
-                        // Add to referral_earnings (cumulative) and balance
+                        // Add to referral_earnings only, NOT to balance
                         user.referral_earnings = beforeState.referral_earnings + amount;
-                        user.balance = beforeState.balance + amount;
-                        console.log(`🎁 Added ${amount} to referral_earnings and balance`);
+                        console.log(`🎁 Added ${amount} to referral_earnings only (balance unchanged)`);
                     }
                     break;
                     
@@ -1293,17 +1291,13 @@ const createTransaction = async (userId, type, amount, description, status = 'co
                     const fromEarnings = metadata.from_earnings || 0;
                     const fromReferral = metadata.from_referral || 0;
                     
-                    // FIX: Only subtract from balance and total_withdrawn, NOT from cumulative earnings
-                    user.balance = Math.max(0, beforeState.balance - withdrawalAmount);
+                    // Do NOT deduct from balance; only update total_withdrawn
+                    // user.balance = Math.max(0, beforeState.balance - withdrawalAmount); // REMOVED
                     user.total_withdrawn = beforeState.total_withdrawn + withdrawalAmount;
                     user.total_withdrawals = (user.total_withdrawals || 0) + withdrawalAmount;
                     user.last_withdrawal_date = new Date();
                     
-                    // The pre-save hook will recalculate withdrawable_earnings based on:
-                    // withdrawable_earnings = total_earnings + referral_earnings - total_withdrawn
-                    // This is correct because cumulative earnings remain unchanged.
-                    
-                    console.log(`💸 Withdrew ${withdrawalAmount} (from_earnings: ${fromEarnings}, from_referral: ${fromReferral}) - cumulative earnings unchanged`);
+                    console.log(`💸 Withdrew ${withdrawalAmount} (from_earnings: ${fromEarnings}, from_referral: ${fromReferral}) - cumulative earnings unchanged, balance unchanged`);
                     break;
                     
                 case 'bonus':
@@ -1547,7 +1541,7 @@ const addDailyInterestForInvestment = async (investment) => {
         // Save investment
         await investment.save();
         
-        // Credit user's earnings
+        // Credit user's earnings (using updated createTransaction which does NOT affect balance)
         await createTransaction(
             investment.user,
             'daily_interest',
@@ -1671,7 +1665,7 @@ const addFirstDayInterest = async (investment) => {
         
         await investment.save();
         
-        // Credit user's earnings for first day
+        // Credit user's earnings for first day (using updated createTransaction)
         await createTransaction(
             investment.user,
             'daily_interest',
@@ -1741,7 +1735,7 @@ const awardReferralCommission = async (referredUserId, investmentAmount, investm
         // Calculate commission (20% of first investment)
         const commission = investmentAmount * (config.referralCommissionPercent / 100);
         
-        // Award commission to referrer using createTransaction (which updates balance, referral_earnings, withdrawable)
+        // Award commission to referrer using createTransaction (which now only updates referral_earnings, not balance)
         const txResult = await createTransaction(
             referredUser.referred_by,
             'referral_bonus',
@@ -2210,7 +2204,7 @@ app.get('/health', async (req, res) => {
         success: true,
         status: 'OK',
         timestamp: new Date().toISOString(),
-        version: '51.1.0',
+        version: '51.2.0',
         environment: config.nodeEnv,
         database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         uptime: process.uptime(),
@@ -2235,8 +2229,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
     res.json({
         success: true,
-        message: '🚀 Raw Wealthy Backend v51.1 - Production Ready Enhanced Edition with Auto-Correction',
-        version: '51.1.0',
+        message: '🚀 Raw Wealthy Backend v51.2 - Production Ready Enhanced Edition with Separate Deposit Balance & Earnings',
+        version: '51.2.0',
         timestamp: new Date().toISOString(),
         status: 'Operational',
         environment: config.nodeEnv,
@@ -2248,7 +2242,8 @@ app.get('/', (req, res) => {
             real_time_updates: '✅ ENABLED',
             atomic_transactions: '✅ ENABLED',
             secure_sockets: '✅ ENABLED',
-            auto_correct_earnings: config.autoCorrectEarnings ? '✅ ENABLED' : '❌ DISABLED'
+            auto_correct_earnings: config.autoCorrectEarnings ? '✅ ENABLED' : '❌ DISABLED',
+            separate_balance_and_earnings: '✅ ENABLED (balance = deposits only)'
         },
         endpoints: {
             auth: '/api/auth/*',
@@ -2972,12 +2967,12 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
                 `Maximum investment for ${plan.name} is ₦${plan.max_amount.toLocaleString()}`));
         }
         
-        // Check if user has sufficient balance
+        // Check if user has sufficient balance (deposit balance only)
         if (investmentAmount > freshUser.balance) {
             await session.abortTransaction();
             session.endSession();
             return res.status(400).json(formatResponse(false, 
-                `Insufficient balance. Available: ₦${freshUser.balance.toLocaleString()}, Required: ₦${investmentAmount.toLocaleString()}`));
+                `Insufficient deposit balance. Available: ₦${freshUser.balance.toLocaleString()}, Required: ₦${investmentAmount.toLocaleString()}`));
         }
         
         let proofUrl = null;
@@ -3031,7 +3026,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
         
         await freshUser.save({ session });
         
-        // Create transaction record
+        // Create transaction record for investment
         const transaction = new Transaction({
             user: userId,
             type: 'investment',
@@ -3058,7 +3053,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
         
         await transaction.save({ session });
         
-        // Add first day's interest immediately
+        // Add first day's interest immediately (now using updated createTransaction which will not affect balance)
         const dailyEarning = (investmentAmount * plan.daily_interest) / 100;
         investment.earned_so_far = dailyEarning;
         investment.interest_added_count = 1;
@@ -3066,9 +3061,9 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
         // next_interest_date already set
         await investment.save({ session });
         
-        // Credit first day interest to user
+        // Credit first day interest to user's total_earnings only (not balance)
         freshUser.total_earnings += dailyEarning;
-        freshUser.balance += dailyEarning;
+        // Do NOT add to balance
         await freshUser.save({ session });
         
         const interestTransaction = new Transaction({
@@ -3078,7 +3073,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
             description: `First day interest from ${plan.name} investment`,
             status: 'completed',
             reference: generateReference('INT'),
-            balance_before: freshUser.balance - dailyEarning,
+            balance_before: freshUser.balance, // unchanged
             balance_after: freshUser.balance,
             earnings_before: freshUser.total_earnings - dailyEarning,
             earnings_after: freshUser.total_earnings,
@@ -3120,7 +3115,7 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
         await createNotification(
             userId,
             'Investment Successfully Created!',
-            `Your investment of ₦${investmentAmount.toLocaleString()} in ${plan.name} has been automatically approved and is now active. First day interest of ₦${dailyEarning.toLocaleString()} has been credited.`,
+            `Your investment of ₦${investmentAmount.toLocaleString()} in ${plan.name} has been automatically approved and is now active. First day interest of ₦${dailyEarning.toLocaleString()} has been credited to your earnings.`,
             'investment',
             '/investments'
         );
@@ -3148,7 +3143,8 @@ app.post('/api/investments', auth, upload.single('payment_proof'), [
                 next_interest_date: investment.next_interest_date
             },
             user_balance: {
-                current_balance: freshUser.balance
+                current_balance: freshUser.balance,
+                withdrawable_earnings: freshUser.withdrawable_earnings
             }
         }));
     } catch (error) {
@@ -3977,7 +3973,7 @@ if (config.paymentEnabled) {
                 deposit.transaction_hash = payload.data.flw_ref;
                 await deposit.save();
                 
-                // Credit user's balance
+                // Credit user's balance (using updated createTransaction which adds to balance)
                 await createTransaction(
                     deposit.user,
                     'deposit',
@@ -4951,9 +4947,9 @@ app.post('/api/admin/investments/:id/reject', adminAuth, [
             
             // Also reverse any interest already earned
             if (investment.earned_so_far > 0) {
-                // Subtract from total_earnings and balance (since interest was added to balance)
+                // Subtract from total_earnings (but not balance, since earnings were never in balance)
                 user.total_earnings = Math.max(0, user.total_earnings - investment.earned_so_far);
-                user.balance = Math.max(0, user.balance - investment.earned_so_far);
+                // withdrawable_earnings will be recalculated in pre-save
             }
             
             await user.save({ session });
@@ -5083,7 +5079,7 @@ app.post('/api/admin/deposits/:id/approve', adminAuth, [
         
         await deposit.save();
         
-        // Credit user's balance
+        // Credit user's balance (using updated createTransaction which adds to balance)
         await createTransaction(
             deposit.user._id,
             'deposit',
@@ -5286,7 +5282,8 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
             pendingTransaction.description = `Withdrawal via ${withdrawal.payment_method}`;
             await pendingTransaction.save({ session });
         } else {
-            // If no pending transaction, create a completed one
+            // If no pending transaction, create a completed one (but we already have one from request creation)
+            // This case should not happen, but just in case:
             await createTransaction(
                 withdrawal.user._id,
                 'withdrawal',
@@ -5305,11 +5302,11 @@ app.post('/api/admin/withdrawals/:id/approve', adminAuth, [
             );
         }
         
-        // Now update user's withdrawable earnings and balance
-        user.balance = Math.max(0, user.balance - withdrawal.amount);
+        // Now update user's total_withdrawn (and thus withdrawable_earnings) but NOT balance
         user.total_withdrawn += withdrawal.amount;
         user.total_withdrawals = (user.total_withdrawals || 0) + withdrawal.amount;
         user.last_withdrawal_date = new Date();
+        // Do NOT deduct from balance
         await user.save({ session });
         
         await session.commitTransaction();
@@ -5687,7 +5684,7 @@ const startServer = async () => {
         
         server.listen(config.port, () => {
             console.log('\n🚀 ============================================');
-            console.log(`✅ Raw Wealthy Backend v51.1 - PRODUCTION READY`);
+            console.log(`✅ Raw Wealthy Backend v51.2 - PRODUCTION READY`);
             console.log(`🌐 Environment: ${config.nodeEnv}`);
             console.log(`📍 Port: ${config.port}`);
             console.log(`🔗 Server URL: ${config.serverURL}`);
@@ -5712,6 +5709,7 @@ const startServer = async () => {
             console.log('13.✅ REAL-TIME ADMIN NOTIFICATIONS');
             console.log('14.✅ EARNINGS RECALCULATION ENGINE (admin fix tool)');
             console.log(`15.✅ AUTO‑CORRECT EARNINGS CRON: ${config.autoCorrectEarnings ? 'ENABLED' : 'DISABLED'}`);
+            console.log('16.✅ SEPARATE DEPOSIT BALANCE AND EARNINGS (investments use deposit balance only)');
             console.log('============================================\n');
             
             console.log('💰 UPDATED INTEREST RATES & DURATIONS (configurable):');
@@ -5776,5 +5774,3 @@ process.on('SIGINT', () => {
 
 // Start the server
 startServer();
- 
- 
