@@ -3,7 +3,6 @@
 // PROPER WITHDRAWAL HANDLING, SOCKET AUTHENTICATION, CONFIGURABLE BUSINESS RULES,
 // DISK-BASED FILE UPLOADS, EARNINGS RECALCULATION ENGINE, AUTO-CORRECT DISCREPANCIES,
 // ADMIN FIX TOOL, AND INVESTMENTS FUNDED ONLY FROM DEPOSIT BALANCE.
-// UPDATED INVESTMENT PLANS: New interest rates and durations as requested.
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -134,7 +133,7 @@ const config = {
     referralCommissionPercent: parseFloat(process.env.REFERRAL_COMMISSION_PERCENT) || 20,
     welcomeBonus: parseInt(process.env.WELCOME_BONUS) || 100,
     
-    // Investment durations (days) - configurable (still available but not used in new plans)
+    // Investment durations (days) - configurable
     planDurations: {
         firstThree: parseInt(process.env.PLAN_DURATION_FIRST_THREE) || 20,
         nextThree: parseInt(process.env.PLAN_DURATION_NEXT_THREE) || 15,
@@ -1956,16 +1955,21 @@ const initializeDatabase = async () => {
 };
 
 const createDefaultInvestmentPlans = async () => {
-    // Updated investment plans with new interest rates and durations as requested.
+    // Use configurable durations
+    const firstThreeDuration = config.planDurations.firstThree;
+    const nextThreeDuration = config.planDurations.nextThree;
+    const remainingDuration = config.planDurations.remaining;
+    
     const defaultPlans = [
+        // UPDATED: 3500 plan to 15%, all others +5%, UPDATED DURATIONS
         {
             name: 'Cocoa Beans',
             description: 'Invest in premium cocoa beans with stable returns.',
             min_amount: 3500,
             max_amount: 50000,
-            daily_interest: 12,
-            total_interest: 12 * 30,
-            duration: 30,
+            daily_interest: 15,
+            total_interest: 15 * firstThreeDuration,
+            duration: firstThreeDuration,
             risk_level: 'low',
             raw_material: 'Cocoa',
             category: 'agriculture',
@@ -1980,9 +1984,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Precious metal investment with high liquidity.',
             min_amount: 50000,
             max_amount: 500000,
-            daily_interest: 15,
-            total_interest: 15 * 15,
-            duration: 15,
+            daily_interest: 20,
+            total_interest: 20 * firstThreeDuration,
+            duration: firstThreeDuration,
             risk_level: 'medium',
             raw_material: 'Gold',
             category: 'metals',
@@ -1997,9 +2001,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Energy sector investment with premium returns.',
             min_amount: 100000,
             max_amount: 1000000,
-            daily_interest: 15,
-            total_interest: 15 * 15,
-            duration: 15,
+            daily_interest: 25,
+            total_interest: 25 * firstThreeDuration,
+            duration: firstThreeDuration,
             risk_level: 'high',
             raw_material: 'Crude Oil',
             category: 'energy',
@@ -2014,9 +2018,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Premium Arabica coffee beans from Ethiopian highlands.',
             min_amount: 5500,
             max_amount: 25000,
-            daily_interest: 12,
-            total_interest: 12 * 20,
-            duration: 20,
+            daily_interest: 19,
+            total_interest: 19 * nextThreeDuration,
+            duration: nextThreeDuration,
             risk_level: 'low',
             raw_material: 'Coffee',
             category: 'agriculture',
@@ -2031,9 +2035,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Industrial silver with growing demand in technology sector.',
             min_amount: 15000,
             max_amount: 150000,
-            daily_interest: 12,
-            total_interest: 12 * 20,
-            duration: 20,
+            daily_interest: 17,
+            total_interest: 17 * nextThreeDuration,
+            duration: nextThreeDuration,
             risk_level: 'medium',
             raw_material: 'Silver',
             category: 'metals',
@@ -2048,9 +2052,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Premium Teak wood with high value in construction and furniture.',
             min_amount: 20000,
             max_amount: 200000,
-            daily_interest: 15,
-            total_interest: 15 * 15,
-            duration: 15,
+            daily_interest: 19,
+            total_interest: 19 * nextThreeDuration,
+            duration: nextThreeDuration,
             risk_level: 'medium',
             raw_material: 'Teak Wood',
             category: 'timber',
@@ -2065,9 +2069,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Clean energy source with increasing global demand.',
             min_amount: 75000,
             max_amount: 750000,
-            daily_interest: 15,
-            total_interest: 15 * 20,
-            duration: 20,
+            daily_interest: 23,
+            total_interest: 23 * remainingDuration,
+            duration: remainingDuration,
             risk_level: 'high',
             raw_material: 'Natural Gas',
             category: 'energy',
@@ -2082,9 +2086,9 @@ const createDefaultInvestmentPlans = async () => {
             description: 'Premium salmon farming with sustainable practices.',
             min_amount: 30000,
             max_amount: 300000,
-            daily_interest: 15,
-            total_interest: 15 * 20,
-            duration: 20,
+            daily_interest: 21,
+            total_interest: 21 * remainingDuration,
+            duration: remainingDuration,
             risk_level: 'medium',
             raw_material: 'Salmon',
             category: 'aquaculture',
@@ -2103,7 +2107,7 @@ const createDefaultInvestmentPlans = async () => {
                 await InvestmentPlan.create(planData);
                 console.log(`✅ Created investment plan: ${planData.name} (${planData.daily_interest}% daily, ${planData.duration} days)`);
             } else {
-                // Update existing plan with new data
+                // Update existing plan with new data (e.g., if durations changed)
                 await InvestmentPlan.findByIdAndUpdate(existingPlan._id, planData);
                 console.log(`✅ Updated investment plan: ${planData.name} (${planData.daily_interest}% daily, ${planData.duration} days)`);
             }
@@ -2115,7 +2119,16 @@ const createDefaultInvestmentPlans = async () => {
         // Log interest rate and duration summary
         console.log('\n📈 UPDATED INTEREST RATES & DURATIONS SUMMARY:');
         console.log('============================================');
-        defaultPlans.forEach(plan => {
+        console.log(`FIRST THREE PLANS (${firstThreeDuration} days):`);
+        defaultPlans.slice(0, 3).forEach(plan => {
+            console.log(`   ${plan.icon} ${plan.name}: ${plan.daily_interest}% daily × ${plan.duration} days = ${plan.total_interest}% total`);
+        });
+        console.log(`\nNEXT THREE PLANS (${nextThreeDuration} days):`);
+        defaultPlans.slice(3, 6).forEach(plan => {
+            console.log(`   ${plan.icon} ${plan.name}: ${plan.daily_interest}% daily × ${plan.duration} days = ${plan.total_interest}% total`);
+        });
+        console.log(`\nREMAINING PLANS (${remainingDuration} days):`);
+        defaultPlans.slice(6).forEach(plan => {
             console.log(`   ${plan.icon} ${plan.name}: ${plan.daily_interest}% daily × ${plan.duration} days = ${plan.total_interest}% total`);
         });
         console.log('============================================\n');
@@ -5701,14 +5714,17 @@ const startServer = async () => {
             
             console.log('💰 UPDATED INTEREST RATES & DURATIONS (configurable):');
             console.log('============================================');
-            console.log('1. 🌱 Cocoa Beans: ₦3,500 min (12% daily × 30 days = 360% total)');
-            console.log('2. 🥇 Gold: ₦50,000 min (15% daily × 15 days = 225% total)');
-            console.log('3. 🛢️ Crude Oil: ₦100,000 min (15% daily × 15 days = 225% total)');
-            console.log('4. ☕ Coffee Beans: ₦5,500 min (12% daily × 20 days = 240% total)');
-            console.log('5. 🥈 Silver Bullion: ₦15,000 min (12% daily × 20 days = 240% total)');
-            console.log('6. 🌳 Timber (Teak): ₦20,000 min (15% daily × 15 days = 225% total)');
-            console.log('7. 🔥 Natural Gas: ₦75,000 min (15% daily × 20 days = 300% total)');
-            console.log('8. 🐟 Aquaculture (Salmon): ₦30,000 min (15% daily × 20 days = 300% total)');
+            console.log(`FIRST THREE PLANS (${config.planDurations.firstThree} days):`);
+            console.log('1. 🌱 Cocoa Beans: ₦3,500 min (15% daily)');
+            console.log('2. 🥇 Gold: ₦50,000 min (20% daily)');
+            console.log('3. 🛢️ Crude Oil: ₦100,000 min (25% daily)');
+            console.log(`\nNEXT THREE PLANS (${config.planDurations.nextThree} days):`);
+            console.log('4. ☕ Coffee Beans: ₦5,500 min (19% daily)');
+            console.log('5. 🥈 Silver Bullion: ₦15,000 min (17% daily)');
+            console.log('6. 🌳 Timber (Teak): ₦20,000 min (19% daily)');
+            console.log(`\nREMAINING PLANS (${config.planDurations.remaining} days):`);
+            console.log('7. 🔥 Natural Gas: ₦75,000 min (23% daily)');
+            console.log('8. 🐟 Aquaculture (Salmon): ₦30,000 min (21% daily)');
             console.log(`📊 Total Investment Plans: 8`);
             console.log(`💰 Price Range: ₦3,500 - ₦1,000,000`);
             console.log(`💰 Minimum Withdrawal: ₦${config.minWithdrawal.toLocaleString()}`);
