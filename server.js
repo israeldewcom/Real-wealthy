@@ -2141,7 +2141,7 @@ const createDefaultInvestmentPlans = async () => {
 const createAdminUser = async () => {
     try {
         const adminEmail = process.env.ADMIN_EMAIL || 'admin@rawwealthy.com';
-        const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456';
+        const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123456##';
         
         let existingAdmin = await User.findOne({ email: adminEmail });
         if (existingAdmin) {
